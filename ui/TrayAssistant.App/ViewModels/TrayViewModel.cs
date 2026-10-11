@@ -26,7 +26,7 @@ public partial class TrayViewModel : ObservableObject
     public async Task SetRowVisibilityAsync(IconRow row,bool value)
     {
         if(row.IsBusy||value==row.ActualVisible)return;row.IsBusy=true;
-        await Execute(async()=>{if(row.Owned){var read=await Call("settings.read");var own=(JsonObject)read["data"]!["ownIcon"]!.DeepClone();own["visible"]=value;await Call("ownIcon.apply",own);OwnVisible=value;}else{var rule=EditableRule(row);rule["visibility"]=value?0:1;rule["enabled"]=true;await Call("rule.apply",new(){["rule"]=rule});}await RefreshAsync();Status=value?"已显示":"已隐藏";});
+        await Execute(async()=>{if(row.Owned){var read=await Call("settings.read");var own=(JsonObject)read["data"]!["ownIcon"]!.DeepClone();own["visible"]=value;await Call("ownIcon.apply",own);OwnVisible=value;}else{var rule=EditableRule(row);rule["visibility"]=value?0:1;rule["inactiveSeconds"]=0;rule["unusedDays"]=0;rule["enabled"]=true;await Call("rule.apply",new(){["rule"]=rule});}await RefreshAsync();Status=value?"已显示":"已隐藏";});
         row.IsBusy=false;row.Visible=row.ActualVisible;
     }
     [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(uint processId);
@@ -209,6 +209,7 @@ public partial class TrayViewModel : ObservableObject
 
 
 }
+
 
 
 

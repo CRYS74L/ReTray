@@ -14,6 +14,9 @@
 #include <shobjidl.h>
 #include <unordered_map>
 #include <unordered_set>
+#include <appmodel.h>
+#include <winrt/Windows.Foundation.h>
+#include <winrt/Windows.ApplicationModel.h>
 using namespace tray;
 namespace {
 constexpr UINT OwnCallback = WM_APP + 101, OpenMessage = WM_APP + 102, UpdateHotkeys = WM_APP + 103;
@@ -31,6 +34,8 @@ std::atomic<bool> stopping{};
 HICON ownImage{};
 std::unordered_map<std::string, IconRule> rules;
 std::unordered_map<std::string, std::string> applied;
+std::unordered_map<std::string, std::string> failedStamp;
+std::unordered_map<std::string, uint64_t> retryAfter;
 std::unordered_map<std::string, Json> outcomes;
 std::vector<BridgeIcon> rows;
 IconCatalog catalog;
@@ -116,6 +121,8 @@ void LoadRules() {
         rules[PersistentKey(rule.selector)] = std::move(rule);
     }
     applied.clear();
+    failedStamp.clear();
+    retryAfter.clear();
 }
 void ScheduleHotkeys() {
     if (!window || stopping)
@@ -220,6 +227,36 @@ bool SetOwnIcon() {
     return ok;
 }
 bool SetStartup(bool enabled) {
+    UINT32 packageNameLength{};
+    if (GetCurrentPackageFullName(&packageNameLength, nullptr) == ERROR_INSUFFICIENT_BUFFER) {
+        try {
+            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+            auto wait = [&](auto operation) {
+                while (operation.Status() == winrt::Windows::Foundation::AsyncStatus::Started) {
+                    if (stopping || std::chrono::steady_clock::now() >= deadline) {
+                        operation.Cancel();
+                        throw winrt::hresult_error(
+                            HRESULT_FROM_WIN32(stopping ? ERROR_CANCELLED : ERROR_TIMEOUT));
+                    }
+                    operation.wait_for(std::chrono::milliseconds(25));
+                }
+                return operation.get();
+            };
+            auto task = wait(
+                winrt::Windows::ApplicationModel::StartupTask::GetAsync(L"TrayAssistantStartup"));
+            if (!enabled) {
+                task.Disable();
+                return true;
+            }
+            auto state = wait(task.RequestEnableAsync());
+            if (state == winrt::Windows::ApplicationModel::StartupTaskState::Enabled)
+                return true;
+            SetLastError(ERROR_ACCESS_DISABLED_BY_POLICY);
+        } catch (const winrt::hresult_error& error) {
+            SetLastError(static_cast<DWORD>(error.code().value));
+        }
+        return false;
+    }
     HKEY key{};
     if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0,
                         nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS)
@@ -244,6 +281,11 @@ void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
     std::string stamp = std::to_string(configRevision) + ":" + std::to_string(visibility);
     if (applied[key] == stamp)
         return;
+    if (failedStamp[key] == stamp) {
+        auto retry = retryAfter.find(key);
+        if (retry == retryAfter.end() || GetTickCount64() < retry->second)
+            return;
+    }
     bool success = true;
     DWORD error{};
     auto send = [&](BridgeCommand cmd) {
@@ -275,7 +317,11 @@ void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
             success = false;
             error = ERROR_FILE_NOT_FOUND;
         }
-    } else if (row.managed) {
+    } else if (row.custom && rule && rule->enabled) {
+        BridgeCommand cmd;
+        cmd.operation = BridgeOperation::ClearImage;
+        send(cmd);
+    } else if (row.managed && !(rule && rule->enabled)) {
         BridgeCommand cmd;
         cmd.operation = BridgeOperation::Restore;
         send(cmd);
@@ -305,8 +351,19 @@ void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
         send(cmd);
     }
     outcomes[key] = Result(success, success ? "已生效" : "规则已保存，应用失败", error);
-    if (success)
+    if (success) {
         applied[key] = stamp;
+        failedStamp.erase(key);
+        retryAfter.erase(key);
+    } else {
+        applied.erase(key);
+        failedStamp[key] = stamp;
+        if (error == ERROR_RETRY || error == ERROR_NOT_READY || error == ERROR_TIMEOUT ||
+            error == ERROR_BUSY)
+            retryAfter[key] = GetTickCount64() + 3000;
+        else
+            retryAfter.erase(key);
+    }
 }
 bool ApplyEnvironment(bool force = false) {
     if (safeMode || !bridge.Alive() || !ShouldRecover(lifecycle))
@@ -375,6 +432,8 @@ void Refresh() {
             return;
         seenSequence = -1;
         applied.clear();
+        failedStamp.clear();
+        retryAfter.clear();
         SetOperationalState(lifecycle, SessionState::Ready);
     }
     ApplyEnvironment();
@@ -434,6 +493,12 @@ void Refresh() {
         if (!catalog.items.contains(it->first))
             it = applied.erase(it);
         else
+            ++it;
+    for (auto it = failedStamp.begin(); it != failedStamp.end();)
+        if (!catalog.items.contains(it->first)) {
+            retryAfter.erase(it->first);
+            it = failedStamp.erase(it);
+        } else
             ++it;
     for (auto& row : rows) {
         if (row.identity.ownerPid == GetCurrentProcessId())
@@ -511,7 +576,10 @@ Json CatalogJson() {
         auto j = RuleJson(rule);
         bool owned = row.identity.ownerPid == GetCurrentProcessId();
         j["owned"] = owned;
-        if (owned) { j["asset"] = settings["ownIcon"].value("asset", std::string{}); j["tip"] = settings["ownIcon"].value("tip", std::string("托盘图标助手")); }
+        if (owned) {
+            j["asset"] = settings["ownIcon"].value("asset", std::string{});
+            j["tip"] = settings["ownIcon"].value("tip", std::string("托盘图标助手"));
+        }
         j["key"] = key;
         j["pid"] = row.identity.ownerPid;
         j["tipCurrent"] = Utf8(row.tip);
@@ -852,7 +920,7 @@ DWORD WINAPI Serve(void*) {
     return 0;
 }
 DWORD WINAPI Worker(void*) {
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     auto start = SessionState::Starting;
     lifecycle.state.compare_exchange_strong(start, SessionState::WaitingForShell);
     if (ShouldRecover(lifecycle))
@@ -878,7 +946,12 @@ DWORD WINAPI Worker(void*) {
                                                : Json("");
             SetEvent(request->event);
         }
-        try { Refresh(); } catch (...) { applied.clear(); seenSequence = -1; }
+        try {
+            Refresh();
+        } catch (...) {
+            applied.clear();
+            seenSequence = -1;
+        }
         HANDLE waits[] = {stopEvent, workEvent};
         WaitForMultipleObjects(2, waits, FALSE, 500);
     }
@@ -1006,7 +1079,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     ProcessIdToSessionId(GetCurrentProcessId(), &session);
     int argc{};
     auto args = CommandLineToArgvW(GetCommandLineW(), &argc);
-    bool background = false;
+    bool background = true;
 
     wchar_t executable[32768]{};
     GetModuleFileNameW(nullptr, executable, 32768);
@@ -1017,6 +1090,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     for (int i = 1; i < argc; ++i) {
         if (std::wstring(args[i]) == L"--background")
             background = true;
+        else if (std::wstring(args[i]) == L"--open")
+            background = false;
         else if (std::wstring(args[i]) == L"--data" && i + 1 < argc)
             dataRoot = args[++i];
     }

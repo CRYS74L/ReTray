@@ -30,7 +30,7 @@
     <Expander Header="系统图标" HorizontalAlignment="Stretch"><StackPanel Spacing="12"><Button Content="读取系统图标" Click="ReadSystem_Click"/><StackPanel x:Name="SystemList" Spacing="12"/></StackPanel></Expander>
     <Expander Header="高级设置" HorizontalAlignment="Stretch"><StackPanel Spacing="14"><ToggleSwitch Header="助手窗口置顶" IsOn="{x:Bind Vm.UiTopmost, Mode=TwoWay}"/><ToggleSwitch Header="隐藏开始按钮" IsOn="{x:Bind Vm.HideStart, Mode=TwoWay}"/><Slider Header="任务栏不透明度" Minimum="40" Maximum="255" Value="{x:Bind Vm.TaskbarOpacity, Mode=TwoWay}"/><Button Content="应用" Command="{x:Bind Vm.SaveAdvancedCommand}"/><ToggleSwitch Header="自动按名称排序" IsOn="{x:Bind Vm.AutoSort, Mode=TwoWay}"/><ComboBox DropDownOpened="PopupMica_Open" Header="新图标位置" HorizontalAlignment="Stretch" SelectedIndex="{x:Bind Vm.NewLocationIndex, Mode=TwoWay}"><x:String>跟随 Windows</x:String><x:String>任务栏</x:String><x:String>折叠区</x:String></ComboBox><Button Content="应用排序" Command="{x:Bind Vm.SaveMenuCommand}"/><TextBox x:Name="Hotkey_open" Header="打开助手快捷键" Tag="open" IsReadOnly="True" KeyDown="HotkeyBox_KeyDown"/><TextBox x:Name="Hotkey_restoreIcons" Header="恢复托盘快捷键" Tag="restoreIcons" IsReadOnly="True" KeyDown="HotkeyBox_KeyDown"/><Button Content="保存快捷键" Command="{x:Bind Vm.SaveMenuCommand}"/><StackPanel Orientation="Horizontal" Spacing="8"><Button Content="导出配置…" Click="Export_Click"/><Button Content="导入配置…" Click="Import_Click"/></StackPanel></StackPanel></Expander>
    </StackPanel></ScrollViewer>
-   <ScrollViewer x:Name="DiagnosticsView" Grid.Row="0" Visibility="Collapsed"><StackPanel Spacing="14"><TextBlock Text="{x:Bind Vm.Diagnostics, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"/><Button Content="恢复所有托盘图标" Click="RestoreAll_Click"/><Button Content="停止后台" AutomationProperties.AutomationId="StopAgent" Command="{x:Bind Vm.StopAgentCommand}"/><TextBlock Text="v0.1.5 · 开发中" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel></ScrollViewer>
+   <ScrollViewer x:Name="DiagnosticsView" Grid.Row="0" Visibility="Collapsed"><StackPanel Spacing="14"><TextBlock Text="{x:Bind Vm.Diagnostics, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"/><Button Content="恢复所有托盘图标" Click="RestoreAll_Click"/><Button Content="停止后台" AutomationProperties.AutomationId="StopAgent" Command="{x:Bind Vm.StopAgentCommand}"/><TextBlock Text="v0.1.6 · 开发中" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel></ScrollViewer>
    <InfoBar x:Name="ErrorNotice" Grid.Row="1" IsOpen="False" IsClosable="False" Severity="Error" Message="{x:Bind Vm.Error, Mode=OneWay}" AutomationProperties.AutomationId="OperationError"><InfoBar.ActionButton><Button Content="重试" Command="{x:Bind Vm.ReconnectCommand}"/></InfoBar.ActionButton></InfoBar>
   </Grid>
  </NavigationView>
@@ -45,6 +45,7 @@
  </ContentDialog>
  </Grid>
 </Page>
+
 
 
 

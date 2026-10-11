@@ -82,7 +82,7 @@ public static class Localization
     private static object? Translate(object? value) => value is string text ? Text(text) : value;
     public static void Apply(DependencyObject root)
     {
-        if(root is ListView)return;
+        if(root is ListView or InfoBar)return;
         if(root is TextBlock text)text.Text=Text(text.Text);
         if(root is ContentControl content)content.Content=Translate(content.Content);
         if(root is TextBox box){box.Header=Translate(box.Header);box.PlaceholderText=Text(box.PlaceholderText);}
@@ -94,5 +94,6 @@ public static class Localization
         for(int n=0;n<VisualTreeHelper.GetChildrenCount(root);n++)Apply(VisualTreeHelper.GetChild(root,n));
     }
 }
+
 
 

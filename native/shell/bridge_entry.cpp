@@ -230,6 +230,8 @@ void WriteFrame(BridgeIcon& out, const Frame& frame) {
                              static_cast<size_t>(x) * frame.width / w];
 }
 bool SetTip(const NativeIconRecord& record, const std::wstring& text) {
+    if (record.tip == text)
+        return true;
     NOTIFYICONDATAW data{};
     data.cbSize = sizeof(data);
     data.hWnd = reinterpret_cast<HWND>(record.identity.ownerHwnd);
@@ -242,11 +244,22 @@ bool SetTip(const NativeIconRecord& record, const std::wstring& text) {
     wcsncpy_s(data.szTip, std::size(data.szTip), text.c_str(), _TRUNCATE);
     return Shell_NotifyIconW(NIM_MODIFY, &data) != FALSE;
 }
+bool VisibleVector(uint64_t object, std::vector<uint64_t>& values);
 bool MoveIcon(const NativeIconRecord& record, int location, uint32_t index) {
     void* method{};
     uint64_t model = GetModel();
-    if (!model || !Method(model + 0x20, 6, 0x1309f0, method))
+    uint64_t manager{}, collection{};
+    std::vector<uint64_t> visible;
+    if (!model || location < 0 || location > 1 || !LocalRead(model + adapter.manager, manager) ||
+        !LocalRead(manager + (location == 0 ? adapter.promoted : adapter.overflow), collection) ||
+        !VisibleVector(collection, visible) || !Method(model + 0x20, 6, 0x1309f0, method))
         return false;
+    const bool alreadyHere = static_cast<int>(record.placement) == location;
+    const auto last =
+        static_cast<uint32_t>(visible.size() - (alreadyHere && !visible.empty() ? 1 : 0));
+    index = std::min(index, last);
+    if (alreadyHere && record.nativeIndex == index)
+        return true;
     using Fn = HRESULT(__stdcall*)(void*, void*, int, UINT);
     return SUCCEEDED(reinterpret_cast<Fn>(method)(
         reinterpret_cast<void*>(model + 0x20), reinterpret_cast<void*>(record.recordAddress + 0x10),
@@ -351,7 +364,9 @@ void Publish(bool refreshOriginal, const WireEvent* event = nullptr) {
     InterlockedIncrement(&state->snapshotSequence);
 }
 LRESULT CALLBACK Subclass(HWND, UINT, WPARAM, LPARAM, UINT_PTR, DWORD_PTR);
-bool SetVisibility(const NativeIconRecord& record, bool hidden) {
+bool SetVisibility(const NativeIconRecord& record, bool hidden, bool force = false) {
+    if (!force && (record.placement == Placement::Hidden) == hidden)
+        return true;
     NOTIFYICONDATAW data{};
     data.cbSize = sizeof(data);
     data.hWnd = reinterpret_cast<HWND>(record.identity.ownerHwnd);
@@ -580,7 +595,7 @@ void Detach() {
     if (!state->sessionEnding && live.complete)
         for (auto& [key, entry] : entries)
             if (entry->visibility != -1 || entry->tipChanged || entry->moved)
-                SetVisibility(entry->record, entry->originalHidden);
+                SetVisibility(entry->record, entry->originalHidden, true);
     RestoreSystemControls(!state->sessionEnding);
     if (!state->sessionEnding)
         RestoreOpacity();
@@ -664,6 +679,15 @@ void ExecuteCommand() {
                     DrawPolicy(entry);
                     if (!entry.custom)
                         error = ERROR_INVALID_HANDLE;
+                } else if (cmd.operation == BridgeOperation::ClearImage) {
+                    if (entry.customPainted)
+                        RestoreBitmap(entry);
+                    entry.custom = false;
+                    entry.customPainted = false;
+                    if (entry.replacement) {
+                        DestroyIcon(entry.replacement);
+                        entry.replacement = nullptr;
+                    }
                 } else if (cmd.operation == BridgeOperation::Behavior) {
                     entry.swapButtons = cmd.index == 1;
                 } else if (cmd.operation == BridgeOperation::Restore) {
@@ -690,7 +714,7 @@ void ExecuteCommand() {
                                  std::min<uint32_t>(255, entry.originalIndex));
                         entry.moved = false;
                     }
-                    if (restoreVisibility && !SetVisibility(*match, entry.originalHidden))
+                    if (restoreVisibility && !SetVisibility(*match, entry.originalHidden, true))
                         error = ERROR_INVALID_DATA;
                 } else if (cmd.operation == BridgeOperation::Visibility) {
                     entry.visibility = cmd.visibility;

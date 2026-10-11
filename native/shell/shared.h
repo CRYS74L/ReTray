@@ -20,7 +20,8 @@ enum class BridgeOperation : uint32_t {
     SystemSet = 11,
     Taskbar = 12,
     Behavior = 13,
-    Invoke = 14
+    Invoke = 14,
+    ClearImage = 15
 };
 struct SystemControl {
     uint32_t id{}, instances{};

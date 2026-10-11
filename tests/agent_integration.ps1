@@ -22,7 +22,7 @@ $dataDir=Join-Path $product ('artifacts\agent-integration-'+[guid]::NewGuid().To
 if(Get-Process TrayAssistant.Agent -ErrorAction SilentlyContinue){throw 'Stop the running assistant before starting isolated agent acceptance'}
 $agent=Start-Process -FilePath (Join-Path $product 'build\TrayAssistant.Agent.exe') -ArgumentList @('--background','--data',('"'+$dataDir+'"')) -WindowStyle Hidden -PassThru
 try{
- $limit=[DateTime]::UtcNow.AddSeconds(8);do{try{$status=Invoke-Agent 'status.read';break}catch{Start-Sleep -Milliseconds 200}}while([DateTime]::UtcNow -lt $limit)
+ $limit=[DateTime]::UtcNow.AddSeconds(8);do{try{$status=Invoke-Agent 'status.read';if($status.success -and $status.data.ready){break};Start-Sleep -Milliseconds 100}catch{Start-Sleep -Milliseconds 200}}while([DateTime]::UtcNow -lt $limit)
  if(!$status.success -or !$status.data.ready){throw 'Agent did not attach existing tray inventory'}
  $catalog=Invoke-Agent 'catalog.read';if(!$catalog.success -or $catalog.data.icons.Count -lt 1){throw 'Empty real catalog'}
  $own=Invoke-Agent 'ownIcon.apply' @{visible=$false;asset='';tip='test'};if(!$own.success -or !$own.saved){throw 'Own icon policy not saved/applied'}
@@ -44,3 +44,5 @@ try{
 }finally{if(!$agent.HasExited){try{Invoke-Agent 'agent.stop'|Out-Null;$agent.WaitForExit(1000)|Out-Null}catch{}}}
 
 
+
+exit 0

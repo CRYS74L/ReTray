@@ -58,6 +58,15 @@ int wmain(int argc, wchar_t** argv) {
         hiddenTip.identity = original.identity;
         wcscpy_s(hiddenTip.tip, L"Source hidden while customized");
         CHECK(client.Command(hiddenTip));
+        BridgeCommand hiddenMove;
+        hiddenMove.operation = BridgeOperation::Move;
+        hiddenMove.identity = original.identity;
+        hiddenMove.location = 1;
+        hiddenMove.index = 255;
+        CHECK(client.Command(hiddenMove));
+        hide.visibility = 1;
+        CHECK(client.Command(hide));
+        CHECK(find(client.Snapshot(), false).placement == static_cast<uint32_t>(Placement::Hidden));
         BridgeCommand restoreState;
         restoreState.operation = BridgeOperation::Restore;
         restoreState.identity = original.identity;
@@ -105,6 +114,7 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(find(client.Snapshot(), true).index == static_cast<uint32_t>(move.index));
         CHECK(find(client.Snapshot(), true).placement ==
               static_cast<uint32_t>(Placement::Overflow));
+        auto guidSource = find(client.Snapshot(), true).sourceFingerprint;
         custom.identity = guid.identity;
         CHECK(client.Command(custom));
         auto customGuid = find(client.Snapshot(), true).fingerprint;
@@ -114,6 +124,33 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(find(client.Snapshot(), true).placement == guid.placement);
         CHECK(find(client.Snapshot(), true).fingerprint == customGuid);
         move.location = 1;
+        move.index = 255;
+        CHECK(client.Command(move));
+        auto bounded = find(client.Snapshot(), true);
+        CHECK(bounded.index < 255);
+        CHECK(bounded.fingerprint == customGuid);
+        // Repeating a rule must leave every icon in the same native position.
+        auto settled = client.Snapshot();
+        for (int i = 0; i < 8; ++i) {
+            CHECK(client.Command(move));
+            auto current = client.Snapshot();
+            CHECK(current.size() == settled.size());
+            for (const auto& item : settled) {
+                auto found =
+                    std::find_if(current.begin(), current.end(), [&](const auto& candidate) {
+                        return SameIcon(item.identity, candidate.identity);
+                    });
+                CHECK(found != current.end());
+                CHECK(found->placement == item.placement && found->index == item.index);
+            }
+        }
+        BridgeCommand clear;
+        clear.operation = BridgeOperation::ClearImage;
+        clear.identity = guid.identity;
+        CHECK(client.Command(clear));
+        CHECK(find(client.Snapshot(), true).fingerprint == guidSource);
+        CHECK(find(client.Snapshot(), true).index == bounded.index);
+        move.index = guid.index == 0 ? 1 : 0;
         CHECK(client.Command(move));
         hide.identity = guid.identity;
         hide.visibility = 1;

@@ -11,7 +11,7 @@ $cppWinrt=Join-Path $workspaceBase '【Common】\WindowsSDK\10.0.28000.2705\micr
 $commonArgs+=@('-fms-extensions','-Wno-nonportable-include-path','-I',$cppWinrt)
 if ($Target -eq 'CoreTests') {
     $exe=Join-Path $outputRoot 'CoreTests.exe'
-    & $clang @commonArgs (Join-Path $productRoot 'tests\core_tests.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\platform\software_bitmap.cpp') '-o' $exe '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject'
+    & $clang @commonArgs (Join-Path $productRoot 'tests\core_tests.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\platform\software_bitmap.cpp') '-o' $exe '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject'
     if ($LASTEXITCODE -ne 0) { throw 'Core test build failed' }
     & $exe $Filter
     exit $LASTEXITCODE

@@ -10,5 +10,7 @@ public:
     bool Command(BridgeCommand command,DWORD timeout=2000);
     std::vector<BridgeIcon> Snapshot() const;
     void Detach();
+    void Reset();
+    bool Alive() const;
 };
 }

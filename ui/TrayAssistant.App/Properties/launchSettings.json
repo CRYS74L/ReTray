@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "TrayAssistant.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "TrayAssistant.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

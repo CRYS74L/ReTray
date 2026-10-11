@@ -1,4 +1,4 @@
-param([switch]$SkipBuild)
+param([switch]$SkipBuild,[switch]$Orphan)
 $ErrorActionPreference='Stop'
 $productRoot=Split-Path -Parent $PSScriptRoot
 if(!$SkipBuild){foreach($target in @('Source','BridgeControls','Bridge')){& (Join-Path $productRoot 'build.ps1') -Target $target;if($LASTEXITCODE -ne 0){throw "Build $target failed"}}}
@@ -11,8 +11,10 @@ try {
  $view=$map.CreateViewAccessor(0,0,[System.IO.MemoryMappedFiles.MemoryMappedFileAccess]::Read)
  $hwnd=$view.ReadUInt64(8)
  Start-Sleep -Milliseconds 150
- & (Join-Path $productRoot 'build\BridgeControls.exe') (Join-Path $productRoot 'native\platform\supported-adapters.json') (Join-Path $productRoot 'build\TrayAssistant.ShellBridge.dll') $source.Id
+ $extra=@();if($Orphan){$extra+='--orphan'}
+ & (Join-Path $productRoot 'build\BridgeControls.exe') (Join-Path $productRoot 'native\platform\supported-adapters.json') (Join-Path $productRoot 'build\TrayAssistant.ShellBridge.dll') $source.Id @extra
  if($LASTEXITCODE -ne 0){throw 'Controlled bridge acceptance failed'}
+ if($Orphan){Start-Sleep -Milliseconds 300;$shell=Get-Process -Name explorer | Select-Object -First 1;if(@($shell.Modules|Where-Object ModuleName -eq 'TrayAssistant.ShellBridge.dll').Count){throw 'Orphan bridge still loaded'};& (Join-Path $productRoot 'build\TrayAssistant.Probe.exe') (Join-Path $productRoot 'native\platform\supported-adapters.json') (Join-Path $productRoot 'artifacts\orphan-snapshot.json');$snap=Get-Content -Raw -LiteralPath (Join-Path $productRoot 'artifacts\orphan-snapshot.json')|ConvertFrom-Json;$item=$snap.icons|Where-Object {$_.pid -eq $source.Id -and !$_.hasGuid};if($item.placement -eq 2 -or $item.tip -eq 'Custom test tooltip'){throw 'Orphan policy restoration failed'};Write-Host 'PASS owner-death restoration and native DLL unload'}
 } finally {
  if($hwnd){
   $stopDefinition=@'

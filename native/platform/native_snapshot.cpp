@@ -90,7 +90,7 @@ static uint64_t OwnerInfo(uint32_t pid,std::wstring& executable) {
     if(GetProcessTimes(p,&created,&exited,&kernel,&user))generation=(static_cast<uint64_t>(created.dwHighDateTime)<<32)|created.dwLowDateTime;
     CloseHandle(p);return generation;
 }
-SnapshotResult ReadSnapshot(const SymbolAdapter& a,uint32_t pid,uint64_t epoch) {
+SnapshotResult ReadSnapshot(const SymbolAdapter& a,uint32_t pid,uint64_t epoch,bool includeCaches) {
     SnapshotResult result;result.shellEpoch=epoch;result.outcome.detail="Native tray snapshot unavailable or changed during read";
     Reader memory(pid);uint64_t base=ModuleBase(pid),root{},model{},manager{},promoted{},overflow{};
     if(!base || !memory.image(base,a)){result.outcome.detail="Installed Taskbar image does not match verified adapter";return result;}
@@ -110,8 +110,11 @@ SnapshotResult ReadSnapshot(const SymbolAdapter& a,uint32_t pid,uint64_t epoch) 
         wchar_t cls[256]{};GetClassNameW(window,cls,256);item.windowClass=cls;
         auto contains=[&](const std::vector<uint64_t>& list){return std::any_of(list.begin(),list.end(),[&](uint64_t abi){return abi>=address && abi-address<=64;});};
         item.placement=contains(pinned)?Placement::Promoted:contains(folded)?Placement::Overflow:Placement::Hidden;
+        const auto& collection=item.placement==Placement::Promoted?pinned:folded;
+        auto position=std::find_if(collection.begin(),collection.end(),[&](uint64_t abi){return abi>=address&&abi-address<=64;});
+        item.nativeIndex=static_cast<uint32_t>(position-collection.begin());
         item.sourceState=item.placement==Placement::Hidden?NIS_HIDDEN:0;
-        auto cached=RasterizeIcon(reinterpret_cast<HICON>(item.cachedIcon),FrameOrigin::CachedOriginal);if(cached.outcome.success)item.cachedOriginal=std::move(cached.frame);
+        if(includeCaches){auto cached=RasterizeIcon(reinterpret_cast<HICON>(item.cachedIcon),FrameOrigin::CachedOriginal);if(cached.outcome.success)item.cachedOriginal=std::move(cached.frame);}
         DWORD after{};if(!memory.bytes(address,last.data(),last.size())||first!=last||GetWindowThreadProcessId(window,&after)!=thread||after!=owner)return result;
         result.records.push_back(std::move(item));
     }

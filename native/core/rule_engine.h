@@ -7,6 +7,7 @@ struct IconRule {
     RuleSelector selector; int visibility{-1},location{-1},order{-1};
     std::wstring asset,tip; bool enabled{true},menuVisible{true},alwaysShow{};
     uint32_t inactiveSeconds{},unusedDays{},hotkey{}; bool swapButtons{};
+    uint64_t baselineFingerprint{};uint32_t baselineWidth{},baselineHeight{},assetIndex{};
 };
 struct ActivityState { uint64_t lastFrameChange{},lastAccess{},fingerprint{}; };
 struct CatalogItem { NativeIconRecord record; ActivityState activity; };

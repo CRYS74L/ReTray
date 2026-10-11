@@ -32,7 +32,7 @@ struct OperationResult {
 struct FrameResult { OperationResult outcome; Frame frame; bool isLive{}; };
 struct NativeIconRecord {
     IconIdentity identity;
-    uint32_t callbackMessage{}, notifyVersion{}, sourceState{};
+    uint32_t callbackMessage{}, notifyVersion{}, sourceState{},nativeIndex{};
     Placement placement{Placement::Overflow};
     Frame cachedOriginal, currentFrame;
     std::wstring tip, executable, windowClass;

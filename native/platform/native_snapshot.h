@@ -11,7 +11,7 @@ struct SymbolAdapter {
 };
 SymbolAdapter LoadAdapter(const std::filesystem::path& file);
 uint32_t ExplorerPid();
-SnapshotResult ReadSnapshot(const SymbolAdapter&,uint32_t explorerPid,uint64_t epoch);
+SnapshotResult ReadSnapshot(const SymbolAdapter&,uint32_t explorerPid,uint64_t epoch,bool includeCaches=true);
 nlohmann::json SnapshotJson(const SnapshotResult&,bool includePixels=false);
 std::string Utf8(const std::wstring&);
 std::wstring Wide(const std::string&);

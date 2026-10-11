@@ -1,33 +1,27 @@
 # 托盘图标助手
 
-独立的 Windows 托盘管理软件，保留原应用的通知身份、菜单和动态状态，提供现代界面、持久规则及安全的后台生命周期。
+独立 Windows 托盘管理软件，保留原应用的通知身份、菜单与动态图像。原生后台常驻，WinUI 3 界面按需打开。
 
-当前开发版本：v0.1.2。**WIP：尚未完成完整产品，不是可替代原工具的稳定包。**
+当前开发版本：v0.1.3。**WIP：仍在持续开发，尚未完成全部功能和整包验收。**
 
-已验证：本机 Windows 11 26200 的真实图标目录与实时像素；受控旧式及 v4 图标的隐藏、定制、透明闪烁帧、原菜单、原生移动、最新源图恢复和桥接卸载。
+已通过本机实测：真实目录/实时像素、旧式及 v4 图标隐藏与定制、透明闪烁帧、原菜单、原生位置与提示恢复、后台意外退出恢复及 DLL 卸载；Windows 11 原有网络/音量/电源/输入法/开始对象读取，网络单项隐藏/恢复；30 个核心契约、配置原子保存及损坏恢复；后台会话查询/取消及有界正常退出。WinUI 3 界面已连接真实后台并成功运行，构建 0 警告、0 错误。
 
-已实现：按程序路径及 GUID/UID 隔离的规则匹配、增量目录和独立活动计时。`n`n待完成：规则存储与自动应用、提示与排序恢复、微信行为实测、后台与自启、WinUI 3 界面、完整旧功能、性能与整包验收。
+待完成或未验证：全部旧附加功能与交互、持久规则跨重建验收、压力/资源测试、微信真实消息、真实关机/取消、配置迁移及完整发行包。当前仅适配经过核验的本机任务栏映像；未验证系统版本不猜偏移操作。
 
 ## 构建与验证
 
 ```powershell
 ./build.ps1 -Target CoreTests
-./build.ps1 -Target Probe
-./tests/native_snapshot_integration.ps1
+./build.ps1 -Target SettingsTests
 ./tests/task1-verification.ps1
 ./tests/bridge_controls_integration.ps1
+./tests/bridge_controls_integration.ps1 -SkipBuild -Orphan
+./tests/agent_integration.ps1
+./build.ps1 -Target SystemControls
 ```
 
-编译器优先复用工作区 Common 的 LLVM-MinGW。WinRT 头文件使用同目录 WindowsSDK，工具目录不进入仓库。
+编译器复用工作区 Common 的 LLVM-MinGW，WinRT 头文件使用 WindowsSDK；UI 使用锁定的 .NET 10 / Windows App SDK 2.5.1。工具目录、机器快照、tooltip、账号、图标截图、PDB、运行日志与构建产物只保存在被忽略的目录中。
 
-原生适配通过精确映像/PDB/关键方法校验，错误或未知布局拒绝操作。当前首个适配针对已核验的 Taskbar 映像；不能将这个读取结果扩大成所有系统版本和所有控制功能已支持。
+## 依赖和许可
 
-设计与实施计划位于 docs/superpowers。机器快照、用户 tooltip、账号信息、图标截图、PDB、运行日志和构建产物仅保存在被忽略的 artifacts/build 目录。
-
-## 依赖
-
-- nlohmann/json 3.12.0：MIT，配置与通讯编码。
-- MinHook 1.3.4：BSD，按必要范围使用的原生接入依赖；原许可及源内声明保留。
-- Windows SDK / C++/WinRT、Windows App SDK：微软工具与运行时，不将其安装目录或机器符号加入源码仓库。
-
-旧厂商二进制与 GPL 研究工程实现未复制进产品。独立源码使用 MIT；第三方依赖保留各自许可。
+nlohmann/json 3.12.0（MIT）、MinHook 1.3.4（BSD）、CommunityToolkit.Mvvm 8.4.2；各自原许可保留。Windows SDK、C++/WinRT、Windows App SDK 使用微软工具和运行时。旧厂商二进制、GPL 研究实现没有复制进产品源码；独立代码使用 MIT。

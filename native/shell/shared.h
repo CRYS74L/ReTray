@@ -5,7 +5,8 @@ constexpr uint32_t BridgeMagic=0x54494131;
 constexpr size_t MaxBridgeIcons=256,MaxFramePixels=4096;
 constexpr wchar_t InstallMessage[]=L"TrayAssistant.Bridge.Install.1";
 constexpr wchar_t CommandMessage[]=L"TrayAssistant.Bridge.Command.1";
-enum class BridgeOperation:uint32_t { Refresh=1,Apply=2,Restore=3,Visibility=4,Move=5,Menu=6,Click=7,Detach=8 };
+enum class BridgeOperation:uint32_t { Refresh=1,Apply=2,Restore=3,Visibility=4,Move=5,Menu=6,Click=7,Detach=8,Tip=9,SystemRead=10,SystemSet=11,Taskbar=12 };
+struct SystemControl {uint32_t id{},instances{};bool visible{};wchar_t name[128]{},type[128]{};};
 struct CompactAdapter {
     ImageIdentity image;
     uint32_t fields[24]{};
@@ -14,10 +15,12 @@ struct CompactAdapter {
 };
 struct BridgeIcon {
     IconIdentity identity;
-    uint64_t record{},fingerprint{},revision{};
+    uint64_t record{},fingerprint{},revision{},sourceFingerprint{};
     uint32_t callback{},version{},width{},height{},placement{},index{};
     uint32_t pixels[MaxFramePixels]{};
-    bool live{},transparent{},custom{},dynamic{};
+    uint32_t originalPixels[MaxFramePixels]{};
+    uint32_t originalWidth{},originalHeight{};
+    bool live{},transparent{},custom{},dynamic{},managed{};
     wchar_t executable[512]{},tip[128]{},windowClass[128]{};
 };
 struct BridgeCommand {
@@ -26,12 +29,16 @@ struct BridgeCommand {
     int32_t visibility{-1},location{-1},index{-1};
     uint32_t clickEvent{};
     float x{},y{};
+    wchar_t tip[128]{};
+    uint64_t baselineFingerprint{};uint32_t baselineWidth{},baselineHeight{};bool suppliedBaseline{};
 };
 struct BridgeState {
     uint32_t magic{},schema{},agentPid{},sessionId{};
     uint64_t agentCreatedAt{},epoch{};
-    volatile LONG status{},lastError{},snapshotSequence{},requestSequence{},replySequence{};
+    volatile LONG status{},lastError{},snapshotSequence{},requestSequence{},replySequence{},sessionEnding{};
     uint32_t count{};uint64_t events{},lastSnapshotTick{},lastCommandMicros{};
+    uint32_t callbackMicros[512]{};
+    uint32_t systemCount{};SystemControl systemControls[32]{};
     CompactAdapter adapter;
     BridgeCommand command;
     BridgeIcon icons[MaxBridgeIcons];

@@ -1,0 +1,51 @@
+#pragma once
+#include "../platform/native_snapshot.h"
+namespace tray {
+constexpr uint32_t BridgeMagic=0x54494131;
+constexpr size_t MaxBridgeIcons=256,MaxFramePixels=4096;
+constexpr wchar_t InstallMessage[]=L"TrayAssistant.Bridge.Install.1";
+constexpr wchar_t CommandMessage[]=L"TrayAssistant.Bridge.Command.1";
+enum class BridgeOperation:uint32_t { Refresh=1,Apply=2,Restore=3,Visibility=4,Move=5,Menu=6,Click=7,Detach=8 };
+struct CompactAdapter {
+    ImageIdentity image;
+    uint32_t fields[24]{};
+    uint32_t checkCount{};
+    uint32_t checkRvas[16]{};uint8_t checkBytes[16][16]{};
+};
+struct BridgeIcon {
+    IconIdentity identity;
+    uint64_t record{},fingerprint{},revision{};
+    uint32_t callback{},version{},width{},height{},placement{},index{};
+    uint32_t pixels[MaxFramePixels]{};
+    bool live{},transparent{},custom{},dynamic{};
+    wchar_t executable[512]{},tip[128]{},windowClass[128]{};
+};
+struct BridgeCommand {
+    BridgeOperation operation{}; IconIdentity identity;
+    uint64_t replacementIcon{};
+    int32_t visibility{-1},location{-1},index{-1};
+    uint32_t clickEvent{};
+    float x{},y{};
+};
+struct BridgeState {
+    uint32_t magic{},schema{},agentPid{},sessionId{};
+    uint64_t agentCreatedAt{},epoch{};
+    volatile LONG status{},lastError{},snapshotSequence{},requestSequence{},replySequence{};
+    uint32_t count{};uint64_t events{},lastSnapshotTick{},lastCommandMicros{};
+    CompactAdapter adapter;
+    BridgeCommand command;
+    BridgeIcon icons[MaxBridgeIcons];
+};
+inline std::wstring MappingName(uint32_t session) {return L"Local\\TrayAssistant.Bridge."+std::to_wstring(session);}
+inline CompactAdapter Compact(const SymbolAdapter& a) {
+    CompactAdapter c;c.image=a.image;
+    uint32_t fields[]={a.root,a.model,a.manager,a.promoted,a.overflow,a.itemVtable,a.vectorAt,a.vectorSize,a.vectorBegin,a.vectorEnd,a.window,a.uid,a.guid,a.version,a.callback,a.tip,a.imageObject,a.cachedIcon,a.setIcon,a.getIcon};
+    memcpy(c.fields,fields,sizeof(fields));c.checkCount=static_cast<uint32_t>(std::min<size_t>(16,a.checks.size()));
+    for(uint32_t i=0;i<c.checkCount;++i){c.checkRvas[i]=a.checks[i].first;memcpy(c.checkBytes[i],a.checks[i].second.data(),16);}return c;
+}
+inline SymbolAdapter Expand(const CompactAdapter& c) {
+    SymbolAdapter a;a.image=c.image;uint32_t* fields[]={&a.root,&a.model,&a.manager,&a.promoted,&a.overflow,&a.itemVtable,&a.vectorAt,&a.vectorSize,&a.vectorBegin,&a.vectorEnd,&a.window,&a.uid,&a.guid,&a.version,&a.callback,&a.tip,&a.imageObject,&a.cachedIcon,&a.setIcon,&a.getIcon};
+    for(size_t i=0;i<std::size(fields);++i)*fields[i]=c.fields[i];
+    for(uint32_t i=0;i<std::min<uint32_t>(16,c.checkCount);++i){std::array<uint8_t,16> b{};memcpy(b.data(),c.checkBytes[i],16);a.checks.emplace_back(c.checkRvas[i],b);}return a;
+}
+}

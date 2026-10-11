@@ -2,11 +2,11 @@
 
 独立的 Windows 托盘管理软件，保留原应用的通知身份、菜单和动态状态，提供现代界面、持久规则及安全的后台生命周期。
 
-当前开发版本：v0.1.0。**WIP：尚未完成完整产品，不是可替代原工具的稳定包。**
+当前开发版本：v0.1.1。**WIP：尚未完成完整产品，不是可替代原工具的稳定包。**
 
-已验证：图标身份隔离与安全读取边界、缓存/实时帧区分、透明帧及实时 SoftwareBitmap 像素；本机 Windows 11 26200 原生应用目录读取。
+已验证：本机 Windows 11 26200 的真实图标目录与实时像素；受控旧式及 v4 图标的隐藏、定制、透明闪烁帧、原菜单、原生移动、最新源图恢复和桥接卸载。
 
-待完成：局部 Shell 桥接、原生显示定制/隐藏/排序、菜单及微信行为实测、后台与自启、WinUI 3 界面、完整旧功能、整包验收。
+待完成：持久规则、提示与排序恢复、微信行为实测、后台与自启、WinUI 3 界面、完整旧功能、性能与整包验收。
 
 ## 构建与验证
 
@@ -14,6 +14,8 @@
 ./build.ps1 -Target CoreTests
 ./build.ps1 -Target Probe
 ./tests/native_snapshot_integration.ps1
+./tests/task1-verification.ps1
+./tests/bridge_controls_integration.ps1
 ```
 
 编译器优先复用工作区 Common 的 LLVM-MinGW。WinRT 头文件使用同目录 WindowsSDK，工具目录不进入仓库。

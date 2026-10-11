@@ -37,8 +37,30 @@ public sealed partial class MainPage : Page
  private void IconList_DragItemsStarting(object sender,DragItemsStartingEventArgs e){Vm.IsDragging=true;}
  private async void IconList_DragItemsCompleted(ListViewBase sender,DragItemsCompletedEventArgs e){try{await Vm.PersistOrderAsync();}finally{Vm.IsDragging=false;await Vm.RefreshAsync();}}
  private async void Icon_NativeAction(object sender,TrayIconActionEventArgs e){if(sender is TrayIconButton{Tag:IconRow row})await Vm.NativeActionAsync(row,e.Action,e.Keyboard,e.X,e.Y);}
- private async void Visibility_Toggled(object sender,RoutedEventArgs e){var toggle=(ToggleSwitch)sender;if(toggle.Tag is IconRow row)await Vm.SetRowVisibilityAsync(row,toggle.IsOn);}
- private async void IconSettings_Click(object sender,RoutedEventArgs e){if(editorOpen||((Button)sender).Tag is not IconRow row)return;Vm.Selected=row;editorOpen=true;var content=(UIElement)IconEditor.Content;IconEditor.Content=null;try{await MicaDialog.ShowAsync(row.Name,content,RequestedTheme,beforeClose:Vm.FlushChangesAsync);}finally{IconEditor.Content=content;Vm.Selected=null;editorOpen=false;}}
+ private async void Visibility_Toggled(object sender,RoutedEventArgs e)
+ {
+  var toggle=(ToggleSwitch)sender;
+  var wasDragging=Vm.IsDragging;
+  // Compiled bindings update IsOn before Tag when a recycled row changes identity.
+  // Let that synchronous update finish before resolving the current row.
+  await Task.Yield();
+  // Model updates already agree with Visible; only a user change needs a command.
+  if(toggle.Tag is not IconRow row||!ReferenceEquals(toggle.DataContext,row)||toggle.IsOn==row.Visible)return;
+  if(!wasDragging&&!Vm.IsDragging)await Vm.SetRowVisibilityAsync(row,toggle.IsOn);
+  if(ReferenceEquals(toggle.Tag,row)&&ReferenceEquals(toggle.DataContext,row))toggle.IsOn=row.Visible;
+ }
+ private async void IconSettings_Click(object sender,RoutedEventArgs e)
+ {
+  if(editorOpen||((Button)sender).Tag is not IconRow row)return;
+  Vm.Selected=row;editorOpen=true;
+  var content=(FrameworkElement)IconEditor.Content;
+  var theme=WindowAppearance.ResolveTheme(RequestedTheme);
+  // Keep the editor's theme while it has no logical parent during window transfer.
+  content.RequestedTheme=theme;
+  IconEditor.Content=null;
+  try{await MicaDialog.ShowAsync(row.Name,content,theme,beforeClose:Vm.FlushChangesAsync);}
+  finally{IconEditor.Content=content;content.RequestedTheme=ElementTheme.Default;Vm.Selected=null;editorOpen=false;}
+ }
  private async void Exit_Click(object sender,RoutedEventArgs e)=>await App.QuitAsync();
  [System.Runtime.InteropServices.DllImport("user32.dll")]private static extern short GetKeyState(int key);
  private void HotkeyBox_KeyDown(object sender,Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e){var box=(TextBox)sender;int key=(int)e.Key;if(key is 16 or 17 or 18 or 91 or 92)return;int modifiers=(GetKeyState(17)<0?2:0)|(GetKeyState(18)<0?1:0)|(GetKeyState(16)<0?4:0)|(GetKeyState(91)<0||GetKeyState(92)<0?8:0);int code=key is 8 or 46?0:modifiers==0?0:(modifiers<<16)|key;e.Handled=true;var tag=box.Tag.ToString()!;if(tag=="icon"){Vm.Hotkey=code;Vm.HotkeyText=TrayViewModel.DescribeHotkey(code);}else{Vm.Hotkeys[tag]=code;box.Text=TrayViewModel.DescribeHotkey(code);Vm.QueueMenuPreferences();}}

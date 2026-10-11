@@ -17,18 +17,30 @@
                     <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FFF3F3F3" />
                     <SolidColorBrush x:Key="CaptionHoverBrush" Color="#FFD0D0D0" />
                     <SolidColorBrush x:Key="CaptionPressedBrush" Color="#FFD3D3D3" />
+                    <Color x:Key="TrayScrollThumbColor">#48000000</Color>
+                    <Color x:Key="TrayScrollThumbHoverColor">#78000000</Color>
+                    <SolidColorBrush x:Key="TrayScrollThumbBrush" Color="{StaticResource TrayScrollThumbColor}" />
+                    <SolidColorBrush x:Key="TrayScrollThumbHoverBrush" Color="{StaticResource TrayScrollThumbHoverColor}" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="TrayRowSeparatorBrush" Color="#29FFFFFF" />
                     <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FF292929" />
                     <SolidColorBrush x:Key="CaptionHoverBrush" Color="#FF707070" />
                     <SolidColorBrush x:Key="CaptionPressedBrush" Color="#FF555555" />
+                    <Color x:Key="TrayScrollThumbColor">#50FFFFFF</Color>
+                    <Color x:Key="TrayScrollThumbHoverColor">#86FFFFFF</Color>
+                    <SolidColorBrush x:Key="TrayScrollThumbBrush" Color="{StaticResource TrayScrollThumbColor}" />
+                    <SolidColorBrush x:Key="TrayScrollThumbHoverBrush" Color="{StaticResource TrayScrollThumbHoverColor}" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
                     <SolidColorBrush x:Key="TrayRowSeparatorBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="CaptionHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                     <SolidColorBrush x:Key="CaptionPressedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <StaticResource x:Key="TrayScrollThumbColor" ResourceKey="SystemColorButtonTextColor" />
+                    <StaticResource x:Key="TrayScrollThumbHoverColor" ResourceKey="SystemColorHighlightColor" />
+                    <SolidColorBrush x:Key="TrayScrollThumbBrush" Color="{ThemeResource SystemColorButtonTextColor}" />
+                    <SolidColorBrush x:Key="TrayScrollThumbHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
             <FontFamily x:Key="AppUiFontFamily">Microsoft YaHei UI</FontFamily>
@@ -65,25 +77,63 @@
                     </Grid>
                 </ControlTemplate></Setter.Value></Setter>
             </Style>
+            <ControlTemplate x:Key="PersistentScrollThumbTemplate" TargetType="Thumb">
+                <Border Background="{TemplateBinding Background}" CornerRadius="3"/>
+            </ControlTemplate>
+            <ControlTemplate x:Key="PersistentScrollPageButtonTemplate" TargetType="RepeatButton">
+                <Grid Background="Transparent"/>
+            </ControlTemplate>
+            <Style x:Key="PersistentVerticalScrollBarStyle" TargetType="ScrollBar" BasedOn="{StaticResource DefaultScrollBarStyle}">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="MinHeight" Value="0"/>
+                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollBar">
+                    <Grid x:Name="Root" Background="Transparent">
+                        <VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="CommonStates">
+                            <VisualStateGroup.Transitions><VisualTransition GeneratedDuration="0:0:0.28">
+                                <VisualTransition.GeneratedEasingFunction><CubicEase EasingMode="EaseOut"/></VisualTransition.GeneratedEasingFunction>
+                            </VisualTransition></VisualStateGroup.Transitions>
+                            <VisualState x:Name="Normal"/>
+                            <VisualState x:Name="PointerOver"><VisualState.Setters>
+                                <Setter Target="VerticalThumbScale.ScaleX" Value="1.5"/>
+                                <Setter Target="ThumbBrush.Color" Value="{ThemeResource TrayScrollThumbHoverColor}"/>
+                            </VisualState.Setters></VisualState>
+                            <VisualState x:Name="Disabled"/>
+                        </VisualStateGroup></VisualStateManager.VisualStateGroups>
+                        <Grid x:Name="VerticalRoot" Background="Transparent">
+                            <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+                            <RepeatButton x:Name="VerticalLargeDecrease" Grid.Row="0" Height="0" MinHeight="0" MinWidth="0" IsTabStop="False" AllowFocusOnInteraction="False" Interval="50" Template="{StaticResource PersistentScrollPageButtonTemplate}" AutomationProperties.AccessibilityView="Raw"/>
+                            <Thumb x:Name="VerticalThumb" Grid.Row="1" Width="4" MinWidth="0" MinHeight="30" HorizontalAlignment="Center" RenderTransformOrigin="0.5,0.5" Template="{StaticResource PersistentScrollThumbTemplate}" AutomationProperties.AccessibilityView="Raw">
+                                <Thumb.Background><SolidColorBrush x:Name="ThumbBrush" Color="{ThemeResource TrayScrollThumbColor}"/></Thumb.Background>
+                                <Thumb.RenderTransform><ScaleTransform x:Name="VerticalThumbScale" ScaleX="1" ScaleY="1"/></Thumb.RenderTransform>
+                            </Thumb>
+                            <RepeatButton x:Name="VerticalLargeIncrease" Grid.Row="2" MinHeight="0" MinWidth="0" IsTabStop="False" AllowFocusOnInteraction="False" Interval="50" Template="{StaticResource PersistentScrollPageButtonTemplate}" AutomationProperties.AccessibilityView="Raw"/>
+                        </Grid>
+                    </Grid>
+                </ControlTemplate></Setter.Value></Setter>
+            </Style>
             <Style x:Key="EdgeScrollViewerStyle" TargetType="ScrollViewer" BasedOn="{StaticResource DefaultScrollViewerStyle}">
-                <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
+                <!-- Auto briefly collapses its computed visibility on every measure. The
+                     overlay keeps a fixed layout; ScrollBarAppearance hides it only when
+                     the settled scroll range is empty. -->
+                <Setter Property="VerticalScrollBarVisibility" Value="Visible"/>
                 <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
                 <Setter Property="HorizontalScrollMode" Value="Disabled"/>
                 <Setter Property="IsHorizontalRailEnabled" Value="False"/>
                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                <!-- The host reserves this gutter inside its own bounds so no
+                     ancestor layout clip can exclude the scrollbar during resize. -->
+                <Setter Property="Margin" Value="0"/>
                 <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollViewer">
                     <Border x:Name="Root" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
                         <Grid Background="{TemplateBinding Background}">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="12"/></Grid.ColumnDefinitions>
                             <ScrollContentPresenter x:Name="ScrollContentPresenter" ContentTemplate="{TemplateBinding ContentTemplate}" Margin="{TemplateBinding Padding}"/>
-                            <ScrollBar x:Name="VerticalScrollBar" controls:ScrollBarAppearance.Persistent="True" HorizontalAlignment="Right" Width="12" MinWidth="12" Margin="0,0,-12,0" IsTabStop="False" Orientation="Vertical" IndicatorMode="MouseIndicator" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"
-                                Maximum="{TemplateBinding ScrollableHeight}" Value="{TemplateBinding VerticalOffset}" ViewportSize="{TemplateBinding ViewportHeight}"/>
+                            <ScrollBar x:Name="VerticalScrollBar" Grid.Column="1" controls:ScrollBarAppearance.Persistent="True" Style="{StaticResource PersistentVerticalScrollBarStyle}" HorizontalAlignment="Right" Width="12" MinWidth="12" IsTabStop="False" Orientation="Vertical" IndicatorMode="MouseIndicator" Visibility="Collapsed" IsHitTestVisible="False"
+                                controls:ScrollBarAppearance.ScrollableHeight="{TemplateBinding ScrollableHeight}" controls:ScrollBarAppearance.ViewportHeight="{TemplateBinding ViewportHeight}" Value="{TemplateBinding VerticalOffset}"/>
                         </Grid>
                     </Border>
                 </ControlTemplate></Setter.Value></Setter>
             </Style>
-            <ControlTemplate x:Key="PersistentScrollThumbTemplate" TargetType="Thumb">
-                <Grid Background="Transparent"><Border Width="6" HorizontalAlignment="Center" Background="{TemplateBinding Background}" CornerRadius="3"/></Grid>
-            </ControlTemplate>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

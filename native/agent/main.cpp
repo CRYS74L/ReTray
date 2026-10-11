@@ -24,7 +24,8 @@ constexpr UINT OwnCallback = WM_APP + 101, OpenMessage = WM_APP + 102, UpdateHot
 HWND window{};
 std::atomic<HWND> uiWindow{};
 
-HANDLE stopEvent{}, pipeThread{}, workerThread{}, workEvent{}, endingEvent{}, singleton{};
+HANDLE stopEvent{}, pipeThread{}, workerThread{}, workEvent{}, endingEvent{}, singleton{},
+    restartHandoff{};
 DWORD session{};
 SessionMachine lifecycle;
 BridgeClient bridge;
@@ -646,17 +647,133 @@ Json CatalogJson() {
     }
     return {{"icons", icons}, {"revision", catalog.revision}};
 }
-bool IsAssistantUi(HWND hwnd) {
-    if (!IsWindow(hwnd)) return false;
+HANDLE AssistantUiProcess(HWND hwnd, DWORD access = PROCESS_QUERY_LIMITED_INFORMATION,
+                          BOOL inherit = FALSE) {
+    if (!IsWindow(hwnd)) return nullptr;
     DWORD pid{};
     GetWindowThreadProcessId(hwnd, &pid);
-    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!process) return false;
+    HANDLE process = OpenProcess(access, inherit, pid);
+    if (!process) return nullptr;
     wchar_t path[32768]{};
     DWORD length = std::size(path);
     bool read = QueryFullProcessImageNameW(process, 0, path, &length) != FALSE;
+    DWORD currentPid{};
+    GetWindowThreadProcessId(hwnd, &currentPid);
+    if (!read || currentPid != pid ||
+        _wcsicmp(path, (root / L"TrayAssistant.App.exe").c_str()) != 0) {
+        CloseHandle(process);
+        return nullptr;
+    }
+    return process;
+}
+bool IsAssistantUi(HWND hwnd) {
+    auto process = AssistantUiProcess(hwnd);
+    if (!process) return false;
     CloseHandle(process);
-    return read && _wcsicmp(path, (root / L"TrayAssistant.App.exe").c_str()) == 0;
+    return true;
+}
+HWND AssistantUiWindow() {
+    auto ui = uiWindow.load();
+    if (IsAssistantUi(ui)) return ui;
+    // A right click can arrive during UI startup, before ui.attach is sent.
+    ui = nullptr;
+    EnumWindows([](HWND candidate, LPARAM result) -> BOOL {
+        if (!IsWindowVisible(candidate) || GetWindow(candidate, GW_OWNER) ||
+            !IsAssistantUi(candidate)) return TRUE;
+        *reinterpret_cast<HWND*>(result) = candidate;
+        return FALSE;
+    }, reinterpret_cast<LPARAM>(&ui));
+    return ui;
+}
+std::wstring QuoteCommandArgument(const std::wstring& value) {
+    std::wstring quoted = L"\"";
+    size_t backslashes{};
+    for (auto character : value) {
+        if (character == L'\\') { ++backslashes; continue; }
+        quoted.append(backslashes * (character == L'\"' ? 2 : 1), L'\\');
+        backslashes = 0;
+        if (character == L'\"') quoted.push_back(L'\\');
+        quoted.push_back(character);
+    }
+    quoted.append(backslashes * 2, L'\\');
+    quoted.push_back(L'\"');
+    return quoted;
+}
+bool WaitForRestartExit(HANDLE oldAgent, HANDLE oldUi, HANDLE cancel, DWORD timeout = 30000) {
+    if (!oldAgent || !cancel) return false;
+    auto deadline = GetTickCount64() + timeout;
+    for (auto target : {oldUi, oldAgent}) {
+        if (!target) continue;
+        auto now = GetTickCount64();
+        HANDLE waits[] = {cancel, target};
+        auto remaining = now < deadline ? static_cast<DWORD>(deadline - now) : 0;
+        if (WaitForMultipleObjects(std::size(waits), waits, FALSE, remaining) != WAIT_OBJECT_0 + 1)
+            return false;
+    }
+    return WaitForSingleObject(cancel, 0) == WAIT_TIMEOUT;
+}
+DWORD RestartAssistant() {
+    if (restartHandoff) {
+        if (WaitForSingleObject(restartHandoff, 0) == WAIT_TIMEOUT) return ERROR_SUCCESS;
+        CloseHandle(restartHandoff);
+        restartHandoff = nullptr;
+    }
+    auto ui = AssistantUiWindow();
+    HANDLE oldUi = ui ? AssistantUiProcess(ui, SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
+                                          TRUE) : nullptr;
+    if (ui && !oldUi) return ERROR_INVALID_WINDOW_HANDLE;
+    SECURITY_ATTRIBUTES inherit{sizeof(inherit), nullptr, TRUE};
+    HANDLE handles[] = {OpenProcess(SYNCHRONIZE, TRUE, GetCurrentProcessId()), oldUi, nullptr};
+    auto closeHandles = [&] { for (auto handle : handles) if (handle) CloseHandle(handle); };
+    if (!handles[0]) {
+        auto error = GetLastError(); closeHandles(); return error;
+    }
+    handles[2] = CreateEventW(&inherit, TRUE, FALSE, nullptr);
+    if (!handles[2]) {
+        auto error = GetLastError(); closeHandles(); return error;
+    }
+    SIZE_T bytes{};
+    InitializeProcThreadAttributeList(nullptr, 1, 0, &bytes);
+    std::vector<unsigned char> storage(bytes);
+    auto attributes = reinterpret_cast<PPROC_THREAD_ATTRIBUTE_LIST>(storage.data());
+    if (!InitializeProcThreadAttributeList(attributes, 1, 0, &bytes)) {
+        auto error = GetLastError(); closeHandles(); return error;
+    }
+    std::vector<HANDLE> inherited{handles[0], handles[2]};
+    if (oldUi) inherited.push_back(oldUi);
+    if (!UpdateProcThreadAttribute(attributes, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                  inherited.data(), inherited.size() * sizeof(HANDLE), nullptr,
+                                  nullptr)) {
+        auto error = GetLastError(); DeleteProcThreadAttributeList(attributes);
+        closeHandles(); return error;
+    }
+    auto executable = root / L"TrayAssistant.Agent.exe";
+    auto command = QuoteCommandArgument(executable.wstring()) + L" --open --data " +
+                   QuoteCommandArgument(dataRoot.wstring()) + L" --restart-wait";
+    for (auto handle : handles)
+        command += L" " + std::to_wstring(reinterpret_cast<uintptr_t>(handle));
+    STARTUPINFOEXW startup{};
+    startup.StartupInfo.cb = sizeof(startup);
+    startup.lpAttributeList = attributes;
+    PROCESS_INFORMATION process{};
+    bool created = CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, TRUE,
+                                  EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW, nullptr,
+                                  root.c_str(), &startup.StartupInfo, &process) != FALSE;
+    auto error = created ? ERROR_SUCCESS : GetLastError();
+    DeleteProcThreadAttributeList(attributes);
+    if (created) {
+        CloseHandle(process.hThread);
+        restartHandoff = process.hProcess;
+        // QuitAsync flushes pending UI edits before stopping the Agent. The replacement
+        // waits on the exact processes, so it cannot race the old single-instance locks.
+        if ((ui && !IsAssistantUi(ui)) ||
+            !PostMessageW(ui ? ui : window, WM_CLOSE, 0, 0)) {
+            error = ERROR_INVALID_WINDOW_HANDLE;
+            SetEvent(handles[2]);
+        }
+    }
+    closeHandles();
+    return error;
 }
 bool RollbackSettings(const Json& previous) {
     auto pending = settings;
@@ -1211,21 +1328,32 @@ DWORD WINAPI Worker(void*) {
     return 0;
 }
 void TrayMenu() {
+    // Win32 PMv2 menus use the system's menu font at the monitor's actual DPI.
+    auto previousDpi = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     HMENU menu = CreatePopupMenu();
+    if (!menu) {
+        if (previousDpi) SetThreadDpiAwarenessContext(previousDpi);
+        return;
+    }
     AppendMenuW(menu, MF_STRING, 1, L"打开助手");
-
-    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, 2, L"退出");
+    AppendMenuW(menu, MF_STRING, 2, L"重新启动");
+    AppendMenuW(menu, MF_STRING, 3, L"退出");
     POINT point{};
     GetCursorPos(&point);
     SetForegroundWindow(window);
     auto selected =
-        TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, point.x, point.y, 0, window, nullptr);
+        TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_BOTTOMALIGN,
+                       point.x, point.y, 0, window, nullptr);
     DestroyMenu(menu);
     PostMessageW(window, WM_NULL, 0, 0);
+    if (previousDpi) SetThreadDpiAwarenessContext(previousDpi);
     if (selected == 1)
         PostJob("internal.openUi");
     else if (selected == 2) {
+        if (RestartAssistant() != ERROR_SUCCESS)
+            MessageBoxW(window, L"无法启动重启进程。当前助手与配置仍保留，请稍后重试。",
+                        L"托盘图标助手", MB_OK | MB_ICONERROR);
+    } else if (selected == 3) {
         auto ui = uiWindow.load();
         if (!IsAssistantUi(ui) || !PostMessageW(ui, WM_CLOSE, 0, 0))
             PostMessageW(window, WM_CLOSE, 0, 0);
@@ -1311,11 +1439,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 } // namespace
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    // The Agent is a separate executable; the App.exe DPI manifest does not cover it.
+    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     ProcessIdToSessionId(GetCurrentProcessId(), &session);
     int argc{};
     auto args = CommandLineToArgvW(GetCommandLineW(), &argc);
     bool background = true;
+    bool restartWaiting{};
+    HANDLE restartHandles[3]{};
 
     wchar_t executable[32768]{};
     GetModuleFileNameW(nullptr, executable, 32768);
@@ -1330,8 +1462,33 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             background = false;
         else if (std::wstring(args[i]) == L"--data" && i + 1 < argc)
             dataRoot = args[++i];
+        else if (std::wstring(args[i]) == L"--restart-wait") {
+            if (i + 3 >= argc) { LocalFree(args); return 1; }
+            restartWaiting = true;
+            for (auto& handle : restartHandles) {
+                auto value = args[++i];
+                wchar_t* end{};
+                auto integer = wcstoull(value, &end, 10);
+                if (!*value || *end || *value == L'-') { LocalFree(args); return 1; }
+                handle = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(integer));
+            }
+        }
     }
     LocalFree(args);
+    if (restartWaiting) {
+        bool inherited = restartHandles[0] && restartHandles[2];
+        for (auto handle : restartHandles) {
+            if (!handle) continue;
+            DWORD flags{};
+            inherited &= GetHandleInformation(handle, &flags) && (flags & HANDLE_FLAG_INHERIT);
+        }
+        bool finished = inherited && WaitForRestartExit(restartHandles[0], restartHandles[1],
+                                                       restartHandles[2]);
+        for (auto handle : restartHandles) if (handle) CloseHandle(handle);
+        if (!finished) return 1;
+        background = false;
+    }
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     auto sd = CurrentUserSecurity();
     if (!sd)
         return 1;
@@ -1435,12 +1592,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         CloseHandle(endingEvent);
         CloseHandle(stopEvent);
         CloseHandle(singleton);
+        if (restartHandoff) CloseHandle(restartHandoff);
 
         CoUninitialize();
         return 0;
     } catch (...) {
         if (singleton)
             CloseHandle(singleton);
+        if (restartHandoff) CloseHandle(restartHandoff);
         CoUninitialize();
         return 1;
     }

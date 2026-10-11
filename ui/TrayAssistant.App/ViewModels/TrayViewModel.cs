@@ -24,7 +24,9 @@ public partial class TrayViewModel : ObservableObject
     private IconRow? selected;
     public IconRow? Selected { get => selected; set { if (SetProperty(ref selected, value)) { OnPropertyChanged(nameof(HasSelection)); if(value != null) ReadEditor(value); } } }
     public bool HasSelection => Selected != null;
-    public bool IsDragging { get; set; }
+    private bool isDragging;
+    private long dragGeneration;
+    public bool IsDragging { get=>isDragging;set{if(isDragging==value)return;isDragging=value;if(value)dragGeneration++;} }
     public async Task SetRowVisibilityAsync(IconRow row,bool value)
     {
         if(row.IsBusy||value==row.ActualVisible)return;row.IsBusy=true;
@@ -142,12 +144,14 @@ public partial class TrayViewModel : ObservableObject
     }
     public async Task RefreshAsync()
     {
-        if (polling || IsDragging) return; polling = true;
+        if (polling || IsDragging) return; polling = true;var observedDrag=dragGeneration;
         try
         {
             var health = await Call("status.read"); var h = health["data"]!; App.ObserveAgent(h["pid"]!.GetValue<int>()); if(!h["ready"]!.GetValue<bool>()||!h["connected"]!.GetValue<bool>()){IsReady=false;IsLoading=true;return;}
             if (!initialized && !initializing) { await InitializeAsync(); if (!initialized) return; }
-            var result = await Call("catalog.read"); var data = result["data"]!["icons"]!.AsArray(); var active = new HashSet<string>();var snapshotRevision=result["revision"]!.GetValue<long>();
+            var result = await Call("catalog.read");
+            if(IsDragging||observedDrag!=dragGeneration)return;
+            var data = result["data"]!["icons"]!.AsArray(); var active = new HashSet<string>();var snapshotRevision=result["revision"]!.GetValue<long>();
             foreach (var item in data) { var j = item!.AsObject(); var key = j["key"]!.GetValue<string>(); active.Add(key);JsonObject? retained=null;if(visibilityAcknowledgments.TryGetValue(key,out var acknowledgment)){if(snapshotRevision<acknowledgment.Revision)retained=acknowledgment.Data;else visibilityAcknowledgments.Remove(key);}if(all.TryGetValue(key,out var row))row.Update(j,retained);else all[key]=new IconRow(j,retained); }
             foreach (var key in all.Keys.Where(k => !active.Contains(k)).ToList()) { all.Remove(key);visibilityAcknowledgments.Remove(key); }
             SynchronizeList();

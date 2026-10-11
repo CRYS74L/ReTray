@@ -10,7 +10,7 @@
  <Grid>
   <NavigationView x:Name="Nav" PaneDisplayMode="Top" OpenPaneLength="0" IsBackButtonVisible="Collapsed" IsSettingsVisible="False" Loaded="Nav_Loaded" SelectionChanged="Nav_SelectionChanged">
    <NavigationView.MenuItems><NavigationViewItem Content="托盘图标" Tag="icons" AutomationProperties.AutomationId="NavIcons" IsSelected="True"/><NavigationViewItem Content="设置" Tag="settings" AutomationProperties.AutomationId="NavSettings"/><NavigationViewItem Content="状态" Tag="diagnostics" AutomationProperties.AutomationId="NavDiagnostics"/></NavigationView.MenuItems>
-   <Grid Margin="14,6,14,10" RowSpacing="10">
+   <Grid Margin="14,6,2,10" RowSpacing="10">
     <Grid.RowDefinitions><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <ScrollViewer x:Name="LoadingList" IsHitTestVisible="False" Style="{StaticResource EdgeScrollViewerStyle}" AutomationProperties.AutomationId="TrayLoadingPlaceholders">
      <ItemsControl x:Name="LoadingRows"><ItemsControl.ItemTemplate><DataTemplate>
@@ -25,7 +25,7 @@
     <ListView x:Name="IconList" Padding="0" ItemsSource="{x:Bind Vm.Icons}" SelectionMode="None" CanDragItems="True" CanReorderItems="True" AllowDrop="True" DragItemsStarting="IconList_DragItemsStarting" DragItemsCompleted="IconList_DragItemsCompleted" HorizontalContentAlignment="Stretch" AutomationProperties.AutomationId="TrayIconList">
      <ListView.Template><ControlTemplate TargetType="ListView">
       <Border Background="{TemplateBinding Background}">
-       <ScrollViewer x:Name="ScrollViewer" Style="{StaticResource EdgeScrollViewerStyle}" TabNavigation="{TemplateBinding TabNavigation}" BringIntoViewOnFocusChange="True" AutomationProperties.AccessibilityView="Raw">
+       <ScrollViewer x:Name="ScrollViewer" Margin="0" Style="{StaticResource EdgeScrollViewerStyle}" TabNavigation="{TemplateBinding TabNavigation}" BringIntoViewOnFocusChange="True" AutomationProperties.AccessibilityView="Raw">
         <ItemsPresenter Padding="{TemplateBinding Padding}"/>
        </ScrollViewer>
       </Border>
@@ -35,7 +35,7 @@
       <Grid Height="34" ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition Width="28"/><ColumnDefinition Width="*"/><ColumnDefinition Width="42"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
        <controls:TrayIconButton VerticalAlignment="Center" ImageSource="{x:Bind Image, Mode=OneWay}" Tag="{x:Bind}" NativeAction="Icon_NativeAction" AutomationProperties.Name="{x:Bind Name}" AutomationProperties.AutomationId="TrayNativeAction"/>
        <TextBlock Grid.Column="1" Text="{x:Bind Name, Mode=OneWay}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" FontSize="13" ToolTipService.ToolTip="{x:Bind Tip, Mode=OneWay}"/>
-       <ToggleSwitch Grid.Column="2" VerticalAlignment="Center" IsOn="{x:Bind Visible, Mode=TwoWay}" IsEnabled="{x:Bind CanToggle, Mode=OneWay}" Tag="{x:Bind}" Toggled="Visibility_Toggled" AutomationProperties.Name="{x:Bind Name}" AutomationProperties.AutomationId="TrayVisibility"/>
+       <ToggleSwitch Grid.Column="2" VerticalAlignment="Center" IsOn="{x:Bind Visible, Mode=OneWay}" IsEnabled="{x:Bind CanToggle, Mode=OneWay}" Tag="{x:Bind Mode=OneWay}" Toggled="Visibility_Toggled" AutomationProperties.Name="{x:Bind Name, Mode=OneWay}" AutomationProperties.AutomationId="TrayVisibility"/>
        <Button Grid.Column="3" Width="28" Height="28" MinWidth="0" MinHeight="0" Padding="4" VerticalAlignment="Center" Tag="{x:Bind}" Click="IconSettings_Click" AutomationProperties.Name="图标设置" AutomationProperties.AutomationId="IconSettings"><FontIcon Glyph="&#xE712;" FontSize="12"/></Button>
        <Border Grid.Column="1" Grid.ColumnSpan="3" Height="0.5" VerticalAlignment="Bottom" Background="{ThemeResource TrayRowSeparatorBrush}" IsHitTestVisible="False"/>
       </Grid>
@@ -66,8 +66,8 @@
       </StackPanel></Border>
      </StackPanel>
     </ScrollViewer>
-    <ScrollViewer x:Name="DiagnosticsView" Visibility="Collapsed" Style="{StaticResource EdgeScrollViewerStyle}"><StackPanel Spacing="14"><TextBlock Text="{x:Bind Vm.Diagnostics, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"/><Button Content="退出软件" AutomationProperties.AutomationId="ExitAssistant" Click="Exit_Click"/><TextBlock Text="v0.1.10 · 开发中" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel></ScrollViewer>
-    <InfoBar x:Name="ErrorNotice" Grid.Row="1" IsOpen="False" IsClosable="False" Severity="Error" Message="{x:Bind Vm.Error, Mode=OneWay}" AutomationProperties.AutomationId="OperationError"><InfoBar.ActionButton><Button Content="重试" Command="{x:Bind Vm.ReconnectCommand}"/></InfoBar.ActionButton></InfoBar>
+    <ScrollViewer x:Name="DiagnosticsView" Visibility="Collapsed" Style="{StaticResource EdgeScrollViewerStyle}"><StackPanel Spacing="14"><TextBlock Text="{x:Bind Vm.Diagnostics, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"/><Button Content="退出软件" AutomationProperties.AutomationId="ExitAssistant" Click="Exit_Click"/><TextBlock Text="v0.1.11 · 开发中" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel></ScrollViewer>
+    <InfoBar x:Name="ErrorNotice" Grid.Row="1" Margin="0,0,12,0" IsOpen="False" IsClosable="False" Severity="Error" Message="{x:Bind Vm.Error, Mode=OneWay}" AutomationProperties.AutomationId="OperationError"><InfoBar.ActionButton><Button Content="重试" Command="{x:Bind Vm.ReconnectCommand}"/></InfoBar.ActionButton></InfoBar>
    </Grid>
   </NavigationView>
   <ContentControl x:Name="IconEditor" Visibility="Collapsed">
@@ -76,7 +76,7 @@
     <StackPanel Orientation="Horizontal" Spacing="8"><Button Content="选择图标…" Command="{x:Bind Vm.ChooseIconCommand}"/><Button Content="使用原图标" Command="{x:Bind Vm.UseOriginalAssetCommand}"/></StackPanel>
     <TextBlock Text="{x:Bind Vm.AssetSummary, Mode=OneWay}" FontSize="11"/>
     <TextBox Header="图标提示" MaxLength="127" Text="{x:Bind Vm.Tip, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.AutomationId="IconTip"/>
-    <Expander Header="更多设置" HorizontalAlignment="Stretch"><StackPanel Spacing="14">
+    <Expander Header="更多设置" HorizontalAlignment="Stretch" AutomationProperties.AutomationId="IconAdvancedSettings"><StackPanel Spacing="14">
      <NumberBox Header="EXE / DLL 图标序号" Minimum="0" Maximum="10000" Value="{x:Bind Vm.AssetIndex, Mode=TwoWay}" SpinButtonPlacementMode="Inline" AutomationProperties.AutomationId="IconAssetIndex"/>
      <Grid MinHeight="32"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="交换左右键" VerticalAlignment="Center"/><ToggleSwitch Grid.Column="1" IsOn="{x:Bind Vm.SwapButtons, Mode=TwoWay}" AutomationProperties.Name="交换左右键" AutomationProperties.AutomationId="SwapButtonsToggle"/></Grid>
      <NumberBox Header="不活动后隐藏（秒，0 关闭）" Minimum="0" Maximum="86400" Value="{x:Bind Vm.InactiveSeconds, Mode=TwoWay}" AutomationProperties.AutomationId="IconInactiveSeconds"/>

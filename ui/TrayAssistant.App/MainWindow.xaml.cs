@@ -6,6 +6,7 @@ namespace TrayAssistant_App;
 public sealed partial class MainWindow : Window
 {
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(nint window);
+    private readonly ResizeSynchronization resizeSynchronization;
     public MainWindow()
     {
         InitializeComponent();
@@ -23,6 +24,7 @@ public sealed partial class MainWindow : Window
         var root = (FrameworkElement)Content;
         root.ActualThemeChanged += (_, _) => WindowAppearance.ApplyNativeTheme(this, root.ActualTheme);
         RootFrame.Navigate(typeof(MainPage));
+        resizeSynchronization = ResizeSynchronization.Attach(this, root);
         AppWindow.Closing += async (_, args) => { if (App.IsExiting) return; args.Cancel = true; await App.QuitAsync(); };
     }
 }

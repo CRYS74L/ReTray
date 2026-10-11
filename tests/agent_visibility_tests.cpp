@@ -5,8 +5,14 @@
 #include <memory>
 #include <stdexcept>
 BOOL WINAPI AgentTestNotifyIcon(DWORD operation, PNOTIFYICONDATAW data);
+BOOL WINAPI AgentTestTrackPopupMenu(HMENU, UINT, int, int, int, HWND, const RECT*);
+BOOL WINAPI AgentTestCreateProcessW(LPCWSTR, LPWSTR, LPSECURITY_ATTRIBUTES, LPSECURITY_ATTRIBUTES,
+                                  BOOL, DWORD, LPVOID, LPCWSTR, LPSTARTUPINFOW,
+                                  LPPROCESS_INFORMATION);
+int WINAPI AgentTestMessageBoxW(HWND, LPCWSTR, LPCWSTR, UINT);
 
-// Exercise the real agent handlers and persistence. Only the external Explorer bridge is replaced.
+// Exercise real handlers, native menus, waits, and persistence. Replace only the external
+// Explorer bridge and desktop popup/process launch boundaries, keeping the tests isolated.
 namespace tray {
 struct AgentTestBridgeClient {
     std::unique_ptr<BridgeState> state = std::make_unique<BridgeState>();
@@ -48,12 +54,57 @@ struct AgentTestBridgeClient {
 }
 #define BridgeClient AgentTestBridgeClient
 #define Shell_NotifyIconW AgentTestNotifyIcon
+#define TrackPopupMenu AgentTestTrackPopupMenu
+#define CreateProcessW AgentTestCreateProcessW
+#define MessageBoxW AgentTestMessageBoxW
 #include "../native/agent/main.cpp"
+#undef MessageBoxW
+#undef CreateProcessW
+#undef TrackPopupMenu
 #undef Shell_NotifyIconW
 #undef BridgeClient
 
 #define CHECK(x) do { if (!(x)) throw std::runtime_error(#x); } while (0)
 BridgeIcon removedOwnIcon;
+UINT menuSelection{}, menuFlags{};
+DPI_AWARENESS_CONTEXT menuDpi{};
+std::vector<std::wstring> menuLabels;
+unsigned restartLaunches{}, restartErrors{};
+std::vector<std::wstring> restartArguments;
+bool restartWaitHandlesValid{};
+DWORD restartCreationFlags{};
+BOOL restartInherits{};
+BOOL WINAPI AgentTestTrackPopupMenu(HMENU menu, UINT flags, int, int, int, HWND, const RECT*) {
+    menuFlags = flags; menuDpi = GetThreadDpiAwarenessContext(); menuLabels.clear();
+    for (int index = 0; index < GetMenuItemCount(menu); ++index) {
+        wchar_t label[128]{}; GetMenuStringW(menu, index, label, std::size(label), MF_BYPOSITION);
+        menuLabels.emplace_back(label);
+    }
+    return menuSelection;
+}
+BOOL WINAPI AgentTestCreateProcessW(LPCWSTR, LPWSTR command, LPSECURITY_ATTRIBUTES, LPSECURITY_ATTRIBUTES,
+                                  BOOL inherits, DWORD flags, LPVOID, LPCWSTR, LPSTARTUPINFOW,
+                                  LPPROCESS_INFORMATION) {
+    ++restartLaunches; restartInherits = inherits; restartCreationFlags = flags;
+    restartArguments.clear(); restartWaitHandlesValid = false;
+    int count{}; auto arguments = CommandLineToArgvW(command, &count);
+    if (arguments) {
+        for (int index = 0; index < count; ++index) restartArguments.emplace_back(arguments[index]);
+        if (count == 8) {
+            auto agent = reinterpret_cast<HANDLE>(wcstoull(arguments[5], nullptr, 10));
+            auto ui = reinterpret_cast<HANDLE>(wcstoull(arguments[6], nullptr, 10));
+            auto cancel = reinterpret_cast<HANDLE>(wcstoull(arguments[7], nullptr, 10));
+            DWORD agentFlags{}, cancelFlags{};
+            restartWaitHandlesValid = !ui && GetHandleInformation(agent, &agentFlags) &&
+                (agentFlags & HANDLE_FLAG_INHERIT) && GetHandleInformation(cancel, &cancelFlags) &&
+                (cancelFlags & HANDLE_FLAG_INHERIT) && WaitForSingleObject(agent, 0) == WAIT_TIMEOUT &&
+                WaitForSingleObject(cancel, 0) == WAIT_TIMEOUT;
+        }
+        LocalFree(arguments);
+    }
+    SetLastError(ERROR_BAD_EXE_FORMAT); return FALSE;
+}
+int WINAPI AgentTestMessageBoxW(HWND, LPCWSTR, LPCWSTR, UINT) { ++restartErrors; return IDOK; }
 BOOL WINAPI AgentTestNotifyIcon(DWORD operation, PNOTIFYICONDATAW data) {
     if (operation == NIM_DELETE) {
         for (uint32_t i = 0; i < bridge.shared->count; ++i)
@@ -257,6 +308,48 @@ void OwnSingleClickQueuesOneOpen() {
     CHECK(requests.size() == 1);
     pending = requests.front(); requests.clear(); CHECK(Handle(pending->input).value("success", false));
 }
+void OwnMenuUsesNativeDpiAndUpperRightAnchor() {
+    ResetFixture(); menuSelection = 0;
+    auto previous = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_UNAWARE);
+    TrayMenu();
+    auto restored = GetThreadDpiAwarenessContext();
+    SetThreadDpiAwarenessContext(previous);
+    CHECK(menuLabels == std::vector<std::wstring>({L"打开助手", L"重新启动", L"退出"}));
+    CHECK((menuFlags & TPM_BOTTOMALIGN) != 0);
+    CHECK((menuFlags & (TPM_RIGHTALIGN | TPM_CENTERALIGN)) == 0);
+    CHECK(AreDpiAwarenessContextsEqual(menuDpi, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2));
+    CHECK(AreDpiAwarenessContextsEqual(restored, DPI_AWARENESS_CONTEXT_UNAWARE));
+}
+void OwnRestartLaunchFailureKeepsCurrentAgentAndSettings() {
+    ResetFixture(); root = fixtureRoot; auto before = settings;
+    dataRoot = std::filesystem::path(fixtureRoot.wstring() + L"\\用户设置 含 空格\\");
+    restartLaunches = restartErrors = 0; menuSelection = 2;
+    TrayMenu();
+    CHECK(restartLaunches == 1); CHECK(restartErrors == 1);
+    CHECK(restartArguments.size() == 8);
+    CHECK(restartArguments[0] == (fixtureRoot / L"TrayAssistant.Agent.exe").wstring());
+    CHECK(restartArguments[1] == L"--open"); CHECK(restartArguments[2] == L"--data");
+    CHECK(restartArguments[3] == dataRoot.wstring()); CHECK(restartArguments[4] == L"--restart-wait");
+    CHECK(restartInherits); CHECK(restartWaitHandlesValid);
+    CHECK((restartCreationFlags & (EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW)) ==
+          (EXTENDED_STARTUPINFO_PRESENT | CREATE_NO_WINDOW));
+    CHECK(!stopping); CHECK(settings == before);
+    bool recovered{}; CHECK(LoadSettings(settingsPath, recovered) == before);
+    CHECK(IconCommands().empty());
+}
+void RestartWaitRequiresBothExitsAndHonorsCancellation() {
+    HANDLE signals[] = {CreateEventW(nullptr, TRUE, FALSE, nullptr),
+                        CreateEventW(nullptr, TRUE, FALSE, nullptr),
+                        CreateEventW(nullptr, TRUE, FALSE, nullptr)};
+    CHECK(signals[0] && signals[1] && signals[2]);
+    CHECK(!WaitForRestartExit(signals[0], signals[1], signals[2], 1));
+    SetEvent(signals[0]); CHECK(!WaitForRestartExit(signals[0], signals[1], signals[2], 1));
+    ResetEvent(signals[0]); SetEvent(signals[1]);
+    CHECK(!WaitForRestartExit(signals[0], signals[1], signals[2], 1));
+    SetEvent(signals[0]); CHECK(WaitForRestartExit(signals[0], signals[1], signals[2], 1));
+    SetEvent(signals[2]); CHECK(!WaitForRestartExit(signals[0], signals[1], signals[2], 1));
+    for (auto handle : signals) CloseHandle(handle);
+}
 int wmain(int argc, wchar_t** argv) {
     if (argc != 2) return 2;
     fixtureRoot = std::filesystem::path(argv[1]); std::filesystem::create_directories(fixtureRoot);
@@ -273,7 +366,10 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"shared selector exit rollback", SharedSelectorFanoutRollsBackOnExit},
                             std::pair{"own visibility keeps normal rules", OwnVisibilityDoesNotCreateRule},
                             std::pair{"own hide immediately shows again", OwnHiddenIconCanImmediatelyShowAgain},
-                            std::pair{"own single click queues one UI activation", OwnSingleClickQueuesOneOpen}}) {
+                            std::pair{"own single click queues one UI activation", OwnSingleClickQueuesOneOpen},
+                            std::pair{"own native menu DPI and upper right anchor", OwnMenuUsesNativeDpiAndUpperRightAnchor},
+                            std::pair{"restart launch failure preserves current state", OwnRestartLaunchFailureKeepsCurrentAgentAndSettings},
+                            std::pair{"restart requires both exits and honors cancellation", RestartWaitRequiresBothExitsAndHonorsCancellation}}) {
         try { test.second(); std::printf("PASS %s\n", test.first); }
         catch (const std::exception& e) { ++failed; std::fprintf(stderr, "FAIL %s: %s\n", test.first, e.what()); }
     }

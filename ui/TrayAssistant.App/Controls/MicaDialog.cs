@@ -32,11 +32,12 @@ public static class MicaDialog
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.Children.Add(WindowAppearance.CreateTitleBar(window, title));
-        var panel = new Grid { Padding = new Thickness(14, 12, 14, 14), RowSpacing = 12 };
+        var panel = new Grid { Padding = new Thickness(14, 12, content is ScrollViewer ? 2 : 14, 14), RowSpacing = 12 };
         panel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         panel.Children.Add(content);
         Grid.SetRow(panel, 1); root.Children.Add(panel);
         window.Content = root;
+        using var resizeSynchronization = ResizeSynchronization.Attach(window, root);
         var uiFont = (FontFamily)Application.Current.Resources["AppUiFontFamily"];
         if (content is Control control) control.FontFamily = uiFont;
         if (content is TextBlock text) text.FontFamily = uiFont;

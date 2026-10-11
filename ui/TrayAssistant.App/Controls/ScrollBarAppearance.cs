@@ -1,5 +1,6 @@
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls.Primitives;
+using Microsoft.UI.Xaml.Input;
 using System.Runtime.CompilerServices;
 
 namespace TrayAssistant_App.Controls;
@@ -37,12 +38,17 @@ public static class ScrollBarAppearance
     private sealed class OverflowVisibility
     {
         private readonly ScrollBar bar;
+        private readonly PointerEventHandler pointerChanged;
+        private readonly PointerEventHandler pointerCanceled;
         private long minimumToken;
-        private bool watching, queued, updateRequested;
+        private bool watching, queued, updateRequested, pointerInside;
+        private int pointerGeneration;
 
         public OverflowVisibility(ScrollBar bar)
         {
             this.bar = bar;
+            pointerChanged = PointerChanged;
+            pointerCanceled = (_, _) => UpdatePointerState(false);
             bar.Loaded += Loaded;
             bar.Unloaded += Unloaded;
             if (bar.IsLoaded) Watch();
@@ -58,7 +64,35 @@ public static class ScrollBarAppearance
             minimumToken = bar.RegisterPropertyChangedCallback(RangeBase.MinimumProperty, (_, _) => QueueUpdate());
             bar.LayoutUpdated += LayoutUpdated;
             bar.SizeChanged += SizeChanged;
+            bar.AddHandler(UIElement.PointerEnteredEvent, pointerChanged, true);
+            bar.AddHandler(UIElement.PointerExitedEvent, pointerChanged, true);
+            bar.AddHandler(UIElement.PointerMovedEvent, pointerChanged, true);
+            bar.AddHandler(UIElement.PointerReleasedEvent, pointerChanged, true);
+            bar.AddHandler(UIElement.PointerCaptureLostEvent, pointerChanged, true);
+            bar.AddHandler(UIElement.PointerCanceledEvent, pointerCanceled, true);
+            UpdatePointerState(false);
             QueueUpdate();
+        }
+
+        private void PointerChanged(object sender, PointerRoutedEventArgs args)
+        {
+            var point = args.GetCurrentPoint(bar).Position;
+            UpdatePointerState(args.Pointer.PointerDeviceType != Microsoft.UI.Input.PointerDeviceType.Touch &&
+                point.X >= 0 && point.Y >= 0 && point.X < bar.ActualWidth && point.Y < bar.ActualHeight);
+        }
+
+        private void UpdatePointerState(bool inside)
+        {
+            pointerInside = inside;
+            int generation = ++pointerGeneration;
+            // Native Thumb capture can finish after this routed event. Resolve the
+            // visual state after native handling, including releases outside the bar.
+            bar.DispatcherQueue.TryEnqueue(() =>
+            {
+                if (!watching || generation != pointerGeneration) return;
+                bool hover = pointerInside && bar.IsEnabled && bar.IsHitTestVisible && bar.Visibility == Visibility.Visible;
+                VisualStateManager.GoToState(bar, hover ? "PointerOver" : "Normal", true);
+            });
         }
 
         private void SizeChanged(object sender, SizeChangedEventArgs args) => QueueUpdate();
@@ -84,6 +118,12 @@ public static class ScrollBarAppearance
             double viewport = GetViewportHeight(bar);
             double maximum = Math.Max(bar.Minimum, GetScrollableHeight(bar));
             bool overflow = maximum > bar.Minimum && viewport > 0;
+            if (!overflow)
+            {
+                pointerInside = false;
+                pointerGeneration++;
+                VisualStateManager.GoToState(bar, "Normal", false);
+            }
             bar.IsHitTestVisible = overflow;
             var visibility = overflow ? Visibility.Visible : Visibility.Collapsed;
             if (bar.Visibility != visibility) bar.Visibility = visibility;
@@ -102,9 +142,18 @@ public static class ScrollBarAppearance
         {
             if (!watching) return;
             watching = false;
+            pointerGeneration++;
             bar.UnregisterPropertyChangedCallback(RangeBase.MinimumProperty, minimumToken);
             bar.LayoutUpdated -= LayoutUpdated;
             bar.SizeChanged -= SizeChanged;
+            bar.RemoveHandler(UIElement.PointerEnteredEvent, pointerChanged);
+            bar.RemoveHandler(UIElement.PointerExitedEvent, pointerChanged);
+            bar.RemoveHandler(UIElement.PointerMovedEvent, pointerChanged);
+            bar.RemoveHandler(UIElement.PointerReleasedEvent, pointerChanged);
+            bar.RemoveHandler(UIElement.PointerCaptureLostEvent, pointerChanged);
+            bar.RemoveHandler(UIElement.PointerCanceledEvent, pointerCanceled);
+            pointerInside = false;
+            VisualStateManager.GoToState(bar, "Normal", false);
         }
 
         public void Detach()

@@ -41,8 +41,8 @@ public sealed class ResizeSynchronization : IDisposable
     private bool Alive=>!disposed&&IsWindow(handle)&&GetWindowThreadProcessId(handle,out var pid)!=0&&pid==(uint)Environment.ProcessId;
     private void RootLoaded(object sender,RoutedEventArgs args)=>ConnectRoot();
     private void WindowClosed(object sender,WindowEventArgs args)=>Dispose();
-    private void WindowSizeChanged(object sender,WindowSizeChangedEventArgs args)=>Synchronize(true);
-    private void XamlRootChanged(XamlRoot sender,XamlRootChangedEventArgs args)=>Synchronize(true);
+    private void WindowSizeChanged(object sender,WindowSizeChangedEventArgs args)=>Synchronize(false);
+    private void XamlRootChanged(XamlRoot sender,XamlRootChangedEventArgs args)=>Synchronize(false);
     private void ConnectRoot()
     {
         if(!Alive)return;
@@ -69,7 +69,8 @@ public sealed class ResizeSynchronization : IDisposable
         try
         {
             if(message==WmNcDestroy)Dispose();
-            else if((message==WmSize&&wparam!=1)||message==WmDpiChanged||message==WmExitSizeMove)Synchronize(true);
+            else if(message==WmSize&&wparam!=1)Synchronize(false);
+            else if(message==WmDpiChanged||message==WmExitSizeMove)Synchronize(true);
             else if(message==WmWindowPosChanged)Synchronize(false);
         }
         catch(Exception ex){Debug.WriteLine(ex);}

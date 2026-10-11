@@ -51,13 +51,11 @@ public partial class TrayViewModel
                 QueueEdit("taskbar", async () => await Call("taskbar.apply", taskbar));
                 break;
             case nameof(AutoSort):
-            case nameof(NewLocationIndex):
                 QueueMenuPreferences();
                 break;
             case nameof(Asset):
             case nameof(AssetIndex):
             case nameof(Tip):
-            case nameof(LocationIndex):
             case nameof(SwapButtons):
             case nameof(InactiveSeconds):
             case nameof(Hotkey):
@@ -101,14 +99,14 @@ public partial class TrayViewModel
 
     public void QueueMenuPreferences()
     {
-        if (!initialized || readingEditor || NewLocationIndex is < 0 or > 2) return;
-        var data = new JsonObject { ["autoSort"] = AutoSort, ["newIconLocation"] = NewLocationIndex - 1, ["hotkeys"] = Hotkeys.DeepClone() };
+        if (!initialized || readingEditor) return;
+        var data = new JsonObject { ["autoSort"] = AutoSort, ["hotkeys"] = Hotkeys.DeepClone() };
         QueueEdit("menu", async () => { await Call("settings.apply", data); await RefreshAsync(); });
     }
 
     private void QueueEditor()
     {
-        if (Selected is not IconRow row || !double.IsFinite(AssetIndex) || !double.IsFinite(InactiveSeconds) || LocationIndex is < 0 or > 2 || HotkeyAction is < 0 or > 3) return;
+        if (Selected is not IconRow row || !double.IsFinite(AssetIndex) || !double.IsFinite(InactiveSeconds) || HotkeyAction is < 0 or > 3) return;
         if (row.Owned)
         {
             var asset = Asset; var tip = Tip.Length > 0 ? Tip : "托盘图标助手";
@@ -150,7 +148,7 @@ public partial class TrayViewModel
         rule["selector"]!["ownerCreatedAt"] = CurrentInstance ? row.Rule["created"]!.DeepClone() : JsonValue.Create(0);
         rule["asset"] = Asset; rule["assetIndex"] = (int)AssetIndex; rule["tip"] = Tip;
         rule["swapButtons"] = SwapButtons; rule["visibility"] = VisibilityIndex - 1;
-        rule["location"] = LocationIndex - 1; rule["order"] = (int)Order;
+        rule["order"] = (int)Order;
         rule["inactiveSeconds"] = (int)InactiveSeconds; rule["unusedDays"] = (int)UnusedDays;
         rule["menuVisible"] = MenuVisible; rule["alwaysShow"] = AlwaysShow;
         rule["enabled"] = true; rule["hotkey"] = Hotkey; rule["hotkeyAction"] = HotkeyAction;

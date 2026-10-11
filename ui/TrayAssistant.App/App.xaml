@@ -13,16 +13,19 @@
             </ResourceDictionary.MergedDictionaries>
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="TrayRowSeparatorBrush" Color="#1F000000" />
                     <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FFF3F3F3" />
                     <SolidColorBrush x:Key="CaptionHoverBrush" Color="#FFD0D0D0" />
                     <SolidColorBrush x:Key="CaptionPressedBrush" Color="#FFD3D3D3" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="TrayRowSeparatorBrush" Color="#29FFFFFF" />
                     <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FF292929" />
                     <SolidColorBrush x:Key="CaptionHoverBrush" Color="#FF707070" />
                     <SolidColorBrush x:Key="CaptionPressedBrush" Color="#FF555555" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
+                    <SolidColorBrush x:Key="TrayRowSeparatorBrush" Color="{ThemeResource SystemColorWindowTextColor}" />
                     <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="{ThemeResource SystemColorWindowColor}" />
                     <SolidColorBrush x:Key="CaptionHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                     <SolidColorBrush x:Key="CaptionPressedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
@@ -63,15 +66,16 @@
                 </ControlTemplate></Setter.Value></Setter>
             </Style>
             <Style x:Key="EdgeScrollViewerStyle" TargetType="ScrollViewer" BasedOn="{StaticResource DefaultScrollViewerStyle}">
-                <Setter Property="VerticalScrollBarVisibility" Value="Visible"/>
+                <Setter Property="VerticalScrollBarVisibility" Value="Auto"/>
                 <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+                <Setter Property="HorizontalScrollMode" Value="Disabled"/>
+                <Setter Property="IsHorizontalRailEnabled" Value="False"/>
                 <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                 <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollViewer">
                     <Border x:Name="Root" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
                         <Grid Background="{TemplateBinding Background}">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="20"/></Grid.ColumnDefinitions>
                             <ScrollContentPresenter x:Name="ScrollContentPresenter" ContentTemplate="{TemplateBinding ContentTemplate}" Margin="{TemplateBinding Padding}"/>
-                            <ScrollBar x:Name="VerticalScrollBar" controls:ScrollBarAppearance.Persistent="True" Grid.Column="1" Width="16" MinWidth="16" Margin="2,0" IsTabStop="False" Orientation="Vertical" IndicatorMode="MouseIndicator"
+                            <ScrollBar x:Name="VerticalScrollBar" controls:ScrollBarAppearance.Persistent="True" HorizontalAlignment="Right" Width="12" MinWidth="12" Margin="0,0,-12,0" IsTabStop="False" Orientation="Vertical" IndicatorMode="MouseIndicator" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}"
                                 Maximum="{TemplateBinding ScrollableHeight}" Value="{TemplateBinding VerticalOffset}" ViewportSize="{TemplateBinding ViewportHeight}"/>
                         </Grid>
                     </Border>

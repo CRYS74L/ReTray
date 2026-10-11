@@ -17,6 +17,7 @@ public partial class TrayViewModel : ObservableObject
 
 
     private readonly Dictionary<string, IconRow> all = new();
+    private readonly Dictionary<string, (long Revision, JsonObject Data)> visibilityAcknowledgments = new();
 
     private bool polling, connectionError, initialized, initializing;
     private List<string> iconOrder = new();
@@ -27,7 +28,7 @@ public partial class TrayViewModel : ObservableObject
     public async Task SetRowVisibilityAsync(IconRow row,bool value)
     {
         if(row.IsBusy||value==row.ActualVisible)return;row.IsBusy=true;
-        await Execute(async()=>{if(row.Owned){var read=await Call("settings.read");var own=(JsonObject)read["data"]!["ownIcon"]!.DeepClone();own["visible"]=value;await Call("ownIcon.apply",own);OwnVisible=value;}else{var rule=EditableRule(row);rule["visibility"]=value?0:1;rule["inactiveSeconds"]=0;rule["unusedDays"]=0;rule["enabled"]=true;await Call("rule.apply",new(){["rule"]=rule});}await RefreshAsync();Status=value?"已显示":"已隐藏";});
+        await Execute(async()=>{var reply=await Call("icon.visibility",new(){["key"]=row.Key,["visibility"]=value?0:1});var acknowledgment=(JsonObject)reply["data"]!.DeepClone();visibilityAcknowledgments[row.Key]=(reply["revision"]!.GetValue<long>(),acknowledgment);row.AcknowledgeVisibility(acknowledgment);if(row.Owned){readingEditor=true;try{OwnVisible=value;}finally{readingEditor=false;}}Status=value?"已显示":"已隐藏";});
         row.IsBusy=false;row.Visible=row.ActualVisible;
     }
     [DllImport("user32.dll")] private static extern bool AllowSetForegroundWindow(uint processId);
@@ -54,7 +55,6 @@ public partial class TrayViewModel : ObservableObject
     public Task PreviewAssetAsync()=>Execute(async()=>{if(string.IsNullOrEmpty(Asset)){AssetPreview=null;AssetSummary="";return;}var path=Asset;int index=(int)AssetIndex;var result=await Call("icon.preview",new(){["path"]=path,["index"]=index});if(path!=Asset||index!=(int)AssetIndex)return;var image=result["data"]!;AssetPreview=IconRow.Decode(image["pixels"]!.GetValue<string>(),image["width"]!.GetValue<int>(),image["height"]!.GetValue<int>());AssetSummary=$"{image["count"]} 个可选图标 · 当前序号 {index}";});
     [ObservableProperty] public partial string Tip { get; set; } = "";
     [ObservableProperty] public partial int VisibilityIndex { get; set; }
-    [ObservableProperty] public partial int LocationIndex { get; set; }
     [ObservableProperty] public partial double Order { get; set; }
     [ObservableProperty] public partial double InactiveSeconds { get; set; }
     [ObservableProperty] public partial double UnusedDays { get; set; }
@@ -93,7 +93,6 @@ public partial class TrayViewModel : ObservableObject
     [ObservableProperty] public partial double MenuHoverDelay { get; set; }
     [ObservableProperty] public partial double MenuUnusedDays { get; set; }
     [ObservableProperty] public partial bool AutoSort { get; set; }
-    [ObservableProperty] public partial int NewLocationIndex { get; set; }
     [ObservableProperty] public partial double ReviewInterval { get; set; }
 
 
@@ -128,7 +127,7 @@ public partial class TrayViewModel : ObservableObject
             MenuReverse=menu?["reverse"]?.GetValue<bool>()??false;MenuNewFirst=menu?["newFirst"]?.GetValue<bool>()??true;
             MenuHoverDelay=menu?["hoverDelayMs"]?.GetValue<int>()??0;MenuUnusedDays=menu?["filterUnusedDays"]?.GetValue<int>()??0;
             MenuActionIndex=menu?["action"]?.GetValue<string>() switch { "click"=>0,"double"=>2,"rightDouble"=>3,_=>1 };
-            AutoSort=Settings["autoSort"]?.GetValue<bool>()??false;NewLocationIndex=(Settings["newIconLocation"]?.GetValue<int>()??-1)+1;
+            AutoSort=Settings["autoSort"]?.GetValue<bool>()??false;
             ReviewInterval=Settings["reviewIntervalSeconds"]?.GetValue<int>()??0;
             ThemeIndex = Settings["theme"]!.GetValue<string>() switch { "light" => 1, "dark" => 2, _ => 0 }; ThemeChanged?.Invoke(ThemeIndex);
             LanguageIndex=Settings["language"]?.GetValue<string>()=="en"?1:0;
@@ -148,9 +147,9 @@ public partial class TrayViewModel : ObservableObject
         {
             var health = await Call("status.read"); var h = health["data"]!; App.ObserveAgent(h["pid"]!.GetValue<int>()); if(!h["ready"]!.GetValue<bool>()||!h["connected"]!.GetValue<bool>()){IsReady=false;IsLoading=true;return;}
             if (!initialized && !initializing) { await InitializeAsync(); if (!initialized) return; }
-            var result = await Call("catalog.read"); var data = result["data"]!["icons"]!.AsArray(); var active = new HashSet<string>();
-            foreach (var item in data) { var j = item!.AsObject(); var key = j["key"]!.GetValue<string>(); active.Add(key); if (all.TryGetValue(key, out var row)) row.Update(j); else all[key] = new IconRow(j); }
-            foreach (var key in all.Keys.Where(k => !active.Contains(k)).ToList()) all.Remove(key);
+            var result = await Call("catalog.read"); var data = result["data"]!["icons"]!.AsArray(); var active = new HashSet<string>();var snapshotRevision=result["revision"]!.GetValue<long>();
+            foreach (var item in data) { var j = item!.AsObject(); var key = j["key"]!.GetValue<string>(); active.Add(key);JsonObject? retained=null;if(visibilityAcknowledgments.TryGetValue(key,out var acknowledgment)){if(snapshotRevision<acknowledgment.Revision)retained=acknowledgment.Data;else visibilityAcknowledgments.Remove(key);}if(all.TryGetValue(key,out var row))row.Update(j,retained);else all[key]=new IconRow(j,retained); }
+            foreach (var key in all.Keys.Where(k => !active.Contains(k)).ToList()) { all.Remove(key);visibilityAcknowledgments.Remove(key); }
             SynchronizeList();
             if (Selected != null && !active.Contains(Selected.Key)) {
                 var prior=Selected.Rule;
@@ -170,7 +169,7 @@ public partial class TrayViewModel : ObservableObject
         try {
         Hotkey=row.Rule["hotkey"]?.GetValue<int>()??0;HotkeyText=DescribeHotkey(Hotkey);HotkeyAction=row.Rule["hotkeyAction"]?.GetValue<int>()??1;
         NewStateIndex=(row.Rule["newState"]?.GetValue<int>()??-1)+1;
-        var j = row.Rule; SwapButtons=j["swapButtons"]?.GetValue<bool>()??false;MatchClass=j["selector"]?["windowClass"]?.GetValue<string>()??"";MatchTip=j["selector"]?["tipPattern"]?.GetValue<string>()??"";MatchTipMode=j["selector"]?["tipMode"]?.GetValue<int>()??0;CurrentInstance=(j["selector"]?["ownerPid"]?.GetValue<int>()??0)>0;AssetIndex=j["assetIndex"]?.GetValue<int>()??0; Asset = j["asset"]!.GetValue<string>(); Tip = j["tip"]!.GetValue<string>(); VisibilityIndex = j["visibility"]!.GetValue<int>() + 1; LocationIndex = j["location"]!.GetValue<int>() + 1; Order = j["order"]!.GetValue<int>(); InactiveSeconds = j["inactiveSeconds"]!.GetValue<int>(); UnusedDays = j["unusedDays"]!.GetValue<int>(); MenuVisible = j["menuVisible"]!.GetValue<bool>(); AlwaysShow = j["alwaysShow"]!.GetValue<bool>();
+        var j = row.Rule; SwapButtons=j["swapButtons"]?.GetValue<bool>()??false;MatchClass=j["selector"]?["windowClass"]?.GetValue<string>()??"";MatchTip=j["selector"]?["tipPattern"]?.GetValue<string>()??"";MatchTipMode=j["selector"]?["tipMode"]?.GetValue<int>()??0;CurrentInstance=(j["selector"]?["ownerPid"]?.GetValue<int>()??0)>0;AssetIndex=j["assetIndex"]?.GetValue<int>()??0; Asset = j["asset"]!.GetValue<string>(); Tip = j["tip"]!.GetValue<string>(); VisibilityIndex = j["visibility"]!.GetValue<int>() + 1; Order = j["order"]!.GetValue<int>(); InactiveSeconds = j["inactiveSeconds"]!.GetValue<int>(); UnusedDays = j["unusedDays"]!.GetValue<int>(); MenuVisible = j["menuVisible"]!.GetValue<bool>(); AlwaysShow = j["alwaysShow"]!.GetValue<bool>();
         }
         finally { readingEditor = false; }
     }

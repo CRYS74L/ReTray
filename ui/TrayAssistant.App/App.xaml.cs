@@ -54,7 +54,7 @@ public partial class App : Application
         IsExiting = true;
         try
         {
-            if (Window.Content is Panel root && root.Children.OfType<Frame>().FirstOrDefault()?.Content is MainPage page && !await page.Vm.FlushChangesAsync())
+            if (Window.Content is Panel root && root.Children.OfType<Frame>().FirstOrDefault()?.Content is MainPage page && !await page.FlushChangesAsync())
             {
                 IsExiting = false;
                 return;

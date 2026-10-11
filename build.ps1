@@ -1,4 +1,4 @@
-param([ValidateSet('CoreTests','Probe','Agent','Bridge','BridgeTest','BridgeControls','Source','SettingsTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
+param([ValidateSet('CoreTests','Probe','Agent','AgentVisibilityTests','Bridge','BridgeTest','BridgeControls','Source','SettingsTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
 $ErrorActionPreference='Stop'
 $productRoot=$PSScriptRoot
 $projectVersion=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
@@ -57,6 +57,13 @@ if ($Target -eq 'SettingsTests') {
     & $clang @commonArgs '-municode' (Join-Path $productRoot 'tests\settings_tests.cpp') (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') '-o' (Join-Path $outputRoot 'SettingsTests.exe') '-luser32' '-lgdi32' '-lshell32' '-lole32' '-lgdiplus' '-lbcrypt'
     if($LASTEXITCODE -ne 0){throw 'Settings tests build failed'}
     & (Join-Path $outputRoot 'SettingsTests.exe') (Join-Path $productRoot 'artifacts\settings-fixture')
+    exit $LASTEXITCODE
+}
+if ($Target -eq 'AgentVisibilityTests') {
+    $exe=Join-Path $outputRoot 'AgentVisibilityTests.exe'
+    & $clang @commonArgs '-municode' (Join-Path $productRoot 'tests\agent_visibility_tests.cpp') (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') '-o' $exe '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt' '-ladvapi32' '-lgdiplus' '-luuid'
+    if($LASTEXITCODE -ne 0){throw 'Agent visibility tests build failed'}
+    & $exe (Join-Path $productRoot 'artifacts\agent-visibility-fixture')
     exit $LASTEXITCODE
 }
 if ($Target -eq 'Agent') {

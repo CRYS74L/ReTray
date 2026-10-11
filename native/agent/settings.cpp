@@ -53,7 +53,6 @@ IconRule ParseRule(const Json& j) {
             &r.selector.guid)))
         throw std::runtime_error("Invalid rule GUID");
     r.visibility = j.value("visibility", -1);
-    r.location = j.value("location", -1);
     r.order = j.value("order", -1);
     r.asset = Wide(j.value("asset", std::string{}));
     r.tip = Wide(j.value("tip", std::string{}));
@@ -71,8 +70,8 @@ IconRule ParseRule(const Json& j) {
     r.baselineHeight = j.value("baselineHeight", 0u);
     r.assetIndex = j.value("assetIndex", 0u);
     if (r.selector.executable.empty() || r.selector.executable.size() > 32767 ||
-        r.tip.size() > 127 || r.visibility < -1 || r.visibility > 1 || r.location < -1 ||
-        r.location > 1 || r.order < -1 || r.order >= 256 || r.inactiveSeconds > 86400 ||
+        r.tip.size() > 127 || r.visibility < -1 || r.visibility > 1 ||
+        r.order < -1 || r.order >= 256 || r.inactiveSeconds > 86400 ||
         r.unusedDays > 3650 || r.selector.tipMode > 3 || r.selector.tipPattern.size() > 127 ||
         r.selector.windowClass.size() > 255 ||
         (bool(r.selector.ownerPid) != bool(r.selector.ownerCreatedAt)) || r.assetIndex > 10000 ||
@@ -105,7 +104,6 @@ Json DefaultSettings() {
                  {"menu", (MOD_WIN | MOD_ALT) << 16 | 'T'},
              }},
             {"autoSort", false},
-            {"newIconLocation", -1},
             {"reviewIntervalSeconds", 0},
             {"taskbar", {{"opacity", 255}, {"hideStart", false}}},
             {"iconOrder", Json::array()},
@@ -144,8 +142,7 @@ bool ValidateSettings(const Json& j) {
                     return false;
             }
         }
-        if (j.value("newIconLocation", -1) < -1 || j.value("newIconLocation", -1) > 1 ||
-            j.value("reviewIntervalSeconds", 0u) > 86400)
+        if (j.value("reviewIntervalSeconds", 0u) > 86400)
             return false;
         if (j.contains("menu")) {
             const auto& menu = j["menu"];
@@ -279,6 +276,7 @@ bool SaveSettings(const std::filesystem::path& path, const Json& settings) {
 static Json UpgradeSettings(Json value) {
     value.erase("protection");
     value.erase("windowRules");
+    value.erase("newIconLocation");
     auto result = DefaultSettings();
     result.update(value);
     for (const char* key : {"ownIcon", "hotkeys", "taskbar"}) {

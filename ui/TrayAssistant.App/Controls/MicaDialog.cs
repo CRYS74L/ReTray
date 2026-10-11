@@ -32,7 +32,7 @@ public static class MicaDialog
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(32) });
         root.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         root.Children.Add(WindowAppearance.CreateTitleBar(window, title));
-        var panel = new Grid { Padding = new Thickness(16, 12, 4, 14), RowSpacing = 12 };
+        var panel = new Grid { Padding = new Thickness(14, 12, 14, 14), RowSpacing = 12 };
         panel.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         panel.Children.Add(content);
         Grid.SetRow(panel, 1); root.Children.Add(panel);
@@ -101,8 +101,8 @@ public static class MicaDialog
             completion.TrySetResult(accepted);
         };
         var scale = GetDpiForWindow(ownerHandle) / 96.0;
-        presenter.PreferredMinimumWidth = (int)(340 * scale);
-        presenter.PreferredMinimumHeight = (int)(360 * scale);
+        presenter.PreferredMinimumWidth = (int)(300 * scale);
+        presenter.PreferredMinimumHeight = (int)(260 * scale);
         var area = DisplayArea.GetFromWindowId(owner.AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         var widthPixels = Math.Min((int)(380 * scale), area.Width);
         var heightPixels = Math.Min((int)(height * scale), area.Height);

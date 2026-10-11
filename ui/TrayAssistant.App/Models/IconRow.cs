@@ -14,7 +14,7 @@ public sealed class IconRow : ObservableObject
     private string pixels = "", originalPixels = "";
     private bool visible,isBusy;
     public bool Visible { get=>visible;set=>SetProperty(ref visible,value); }
-    public bool ActualVisible=>Rule["placement"]?.GetValue<int>()!=2;
+    public bool ActualVisible=>Rule["acknowledgedVisible"]?.GetValue<bool>()??Rule["placement"]?.GetValue<int>()!=2;
     public bool Owned=>Rule["owned"]?.GetValue<bool>()==true;
     public bool IsBusy { get=>isBusy;set{if(SetProperty(ref isBusy,value))OnPropertyChanged(nameof(CanToggle));} }
     public bool CanToggle=>!IsBusy;
@@ -25,10 +25,18 @@ public sealed class IconRow : ObservableObject
     public string Executable { get => executable; private set => SetProperty(ref executable, value); }
     public WriteableBitmap? Image { get => image; private set => SetProperty(ref image, value); }
     public WriteableBitmap? Original { get => original; private set => SetProperty(ref original, value); }
-    public IconRow(JsonObject json) { Key = json["key"]!.GetValue<string>(); Update(json); }
-    public void Update(JsonObject json)
+    public IconRow(JsonObject json, JsonObject? acknowledgment = null) { Key = json["key"]!.GetValue<string>(); Update(json, acknowledgment); }
+    private void ApplyVisibilityAcknowledgment(JsonObject acknowledgment)
+    {
+        Rule["acknowledgedVisible"] = acknowledgment["visible"]!.DeepClone();
+        Rule["visibility"] = acknowledgment["visibility"]!.DeepClone();
+        if (acknowledgment["placement"] is JsonNode placement) Rule["placement"] = placement.DeepClone();
+    }
+    public void AcknowledgeVisibility(JsonObject acknowledgment) { ApplyVisibilityAcknowledgment(acknowledgment); Visible = ActualVisible; }
+    public void Update(JsonObject json, JsonObject? acknowledgment = null)
     {
         Rule = (JsonObject)json.DeepClone();
+        if (acknowledgment != null) ApplyVisibilityAcknowledgment(acknowledgment);
         if(!IsBusy)Visible=ActualVisible;
         Executable = json["selector"]!["executable"]!.GetValue<string>();
         Name = Path.GetFileNameWithoutExtension(Executable);

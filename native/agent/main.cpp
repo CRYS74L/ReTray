@@ -33,7 +33,10 @@ std::filesystem::path root, dataRoot, settingsPath;
 Json settings;
 bool recovered{}, ownAdded{};
 std::atomic<bool> stopping{};
+std::atomic<bool> ownOpenQueued{};
 HICON ownImage{};
+std::string ownIdentityKey;
+uint64_t ownIdentityEpoch{};
 std::unordered_map<std::string, IconRule> rules;
 std::unordered_map<std::string, std::string> applied;
 std::unordered_map<std::string, std::string> instanceOrderKeys;
@@ -44,7 +47,8 @@ std::vector<BridgeIcon> rows;
 IconCatalog catalog;
 LONG seenSequence{-1};
 uint64_t configRevision{};
-uint64_t environmentEpoch{}, environmentRevision{UINT64_MAX}, lastEnvironmentCheck{};
+uint64_t environmentEpoch{}, lastEnvironmentCheck{};
+std::string environmentStamp;
 Json environmentOutcome = {{"success", true}};
 struct Request {
     Json input, output;
@@ -86,6 +90,19 @@ uint64_t Generation(DWORD pid) {
     CloseHandle(p);
     return (uint64_t(c.dwHighDateTime) << 32) | c.dwLowDateTime;
 }
+bool IsOwnIcon(const BridgeIcon& row) {
+    return bridge.shared && row.identity.shellEpoch == bridge.shared->epoch &&
+           row.identity.ownerPid == GetCurrentProcessId() &&
+           row.identity.ownerHwnd == reinterpret_cast<uintptr_t>(window) &&
+           row.identity.uid == 1 && !row.identity.hasGuid &&
+           row.identity.ownerCreatedAt == Generation(GetCurrentProcessId());
+}
+void RememberOwnIcon(const BridgeIcon& row) {
+    if (IsOwnIcon(row)) {
+        ownIdentityKey = IdentityKey(row.identity);
+        ownIdentityEpoch = bridge.shared->epoch;
+    }
+}
 uint64_t Now() {
     return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::milliseconds>(
                                      std::chrono::system_clock::now().time_since_epoch())
@@ -123,9 +140,20 @@ void LoadRules() {
         auto rule = ParseRule(j);
         rules[PersistentKey(rule.selector)] = std::move(rule);
     }
-    applied.clear();
-    failedStamp.clear();
-    retryAfter.clear();
+}
+void InvalidateRule(const RuleSelector& selector, const std::string& previousKey = {}) {
+    for (const auto& row : rows) {
+        auto record = Record(row);
+        auto prior = ResolveRule(rules, record);
+        if (!Matches(selector, record) &&
+            (previousKey.empty() || !prior.rule ||
+             PersistentKey(prior.rule->selector) != previousKey))
+            continue;
+        auto key = IdentityKey(row.identity);
+        applied.erase(key);
+        failedStamp.erase(key);
+        retryAfter.erase(key);
+    }
 }
 void ScheduleHotkeys() {
     if (!window || stopping)
@@ -193,9 +221,9 @@ void OpenUI() {
         manager->Release();
     }
 }
-bool SetOwnIcon() {
+bool SetOwnIcon(bool reloadImage = true) {
     auto policy = settings["ownIcon"];
-    if (ownImage) {
+    if (reloadImage && ownImage) {
         DestroyIcon(ownImage);
         ownImage = nullptr;
     }
@@ -205,13 +233,14 @@ bool SetOwnIcon() {
     d.hWnd = window;
     d.uID = 1;
     if (!visible) {
-        if (ownAdded)
-            Shell_NotifyIconW(NIM_DELETE, &d);
+        if (ownAdded && !Shell_NotifyIconW(NIM_DELETE, &d))
+            return false;
         ownAdded = false;
         return true;
     }
     auto asset = Wide(policy.value("asset", std::string{}));
-    ownImage = asset.empty() ? LoadAsset(root / L"Assets" / L"AppIcon.ico") : LoadAsset(asset);
+    if (!ownImage)
+        ownImage = asset.empty() ? LoadAsset(root / L"Assets" / L"AppIcon.ico") : LoadAsset(asset);
     if (!ownImage && asset.empty())
         ownImage = CopyIcon(LoadIconW(nullptr, IDI_APPLICATION));
     if (!ownImage)
@@ -273,15 +302,22 @@ bool SetStartup(bool enabled) {
     RegCloseKey(key);
     return code == ERROR_SUCCESS || (!enabled && code == ERROR_FILE_NOT_FOUND);
 }
+int EffectiveVisibility(const BridgeIcon& row, const IconRule* rule) {
+    int visibility = rule && rule->enabled ? rule->visibility : -1;
+    if (rule && IsInactive(*rule, catalog.items[IdentityKey(row.identity)].activity, Now()))
+        visibility = 1;
+    return visibility;
+}
+std::string RuleStamp(const IconRule* rule, int visibility) {
+    return (rule ? RuleJson(*rule).dump() : std::string("native")) + ":" +
+           std::to_string(visibility);
+}
 void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
     if (!ShouldRecover(lifecycle))
         return;
     auto key = IdentityKey(row.identity);
-    auto r = Record(row);
-    int visibility = rule && rule->enabled ? rule->visibility : -1;
-    if (rule && IsInactive(*rule, catalog.items[key].activity, Now()))
-        visibility = 1;
-    std::string stamp = std::to_string(configRevision) + ":" + std::to_string(visibility);
+    int visibility = EffectiveVisibility(row, rule);
+    auto stamp = RuleStamp(rule, visibility);
     if (applied[key] == stamp)
         return;
     if (failedStamp[key] == stamp) {
@@ -339,14 +375,6 @@ void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
         cmd.operation = BridgeOperation::Tip;
         wcsncpy_s(cmd.tip, std::size(cmd.tip), rule->tip.c_str(), _TRUNCATE);
         send(cmd);
-        if (rule->location == -1 || row.placement != static_cast<uint32_t>(rule->location)) {
-            cmd = {};
-            cmd.operation = BridgeOperation::Move;
-            cmd.location = rule->location;
-            // Region rules leave ordering to Windows; -1 appends only when the region changes.
-            cmd.index = -1;
-            send(cmd);
-        }
     }
     if (visibility != -1 || row.managed) {
         BridgeCommand cmd;
@@ -373,13 +401,15 @@ bool ApplyEnvironment(bool force = false) {
     if (!bridge.Alive() || !ShouldRecover(lifecycle))
         return false;
     auto now = GetTickCount64();
+    auto stamp = Json::array({settings.value("taskbar", Json::object()),
+                             settings.value("systemControls", Json::array())}).dump();
     if (!force && environmentEpoch == bridge.shared->epoch &&
-        environmentRevision == configRevision && now - lastEnvironmentCheck < 3000)
+        environmentStamp == stamp && now - lastEnvironmentCheck < 3000)
         return environmentOutcome.value("success", true);
     bool changed =
-        environmentEpoch != bridge.shared->epoch || environmentRevision != configRevision;
+        environmentEpoch != bridge.shared->epoch || environmentStamp != stamp;
     environmentEpoch = bridge.shared->epoch;
-    environmentRevision = configRevision;
+    environmentStamp = std::move(stamp);
     lastEnvironmentCheck = now;
     bool ok = true;
     DWORD error{};
@@ -497,10 +527,9 @@ void Refresh() {
     if (sequence != bridge.shared->snapshotSequence)
         return;
     seenSequence = sequence;
-    std::unordered_set<std::string> previous;
-    for (const auto& row : rows)
-        previous.insert(IdentityKey(row.identity));
     rows = std::move(current);
+    for (const auto& row : rows)
+        RememberOwnIcon(row);
     SnapshotResult snapshot;
     snapshot.complete = true;
     for (auto& row : rows)
@@ -544,21 +573,6 @@ void Refresh() {
             continue;
         }
         ApplyRule(row, found.rule);
-    }
-    const auto newIconLocation = settings.value("newIconLocation", -1);
-    if (delta.added && newIconLocation != -1) {
-        for (const auto& row : rows)
-            if (!previous.contains(IdentityKey(row.identity)) &&
-                !ResolveRule(rules, Record(row)).rule &&
-                row.identity.ownerPid != GetCurrentProcessId() &&
-                row.placement != static_cast<uint32_t>(newIconLocation)) {
-                BridgeCommand command;
-                command.operation = BridgeOperation::Move;
-                command.identity = row.identity;
-                command.location = newIconLocation;
-                command.index = -1;
-                bridge.Command(command);
-            }
     }
     ScheduleHotkeys();
 }
@@ -644,6 +658,167 @@ bool IsAssistantUi(HWND hwnd) {
     CloseHandle(process);
     return read && _wcsicmp(path, (root / L"TrayAssistant.App.exe").c_str()) == 0;
 }
+bool RollbackSettings(const Json& previous) {
+    auto pending = settings;
+    settings = previous;
+    settings["revision"] = configRevision;
+    // Persist already backed up the previous configuration; rollback must not replace that
+    // backup with the rejected policy.
+    if (ValidateSettings(settings) && SaveDataJson(settingsPath, settings))
+        return true;
+    settings = std::move(pending);
+    return false;
+}
+Json SetIconVisibility(const Json& data) {
+    if (!data.contains("key") || !data.at("key").is_string() ||
+        data.at("key").get_ref<const std::string&>().empty() ||
+        data.at("key").get_ref<const std::string&>().size() > 32768 ||
+        !data.contains("visibility") || !data.at("visibility").is_number_integer())
+        return Result(false, "图标可见性参数无效", ERROR_INVALID_DATA);
+    auto key = data.at("key").get<std::string>();
+    const auto& requested = data.at("visibility");
+    if (requested.is_number_unsigned() ? requested.get<uint64_t>() > 1
+                                      : requested.get<int64_t>() < -1 || requested.get<int64_t>() > 1)
+        return Result(false, "图标可见性参数无效", ERROR_INVALID_DATA);
+    int visibility = requested.get<int>();
+    if (!ShouldRecover(lifecycle) || stopping || !bridge.Alive())
+        return Result(false, "原生托盘尚未就绪", ERROR_NOT_READY);
+    auto current = bridge.Snapshot();
+    auto target = std::find_if(current.begin(), current.end(),
+                               [&](const auto& row) { return IdentityKey(row.identity) == key; });
+    if (target != current.end() && target->identity.shellEpoch != bridge.shared->epoch)
+        target = current.end();
+    if (target != current.end())
+        RememberOwnIcon(*target);
+    bool owned = key == ownIdentityKey && ownIdentityEpoch == bridge.shared->epoch;
+    if (target == current.end() && !owned)
+        return Result(false, "图标已退出", ERROR_NOT_FOUND);
+    auto previous = settings;
+    if (owned) {
+        settings["ownIcon"]["visible"] = visibility != 1;
+        if (!Persist()) {
+            settings = previous;
+            return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
+        }
+        if (!SetOwnIcon(false)) {
+            auto error = GetLastError();
+            bool rolledBack = RollbackSettings(previous);
+            auto result = Result(false, rolledBack ? "助手图标更新失败，配置未改变"
+                                                  : "助手图标更新失败，配置回滚失败",
+                                 rolledBack ? error : ERROR_WRITE_FAULT);
+            result["saved"] = !rolledBack;
+            return result;
+        }
+        auto result = Result(true, visibility == 1 ? "已隐藏" : "已显示");
+        result["saved"] = true;
+        result["data"] = {{"key", key}, {"visibility", visibility}, {"visible", visibility != 1}};
+        if (visibility == 1)
+            result["data"]["placement"] = static_cast<int>(Placement::Hidden);
+        else
+            for (const auto& row : bridge.Snapshot())
+                if (IdentityKey(row.identity) == key)
+                    result["data"]["placement"] = row.placement;
+        return result;
+    }
+    auto found = ResolveRule(rules, Record(*target));
+    if (found.ambiguous)
+        return Result(false, "多个匹配规则冲突", ERROR_DUP_NAME);
+    IconRule rule = found.rule ? *found.rule : IconRule{};
+    if (!found.rule)
+        rule.selector = SelectorFor(Record(*target));
+    rule.visibility = visibility;
+    rule.inactiveSeconds = rule.unusedDays = 0;
+    rule.enabled = true;
+    auto stable = PersistentKey(rule.selector);
+    auto updatedRules = rules;
+    updatedRules[stable] = rule;
+    struct Affected {
+        BridgeIcon row;
+        int priorVisibility{};
+        bool fullyApplied{};
+    };
+    std::vector<Affected> affected;
+    for (const auto& row : current) {
+        auto next = ResolveRule(updatedRules, Record(row));
+        if (!next.rule || PersistentKey(next.rule->selector) != stable)
+            continue;
+        auto prior = ResolveRule(rules, Record(row));
+        auto oldVisibility = EffectiveVisibility(row, prior.rule);
+        auto appliedTo = applied.find(IdentityKey(row.identity));
+        bool wasApplied = appliedTo != applied.end() &&
+                          appliedTo->second == RuleStamp(prior.rule, oldVisibility);
+        bool unchangedPolicy = !prior.rule || prior.rule->enabled;
+        affected.push_back({row, oldVisibility,
+                            unchangedPolicy && (wasApplied || (!prior.rule && !row.managed))});
+    }
+    auto& list = settings["rules"];
+    auto existing = std::find_if(list.begin(), list.end(), [&](const auto& entry) {
+        return PersistentKey(ParseRule(entry).selector) == stable;
+    });
+    if (existing == list.end())
+        list.push_back(RuleJson(rule));
+    else
+        *existing = RuleJson(rule);
+    if (!Persist()) {
+        settings = previous;
+        return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
+    }
+    size_t completed{};
+    for (const auto& item : affected) {
+        BridgeCommand command;
+        command.operation = BridgeOperation::Visibility;
+        command.identity = item.row.identity;
+        command.visibility = visibility;
+        if (!bridge.Command(command)) {
+            auto error = bridge.shared ? bridge.shared->lastError : ERROR_NOT_READY;
+            if (error != ERROR_NOT_FOUND) {
+                command.visibility = item.priorVisibility;
+                if (!bridge.Command(command))
+                    applied.erase(IdentityKey(item.row.identity));
+            }
+            for (size_t i = 0; i < completed; ++i) {
+                command.identity = affected[i].row.identity;
+                command.visibility = affected[i].priorVisibility;
+                if (!bridge.Command(command))
+                    applied.erase(IdentityKey(command.identity));
+            }
+            bool rolledBack = RollbackSettings(previous);
+            auto result = Result(false, rolledBack ? "图标可见性更新失败，配置未改变"
+                                                  : "图标可见性更新失败，配置回滚失败",
+                                 rolledBack ? error : ERROR_WRITE_FAULT);
+            result["saved"] = !rolledBack;
+            if (!rolledBack) {
+                rules = std::move(updatedRules);
+                seenSequence = -1;
+            }
+            return result;
+        }
+        ++completed;
+    }
+    rules = std::move(updatedRules);
+    auto result = Result(true, visibility == 1 ? "已隐藏" : "已显示");
+    result["saved"] = true;
+    auto stamp = RuleStamp(&rule, visibility);
+    for (const auto& item : affected) {
+        auto affectedKey = IdentityKey(item.row.identity);
+        if (item.fullyApplied) {
+            applied[affectedKey] = stamp;
+            failedStamp.erase(affectedKey);
+            retryAfter.erase(affectedKey);
+        } else
+            applied.erase(affectedKey);
+        outcomes[affectedKey] = result;
+    }
+    result["data"] = {{"key", key}, {"visibility", visibility},
+                      {"visible", false}, {"placement", static_cast<int>(Placement::Hidden)}};
+    for (const auto& row : bridge.Snapshot())
+        if (IdentityKey(row.identity) == key) {
+            result["data"]["placement"] = row.placement;
+            result["data"]["visible"] = row.placement != static_cast<uint32_t>(Placement::Hidden);
+            break;
+        }
+    return result;
+}
 Json Handle(const Json& req) {
     if (!req.is_object())
         return Result(false, "请求必须是对象", ERROR_INVALID_DATA);
@@ -675,9 +850,10 @@ Json Handle(const Json& req) {
             return Result(false, "顺序保存失败", ERROR_WRITE_FAULT);
         }
         result["saved"] = true;
-    } else if (method == "internal.openUi")
+    } else if (method == "internal.openUi") {
         OpenUI();
-    else if (method == "internal.shellCreated") {
+        ownOpenQueued = false;
+    } else if (method == "internal.shellCreated") {
         ownAdded = false;
         SetOwnIcon();
         seenSequence = -1;
@@ -812,6 +988,8 @@ Json Handle(const Json& req) {
             settings["hotkeys"].erase("restoreIcons");
         for (auto& entry : settings["rules"])
             entry["enabled"] = true;
+        for (const auto& entry : list)
+            InvalidateRule(ParseRule(entry).selector);
         LoadRules();
         seenSequence = -1;
         Refresh();
@@ -846,6 +1024,7 @@ Json Handle(const Json& req) {
             settings["hotkeys"].erase("restoreIcons");
         for (auto& entry : settings["rules"])
             entry["enabled"] = true;
+        InvalidateRule(rule.selector, priorKey);
         LoadRules();
         seenSequence = -1;
         Refresh();
@@ -856,7 +1035,9 @@ Json Handle(const Json& req) {
                 result["saved"] = true;
                 break;
             }
-    } else if (method == "ownIcon.apply") {
+    } else if (method == "icon.visibility")
+        result = SetIconVisibility(d);
+    else if (method == "ownIcon.apply") {
         auto saved = settings;
         settings["ownIcon"] = d;
         if (!Persist()) {
@@ -870,15 +1051,14 @@ Json Handle(const Json& req) {
     } else if (method == "settings.apply") {
         auto saved = settings;
         for (auto& [key, value] : d.items())
-            if (key != "schema" && key != "rules" && key != "ownIcon" && key != "revision")
+            if (key != "schema" && key != "rules" && key != "ownIcon" && key != "revision" &&
+                key != "newIconLocation")
                 settings[key] = value;
         if (!Persist()) {
             settings = saved;
             return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
         }
         bool ok = !d.contains("startup") || SetStartup(settings.value("startup", false));
-        applied.clear();
-        seenSequence = -1;
         ScheduleHotkeys();
         result = Result(ok, ok ? "设置已保存" : "已保存，自启动设置失败", ok ? 0 : GetLastError());
         result["saved"] = true;
@@ -920,6 +1100,7 @@ Json Handle(const Json& req) {
         SetTimer(window, 2, 100, nullptr);
     } else
         return Result(false, "未知命令", ERROR_INVALID_FUNCTION);
+    result["revision"] = configRevision;
     result["requestId"] = req.value("requestId", std::string{});
     return result;
 }
@@ -988,6 +1169,9 @@ DWORD WINAPI Worker(void*) {
             } catch (const std::exception& e) {
                 request->output = Result(false, e.what(), ERROR_INVALID_DATA);
             }
+            if (request->input.is_object() && request->input.contains("method") &&
+                request->input["method"] == "internal.openUi")
+                ownOpenQueued = false;
             RemovePropW(window, L"TrayAssistant.Busy");
             request->output["requestId"] = request->input.is_object() &&
                                                    request->input.contains("requestId") &&
@@ -1100,8 +1284,11 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         auto event = LOWORD(lp);
         if (event == WM_CONTEXTMENU)
             TrayMenu();
-        else if (event == NIN_SELECT || event == NIN_KEYSELECT || event == WM_LBUTTONDBLCLK)
-            PostJob("internal.openUi");
+        else if (event == NIN_SELECT || event == NIN_KEYSELECT || event == WM_LBUTTONUP ||
+                 event == WM_LBUTTONDBLCLK) {
+            if (!ownOpenQueued.exchange(true))
+                PostJob("internal.openUi");
+        }
         return 0;
     }
     if (msg == WM_CLOSE) {

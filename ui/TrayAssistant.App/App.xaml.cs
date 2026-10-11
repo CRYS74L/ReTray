@@ -54,6 +54,11 @@ public partial class App : Application
         IsExiting = true;
         try
         {
+            if (Window.Content is Panel root && root.Children.OfType<Frame>().FirstOrDefault()?.Content is MainPage page && !await page.Vm.FlushChangesAsync())
+            {
+                IsExiting = false;
+                return;
+            }
             var until = DateTime.UtcNow.AddSeconds(2);
             var window = FindWindow("TrayAssistant.Agent", null);
             while (window == 0 && agent is { HasExited: false } && DateTime.UtcNow < until)

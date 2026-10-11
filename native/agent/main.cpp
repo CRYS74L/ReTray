@@ -22,6 +22,7 @@ using namespace tray;
 namespace {
 constexpr UINT OwnCallback = WM_APP + 101, OpenMessage = WM_APP + 102, UpdateHotkeys = WM_APP + 103;
 HWND window{};
+std::atomic<HWND> uiWindow{};
 
 HANDLE stopEvent{}, pipeThread{}, workerThread{}, workEvent{}, endingEvent{}, singleton{};
 DWORD session{};
@@ -672,6 +673,18 @@ Json CatalogJson() {
     }
     return {{"icons", icons}, {"revision", catalog.revision}};
 }
+bool IsAssistantUi(HWND hwnd) {
+    if (!IsWindow(hwnd)) return false;
+    DWORD pid{};
+    GetWindowThreadProcessId(hwnd, &pid);
+    HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!process) return false;
+    wchar_t path[32768]{};
+    DWORD length = std::size(path);
+    bool read = QueryFullProcessImageNameW(process, 0, path, &length) != FALSE;
+    CloseHandle(process);
+    return read && _wcsicmp(path, (root / L"TrayAssistant.App.exe").c_str()) == 0;
+}
 Json Handle(const Json& req) {
     if (!req.is_object())
         return Result(false, "请求必须是对象", ERROR_INVALID_DATA);
@@ -682,7 +695,11 @@ Json Handle(const Json& req) {
     if (!d.is_object())
         return Result(false, "命令参数必须是对象", ERROR_INVALID_DATA);
     Json result = Result(true);
-    if (method == "icons.reorder") {
+    if (method == "ui.attach") {
+        auto hwnd = reinterpret_cast<HWND>(d.at("hwnd").get<uintptr_t>());
+        if (!IsAssistantUi(hwnd)) return Result(false, "界面窗口身份不匹配", ERROR_INVALID_WINDOW_HANDLE);
+        uiWindow = hwnd;
+    } else if (method == "icons.reorder") {
         auto keys = d.at("keys");
         if (!keys.is_array() || keys.size() > MaxBridgeIcons)
             return Result(false, "图标顺序无效", ERROR_INVALID_DATA);
@@ -901,7 +918,7 @@ Json Handle(const Json& req) {
             settings = saved;
             return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
         }
-        bool ok = SetStartup(settings.value("startup", false));
+        bool ok = !d.contains("startup") || SetStartup(settings.value("startup", false));
         applied.clear();
         seenSequence = -1;
         ScheduleHotkeys();
@@ -1066,8 +1083,11 @@ void TrayMenu() {
     PostMessageW(window, WM_NULL, 0, 0);
     if (selected == 1)
         PostJob("internal.openUi");
-    else if (selected == 2)
-        PostMessageW(window, WM_CLOSE, 0, 0);
+    else if (selected == 2) {
+        auto ui = uiWindow.load();
+        if (!IsAssistantUi(ui) || !PostMessageW(ui, WM_CLOSE, 0, 0))
+            PostMessageW(window, WM_CLOSE, 0, 0);
+    }
 }
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     static UINT taskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");

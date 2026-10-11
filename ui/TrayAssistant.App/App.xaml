@@ -3,7 +3,8 @@
     x:Class="TrayAssistant_App.App"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-    xmlns:local="using:TrayAssistant_App">
+    xmlns:local="using:TrayAssistant_App"
+    xmlns:controls="using:TrayAssistant_App.Controls">
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
@@ -13,14 +14,65 @@
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FFF3F3F3" />
+                    <SolidColorBrush x:Key="CaptionHoverBrush" Color="#FFE2E2E2" />
+                    <SolidColorBrush x:Key="CaptionPressedBrush" Color="#FFD3D3D3" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FF292929" />
+                    <SolidColorBrush x:Key="CaptionHoverBrush" Color="#FF484848" />
+                    <SolidColorBrush x:Key="CaptionPressedBrush" Color="#FF555555" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
                     <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="{ThemeResource SystemColorWindowColor}" />
+                    <SolidColorBrush x:Key="CaptionHoverBrush" Color="{ThemeResource SystemColorHighlightColor}" />
+                    <SolidColorBrush x:Key="CaptionPressedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
+            <Style x:Key="OpaqueSelectionFlyoutStyle" TargetType="MenuFlyoutPresenter">
+                <Setter Property="Background" Value="{ThemeResource ComboBoxDropDownBackground}"/>
+                <Setter Property="MaxHeight" Value="280"/>
+            </Style>
+            <Style x:Key="InlineToggleStyle" TargetType="ToggleSwitch" BasedOn="{StaticResource DefaultToggleSwitchStyle}">
+                <Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="0"/>
+                <Setter Property="OnContent" Value=""/><Setter Property="OffContent" Value=""/>
+                <Setter Property="HorizontalAlignment" Value="Right"/><Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+            <Style TargetType="ToggleSwitch" BasedOn="{StaticResource InlineToggleStyle}"/>
+            <Style x:Key="CaptionButtonStyle" TargetType="Button">
+                <Setter Property="Width" Value="46"/><Setter Property="Height" Value="32"/>
+                <Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="0"/>
+                <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}"/>
+                <Setter Property="UseSystemFocusVisuals" Value="True"/>
+                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
+                    <Grid x:Name="Surface" Background="{TemplateBinding Background}">
+                        <VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="CommonStates">
+                            <VisualState x:Name="Normal"/>
+                            <VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="Surface.Background" Value="{ThemeResource CaptionHoverBrush}"/></VisualState.Setters></VisualState>
+                            <VisualState x:Name="Pressed"><VisualState.Setters><Setter Target="Surface.Background" Value="{ThemeResource CaptionPressedBrush}"/></VisualState.Setters></VisualState>
+                            <VisualState x:Name="Disabled"><VisualState.Setters><Setter Target="Surface.Opacity" Value="0.45"/></VisualState.Setters></VisualState>
+                        </VisualStateGroup></VisualStateManager.VisualStateGroups>
+                        <ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Grid>
+                </ControlTemplate></Setter.Value></Setter>
+            </Style>
+            <Style x:Key="EdgeScrollViewerStyle" TargetType="ScrollViewer" BasedOn="{StaticResource DefaultScrollViewerStyle}">
+                <Setter Property="VerticalScrollBarVisibility" Value="Visible"/>
+                <Setter Property="HorizontalScrollBarVisibility" Value="Disabled"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ScrollViewer">
+                    <Border x:Name="Root" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
+                        <Grid Background="{TemplateBinding Background}">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="20"/></Grid.ColumnDefinitions>
+                            <ScrollContentPresenter x:Name="ScrollContentPresenter" ContentTemplate="{TemplateBinding ContentTemplate}" Margin="{TemplateBinding Padding}"/>
+                            <ScrollBar x:Name="VerticalScrollBar" controls:ScrollBarAppearance.Persistent="True" Grid.Column="1" Width="16" MinWidth="16" Margin="2,0" IsTabStop="False" Orientation="Vertical" IndicatorMode="MouseIndicator"
+                                Maximum="{TemplateBinding ScrollableHeight}" Value="{TemplateBinding VerticalOffset}" ViewportSize="{TemplateBinding ViewportHeight}"/>
+                        </Grid>
+                    </Border>
+                </ControlTemplate></Setter.Value></Setter>
+            </Style>
+            <ControlTemplate x:Key="PersistentScrollThumbTemplate" TargetType="Thumb">
+                <Grid Background="Transparent"><Border Width="6" HorizontalAlignment="Center" Background="{TemplateBinding Background}" CornerRadius="3"/></Grid>
+            </ControlTemplate>
         </ResourceDictionary>
     </Application.Resources>
 </Application>

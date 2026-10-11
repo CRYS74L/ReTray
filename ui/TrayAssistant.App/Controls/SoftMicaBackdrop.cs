@@ -7,6 +7,7 @@ namespace TrayAssistant_App.Controls;
 
 public sealed class SoftMicaBackdrop : SystemBackdrop
 {
+    public ElementTheme InitialTheme { get; set; } = ElementTheme.Default;
     private MicaController? controller;
     private bool? darkAppearance;
     private FrameworkElement? themeRoot;
@@ -37,16 +38,21 @@ public sealed class SoftMicaBackdrop : SystemBackdrop
     private void ApplyAppearance(SystemBackdropConfiguration configuration, XamlRoot root)
     {
         if (controller == null) return;
-        var dark = root.Content is FrameworkElement element
-            ? element.ActualTheme == ElementTheme.Dark
-            : configuration.Theme == SystemBackdropTheme.Dark;
+        var theme = root.Content is FrameworkElement element && element.RequestedTheme != ElementTheme.Default
+            ? element.RequestedTheme
+            : InitialTheme != ElementTheme.Default && themeRoot?.IsLoaded != true
+                ? InitialTheme
+                : root.Content is FrameworkElement actual ? actual.ActualTheme : ElementTheme.Default;
+        var dark = theme == ElementTheme.Dark || (theme == ElementTheme.Default && configuration.Theme == SystemBackdropTheme.Dark);
+        configuration.Theme = dark ? SystemBackdropTheme.Dark : SystemBackdropTheme.Light;
+        configuration.IsInputActive = true;
         if (darkAppearance == dark) return;
         darkAppearance = dark;
-        var color = dark ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243);
+        var color = dark ? Windows.UI.Color.FromArgb(255, 80, 80, 80) : Windows.UI.Color.FromArgb(255, 243, 243, 243);
         controller.TintColor = color;
         controller.FallbackColor = color;
         // Keep BaseAlt's wallpaper material, with a more neutral tint than its vivid default.
-        controller.TintOpacity = dark ? 0.65f : 0.68f;
+        controller.TintOpacity = dark ? 0.60f : 0.68f;
         controller.LuminosityOpacity = 1.0f;
     }
 

@@ -20,6 +20,12 @@ public static class Localization
         ["助手图标"]="Assistant icon",
         ["选择助手图标…"]="Choose assistant icon…",
         ["主题"]="Theme",
+        ["浅色"]="Light",
+        ["深色"]="Dark",
+        ["保持原位置"]="Keep original location",
+        ["左键"]="Left click",
+        ["左键双击"]="Left double click",
+        ["右键双击"]="Right double click",
         ["隐藏开始按钮"]="Hide Start",
         ["任务栏不透明度"]="Taskbar opacity",
         ["助手窗口置顶"]="Keep assistant on top",
@@ -90,11 +96,13 @@ public static class Localization
         if(root is ListView or InfoBar)return;
         if(root is TextBlock text)text.Text=Text(text.Text);
         if(root is ContentControl content)content.Content=Translate(content.Content);
+        if(root is NavigationViewItem)return;
         if(root is TextBox box){box.Header=Translate(box.Header);box.PlaceholderText=Text(box.PlaceholderText);}
         if(root is NumberBox number)number.Header=Translate(number.Header);
         if(root is Slider slider)slider.Header=Translate(slider.Header);
         if(root is ToggleSwitch toggle){toggle.Header=Translate(toggle.Header);toggle.OnContent=Translate(toggle.OnContent);toggle.OffContent=Translate(toggle.OffContent);}
         if(root is ComboBox combo){combo.Header=Translate(combo.Header);int selected=combo.SelectedIndex;bool changed=false;for(int i=0;i<combo.Items.Count;i++)if(combo.Items[i] is string item){var translated=Text(item);if(translated!=item){combo.Items[i]=translated;changed=true;}}if(changed)combo.SelectedIndex=selected;}
+        if(root is Controls.BelowComboBox selector){selector.Header=Translate(selector.Header);for(int i=0;i<selector.Items.Count;i++)if(selector.Items[i] is string item&&Text(item)!=item)selector.Items[i]=Text(item);}
         if(root is Expander expander)expander.Header=Translate(expander.Header);
         for(int n=0;n<VisualTreeHelper.GetChildrenCount(root);n++)ApplyCore(VisualTreeHelper.GetChild(root,n));
     }

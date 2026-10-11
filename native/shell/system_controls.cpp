@@ -52,6 +52,6 @@ bool ReadSystemControls(uint64_t base,const SymbolAdapter& adapter,BridgeState& 
     return state.systemCount>0;
     }catch(...){return false;}
 }
-bool SetSystemControl(uint32_t id,int visibility){bool found=false;try{for(auto& c:controls)if(c.id==id){found=true;if(visibility==-1)Restore(c);else{c.element.Visibility(visibility==1?Visibility::Collapsed:Visibility::Visible);c.changed=true;}}return found;}catch(...){return false;}}
-void RestoreSystemControls(){for(auto& c:controls)try{Restore(c);}catch(...){}controls.clear();}
+bool SetSystemControl(uint32_t id,int visibility){bool found=false;try{for(auto& c:controls)if(c.id==id){found=true;if(visibility!=1)Restore(c);else{c.element.Visibility(visibility==1?Visibility::Collapsed:Visibility::Visible);c.changed=true;}}return found;}catch(...){return false;}}
+void RestoreSystemControls(bool restore){if(restore)for(auto& c:controls)try{Restore(c);}catch(...){}controls.clear();}
 }

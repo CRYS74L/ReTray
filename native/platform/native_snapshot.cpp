@@ -24,6 +24,11 @@ SymbolAdapter LoadAdapter(const std::filesystem::path& file) {
     FIELD(vectorBegin); FIELD(vectorEnd); FIELD(window); FIELD(uid); FIELD(guid); FIELD(version); FIELD(callback); FIELD(tip); FIELD(imageObject);
     FIELD(cachedIcon); FIELD(setIcon); FIELD(getIcon);
     #undef FIELD
+    // Internal callers have a build-specific ABI. A matching PE alone must not
+    // allow a damaged manifest to substitute a different function or layout.
+    const uint32_t expected[]={0x2430e8,0x260,0x240,0x18,0x20,0x1c79a0,0x77270,0x7d790,0x58,0x60,0x50,0x58,0x5c,0x94,0x98,0xa0,0xc8,0x130,0x3fd98,0x287b0};
+    const uint32_t actual[]={a.root,a.model,a.manager,a.promoted,a.overflow,a.itemVtable,a.vectorAt,a.vectorSize,a.vectorBegin,a.vectorEnd,a.window,a.uid,a.guid,a.version,a.callback,a.tip,a.imageObject,a.cachedIcon,a.setIcon,a.getIcon};
+    if(!std::equal(std::begin(expected),std::end(expected),std::begin(actual)))throw std::runtime_error("Adapter layout is not an implemented ABI");
     for(const auto& check:j.at("checks")) {
         std::string text=check.at("bytes"); if(text.size()!=32) throw std::runtime_error("Invalid adapter code check");
         std::array<uint8_t,16> bytes{}; for(size_t i=0;i<16;++i) bytes[i]=static_cast<uint8_t>(std::stoul(text.substr(i*2,2),nullptr,16));

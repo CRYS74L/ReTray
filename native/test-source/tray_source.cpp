@@ -1,9 +1,12 @@
 #include "../core/types.h"
 #include <array>
+#include <algorithm>
+#include <unordered_set>
 using namespace tray;
 constexpr UINT Callback=WM_APP+9,ChangeColor=WM_APP+10,MakeOff=WM_APP+11,StopSource=WM_APP+12;
 struct SourceStatus {uint32_t magic,pid;uint64_t hwnd;volatile LONG callbacks,menus;uint64_t lastW,lastL;};
 SourceStatus* status{};HANDLE map{};HICON current{};HWND window{};
+std::unordered_set<uint32_t> extras;
 const GUID GuidIcon={0x31415926,0x1011,0x2022,{0x93,0x24,0x45,0x66,0x87,0xa8,0xc9,0xea}};
 HICON CreateColor(uint32_t color) {
     BITMAPV5HEADER header{};header.bV5Size=sizeof(header);header.bV5Width=32;header.bV5Height=-32;header.bV5Planes=1;header.bV5BitCount=32;header.bV5Compression=BI_BITFIELDS;
@@ -19,13 +22,18 @@ NOTIFYICONDATAW Data(bool guid,DWORD flags) {
 }
 void Update(uint32_t color){auto next=CreateColor(color);auto old=current;current=next;for(bool guid:{false,true}){auto data=Data(guid,NIF_ICON);Shell_NotifyIconW(NIM_MODIFY,&data);}if(old)DestroyIcon(old);}
 LRESULT CALLBACK Procedure(HWND hwnd,UINT message,WPARAM w,LPARAM l) {
+    if(message==WM_APP+20){for(uint32_t i=0;i<std::min<uint32_t>(200,w);++i){auto data=Data(false,NIF_ICON|NIF_TIP|NIF_MESSAGE);data.uID=100+i;wcscpy_s(data.szTip,L"TrayAssistant load test");if(Shell_NotifyIconW(NIM_ADD,&data))extras.insert(data.uID);}return 1;}
+    if(message==WM_APP+21){for(auto id:extras){auto data=Data(false,0);data.uID=id;Shell_NotifyIconW(NIM_DELETE,&data);}extras.clear();return 1;}
+    if(message==WM_APP+22){for(uint32_t i=0;i<std::min<uint32_t>(100,w);++i){auto data=Data(false,NIF_ICON|NIF_TIP|NIF_MESSAGE);data.uID=400;Shell_NotifyIconW(NIM_ADD,&data);Shell_NotifyIconW(NIM_DELETE,&data);}return 1;}
+    if(message==WM_APP+23){for(uint32_t i=0;i<std::min<uint32_t>(1000,w);++i)Update(i%2?0xff248954:0);return 1;}
+    if(message==WM_APP+24){auto data=Data(false,0);return Shell_NotifyIconW(NIM_SETFOCUS,&data);}
     if(message==ChangeColor){Update(static_cast<uint32_t>(w));return 0;}
     if(message==MakeOff){Update(0);return 0;}
     if(message==StopSource){DestroyWindow(hwnd);return 0;}
     if(message==Callback){InterlockedIncrement(&status->callbacks);status->lastW=w;status->lastL=l;UINT event=LOWORD(l);if(event==WM_RBUTTONUP||event==WM_CONTEXTMENU){InterlockedIncrement(&status->menus);HMENU menu=CreatePopupMenu();AppendMenuW(menu,MF_STRING,1,L"Test original menu");POINT point{};GetCursorPos(&point);SetForegroundWindow(hwnd);TrackPopupMenu(menu,TPM_RETURNCMD|TPM_NONOTIFY,point.x,point.y,0,hwnd,nullptr);DestroyMenu(menu);}return 0;}
     if(message==WM_QUERYENDSESSION)return TRUE;
     if(message==WM_ENDSESSION&&w){DestroyWindow(hwnd);return 0;}
-    if(message==WM_DESTROY){for(bool guid:{false,true}){auto data=Data(guid,0);Shell_NotifyIconW(NIM_DELETE,&data);}PostQuitMessage(0);return 0;}
+    if(message==WM_DESTROY){for(auto id:extras){auto data=Data(false,0);data.uID=id;Shell_NotifyIconW(NIM_DELETE,&data);}extras.clear();for(bool guid:{false,true}){auto data=Data(guid,0);Shell_NotifyIconW(NIM_DELETE,&data);}PostQuitMessage(0);return 0;}
     return DefWindowProcW(hwnd,message,w,l);
 }
 int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,LPWSTR,int) {

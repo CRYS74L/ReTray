@@ -25,4 +25,10 @@ $badPath=Join-Path $work 'bad-code.json'
 [System.IO.File]::WriteAllText($badPath,($bad|ConvertTo-Json -Depth 9),[System.Text.UTF8Encoding]::new($false))
 & $exe $badPath
 if($LASTEXITCODE -eq 0){throw 'Wrong code signature was accepted'}
+$bad=Get-Content -LiteralPath $adapterPath -Raw | ConvertFrom-Json
+$bad.adapters[0].setIcon+=16
+$badPath=Join-Path $work 'bad-method.json'
+[System.IO.File]::WriteAllText($badPath,($bad|ConvertTo-Json -Depth 9),[System.Text.UTF8Encoding]::new($false))
+& $exe $badPath
+if($LASTEXITCODE -eq 0){throw 'Modified internal caller ABI was accepted'}
 Write-Host ('PASS real native snapshot + identity uniqueness + mismatched PDB/code rejection; live records: {0}' -f $snapshot.icons.Count)

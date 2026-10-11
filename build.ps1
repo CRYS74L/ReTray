@@ -1,4 +1,4 @@
-param([ValidateSet('CoreTests','Probe','Agent','Bridge','BridgeTest','BridgeControls','Source','SettingsTests','SystemControls','All')][string]$Target='CoreTests',[string]$Filter='')
+param([ValidateSet('CoreTests','Probe','Agent','Bridge','BridgeTest','BridgeControls','Source','SettingsTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
 $ErrorActionPreference='Stop'
 $productRoot=$PSScriptRoot
 $workspaceBase=Split-Path -Parent (Split-Path -Parent $productRoot)
@@ -11,7 +11,7 @@ $cppWinrt=Join-Path $workspaceBase '【Common】\WindowsSDK\10.0.28000.2705\micr
 $commonArgs+=@('-fms-extensions','-Wno-nonportable-include-path','-I',$cppWinrt)
 if ($Target -eq 'CoreTests') {
     $exe=Join-Path $outputRoot 'CoreTests.exe'
-    & $clang @commonArgs (Join-Path $productRoot 'tests\core_tests.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\platform\software_bitmap.cpp') '-o' $exe '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject'
+    & $clang @commonArgs (Join-Path $productRoot 'tests\core_tests.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\protection.cpp') (Join-Path $productRoot 'native\platform\software_bitmap.cpp') '-o' $exe '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt'
     if ($LASTEXITCODE -ne 0) { throw 'Core test build failed' }
     & $exe $Filter
     exit $LASTEXITCODE
@@ -37,18 +37,18 @@ if ($Target -eq 'BridgeControls') {
     exit 0
 }
 if ($Target -eq 'Bridge') {
-    & $clang @commonArgs '-shared' (Join-Path $productRoot 'native\shell\bridge_entry.cpp') (Join-Path $productRoot 'native\shell\system_controls.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\platform\software_bitmap.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') '-o' (Join-Path $outputRoot 'TrayAssistant.ShellBridge.dll') '-luser32' '-lgdi32' '-lshell32' '-lcomctl32' '-lole32' '-loleaut32' '-lruntimeobject'
+    & $clang @commonArgs '-shared' (Join-Path $productRoot 'native\shell\bridge_entry.cpp') (Join-Path $productRoot 'native\shell\system_controls.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\platform\software_bitmap.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') '-o' (Join-Path $outputRoot 'TrayAssistant.ShellBridge.dll') '-luser32' '-lgdi32' '-lshell32' '-lcomctl32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt'
     if($LASTEXITCODE -ne 0){throw 'Bridge build failed'}
     exit 0
 }
 if ($Target -eq 'SettingsTests') {
-    & $clang @commonArgs '-municode' (Join-Path $productRoot 'tests\settings_tests.cpp') (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') '-o' (Join-Path $outputRoot 'SettingsTests.exe') '-luser32' '-lgdi32' '-lshell32' '-lole32' '-lgdiplus'
+    & $clang @commonArgs '-municode' (Join-Path $productRoot 'tests\settings_tests.cpp') (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\protection.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') '-o' (Join-Path $outputRoot 'SettingsTests.exe') '-luser32' '-lgdi32' '-lshell32' '-lole32' '-lgdiplus' '-lbcrypt'
     if($LASTEXITCODE -ne 0){throw 'Settings tests build failed'}
     & (Join-Path $outputRoot 'SettingsTests.exe') (Join-Path $productRoot 'artifacts\settings-fixture')
     exit $LASTEXITCODE
 }
 if ($Target -eq 'Agent') {
-    & $clang @commonArgs '-municode' '-mwindows' (Join-Path $productRoot 'native\agent\main.cpp') (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\shell\bridge_client.cpp') '-o' (Join-Path $outputRoot 'TrayAssistant.Agent.exe') '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-ladvapi32' '-lgdiplus' '-luuid'
+    & $clang @commonArgs '-municode' '-mwindows' (Join-Path $productRoot 'native\agent\main.cpp') (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\protection.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\shell\bridge_client.cpp') '-o' (Join-Path $outputRoot 'TrayAssistant.Agent.exe') '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt' '-ladvapi32' '-lbcrypt' '-lgdiplus' '-lbcrypt' '-luuid'
     if($LASTEXITCODE -ne 0){throw 'Agent build failed'}
     Copy-Item -LiteralPath (Join-Path $productRoot 'native\platform\supported-adapters.json') -Destination $outputRoot -Force
     exit 0
@@ -58,5 +58,10 @@ if ($Target -eq 'SystemControls') {
     if($LASTEXITCODE -ne 0){throw 'System controls tests build failed'}
     & (Join-Path $outputRoot 'SystemControls.exe') (Join-Path $productRoot 'native\platform\supported-adapters.json') (Join-Path $outputRoot 'TrayAssistant.ShellBridge.dll')
     exit $LASTEXITCODE
+}
+if ($Target -eq 'Stress') {
+    & $clang @commonArgs '-municode' (Join-Path $productRoot 'tests\bridge_stress.cpp') (Join-Path $productRoot 'native\shell\bridge_client.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\core\types.cpp') '-o' (Join-Path $outputRoot 'BridgeStress.exe') '-luser32' '-lgdi32' '-lshell32' '-lole32' '-ladvapi32'
+    if($LASTEXITCODE -ne 0){throw 'Stress tests build failed'}
+    exit 0
 }
 throw "Target $Target has not been implemented"

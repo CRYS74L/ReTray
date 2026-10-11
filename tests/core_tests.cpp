@@ -2,6 +2,7 @@
 #include "../native/platform/software_bitmap.h"
 #include "../native/core/notify_patch.h"
 #include "../native/core/rule_engine.h"
+#include "../native/core/protection.h"
 #include "../native/platform/bitmap_bytes.h"
 #include <winrt/windows.graphics.imaging.h>
 #include <winrt/windows.foundation.h>
@@ -71,7 +72,10 @@ int main(int argc,char** argv) {
     test("Catalog.DeleteRemovesRuntimeOnly",[]{IconCatalog c;SnapshotResult s;s.complete=true;s.records.resize(1);s.records[0].executable=L"C:\\Example.exe";auto selector=SelectorFor(s.records[0]);auto key=PersistentKey(selector);MergeSnapshot(c,s,100);s.records.clear();REQUIRE(MergeSnapshot(c,s,200).removed==1);REQUIRE(c.items.empty());REQUIRE(PersistentKey(selector)==key);});
     test("Catalog.ThousandUpdatesKeepSelectionAndIdentity",[]{IconCatalog c;SnapshotResult s;s.complete=true;s.records.resize(2);auto& a=s.records[0];a.identity.ownerPid=42;a.identity.ownerCreatedAt=1;a.identity.ownerHwnd=100;a.identity.uid=7;auto& b=s.records[1];b=a;b.identity.hasGuid=true;b.identity.guid.Data1=55;MergeSnapshot(c,s,1);c.selected=IdentityKey(b.identity);for(int n=0;n<1000;++n){a.currentFrame.fingerprint=n;REQUIRE(MergeSnapshot(c,s,n+2).accepted);REQUIRE(c.items.size()==2);REQUIRE(c.selected==IdentityKey(b.identity));}REQUIRE(c.items.at(IdentityKey(a.identity)).activity.lastFrameChange==1001);});
     test("Rule.DistinguishesGuidFromLegacy",[]{NativeIconRecord r;r.executable=L"C:\\Example.exe";r.identity.uid=7;auto legacy=SelectorFor(r);r.identity.hasGuid=true;r.identity.guid.Data1=55;auto guid=SelectorFor(r);REQUIRE(PersistentKey(legacy)!=PersistentKey(guid));REQUIRE(!Matches(legacy,r));REQUIRE(Matches(guid,r));});
-    test("Rule.MatchesRestartWithoutTooltipOrHandles",[]{NativeIconRecord r;r.executable=L"C:\\Example.exe";r.windowClass=L"App";r.identity.uid=7;auto s=SelectorFor(r);r.tip=L"new message";r.identity.ownerCreatedAt=999;r.identity.ownerHwnd=456;REQUIRE(Matches(s,r));r.executable=L"c:\\EXAMPLE.EXE";REQUIRE(Matches(s,r));r.identity.uid=8;REQUIRE(!Matches(s,r));});
+    test("Rule.MatchesRestartWithoutTooltipOrHandles",[]{NativeIconRecord r;r.executable=L"C:\\Example.exe";r.windowClass=L"App";r.identity.uid=7;auto s=SelectorFor(r);r.tip=L"new message";r.identity.ownerCreatedAt=999;r.identity.ownerHwnd=456;REQUIRE(Matches(s,r));r.executable=L"c:\\EXAMPLE.EXE";r.windowClass=L"App_NewSession";REQUIRE(Matches(s,r));r.identity.uid=8;REQUIRE(!Matches(s,r));});
     test("Activity.FrameAndAccessTimersAreSeparate",[]{IconRule r;r.inactiveSeconds=10;ActivityState a{1000,1000,1};REQUIRE(IsInactive(r,a,11000));RecordAccess(a,11000);REQUIRE(a.lastFrameChange==1000);REQUIRE(!IsInactive(r,a,11000));REQUIRE(IsInactive(r,a,21000));r.alwaysShow=true;REQUIRE(!IsInactive(r,a,999999));});
+    test("Protection.SaltedDigestAndCorrectSecret",[]{PasswordDigest a,b;REQUIRE(CreatePasswordDigest("synthetic-test-only",a));REQUIRE(CreatePasswordDigest("synthetic-test-only",b));REQUIRE(a.salt!=b.salt);REQUIRE(a.hash!=b.hash);REQUIRE(VerifyPassword("synthetic-test-only",a));REQUIRE(!VerifyPassword("wrong-test-value",a));});
+    test("Protection.RejectsEmptyAndMalformedParameters",[]{PasswordDigest d;REQUIRE(!CreatePasswordDigest("",d));d.iterations=1;REQUIRE(!VerifyPassword("synthetic-test-only",d));d.iterations=999999999;REQUIRE(!VerifyPassword("synthetic-test-only",d));});
+    test("Session.QueryDuringStartupRetainsCompletedConnection",[]{SessionMachine m;m.state=SessionState::WaitingForShell;HandleSessionQuery(m);SetOperationalState(m,SessionState::Ready);REQUIRE(m.state==SessionState::SessionQuery);HandleSessionEnd(m,false);REQUIRE(m.state==SessionState::Ready);SetOperationalState(m,SessionState::Reconnecting);REQUIRE(m.state==SessionState::Reconnecting);m.state=SessionState::UserStopping;SetOperationalState(m,SessionState::Ready);REQUIRE(m.state==SessionState::UserStopping);});
     printf("RESULT passed=%d failed=%d\n",passed,failed); return failed?1:0;
 }

@@ -32,15 +32,22 @@ FrameDecision ChooseFrame(const Frame& source,const FrameBaseline& baseline,bool
     return FrameDecision::NativeDynamic;
 }
 bool HandleSessionQuery(SessionMachine& machine) {
-    if(!machine.queryPending){machine.beforeQuery=machine.state;machine.queryPending=true;}
+    std::lock_guard lock(machine.transition);
+    if(!machine.queryPending){machine.beforeQuery=machine.state.load();machine.queryPending=true;}
     machine.state=SessionState::SessionQuery;return true;
 }
 void HandleSessionEnd(SessionMachine& machine,bool ending) {
+    std::lock_guard lock(machine.transition);
     if(ending)machine.state=SessionState::SessionEnding;
-    else if(machine.queryPending)machine.state=machine.beforeQuery;
+    else if(machine.queryPending)machine.state=machine.beforeQuery.load();
     machine.queryPending=false;
 }
 bool ShouldRecover(const SessionMachine& machine) {
     return !machine.queryPending && (machine.state==SessionState::Starting||machine.state==SessionState::WaitingForShell||machine.state==SessionState::Ready||machine.state==SessionState::Reconnecting);
+}
+void SetOperationalState(SessionMachine& machine,SessionState next){
+    std::lock_guard lock(machine.transition);
+    if(machine.state==SessionState::UserStopping||machine.state==SessionState::SessionEnding)return;
+    if(machine.queryPending)machine.beforeQuery=next;else machine.state=next;
 }
 }

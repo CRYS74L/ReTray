@@ -2,7 +2,7 @@
 #include "types.h"
 #include <unordered_map>
 namespace tray {
-struct RuleSelector { std::wstring executable,windowClass; uint32_t uid{}; bool hasGuid{}; GUID guid{}; };
+struct RuleSelector { std::wstring executable,windowClass; uint32_t uid{}; bool hasGuid{}; GUID guid{};std::wstring tipPattern;uint32_t tipMode{},ownerPid{};uint64_t ownerCreatedAt{}; };
 struct IconRule {
     RuleSelector selector; int visibility{-1},location{-1},order{-1};
     std::wstring asset,tip; bool enabled{true},menuVisible{true},alwaysShow{};

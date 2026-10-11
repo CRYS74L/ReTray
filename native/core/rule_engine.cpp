@@ -5,15 +5,17 @@
 #include <unordered_set>
 namespace tray {
 static std::wstring Normalize(std::wstring text){for(auto& c:text){if(c==L'/')c=L'\\';c=static_cast<wchar_t>(towlower(c));}return text;}
-RuleSelector SelectorFor(const NativeIconRecord& r){return {Normalize(r.executable),r.windowClass,r.identity.uid,r.identity.hasGuid,r.identity.guid};}
+RuleSelector SelectorFor(const NativeIconRecord& r){RuleSelector s;s.executable=Normalize(r.executable);s.uid=r.identity.uid;s.hasGuid=r.identity.hasGuid;s.guid=r.identity.guid;return s;}
 std::string PersistentKey(const RuleSelector& s){
     wchar_t guid[40]{};StringFromGUID2(s.guid,guid,40);
-    auto value=Normalize(s.executable)+L"|"+s.windowClass+(s.hasGuid?L"|guid:"+std::wstring(guid):L"|uid:"+std::to_wstring(s.uid));
+    auto value=Normalize(s.executable)+L"|"+s.windowClass+(s.hasGuid?L"|guid:"+std::wstring(guid):L"|uid:"+std::to_wstring(s.uid))+L"|"+std::to_wstring(s.tipMode)+L":"+s.tipPattern+L"|"+std::to_wstring(s.ownerPid)+L":"+std::to_wstring(s.ownerCreatedAt);
     int size=WideCharToMultiByte(CP_UTF8,0,value.data(),static_cast<int>(value.size()),nullptr,0,nullptr,nullptr);
     std::string key(size,0);WideCharToMultiByte(CP_UTF8,0,value.data(),static_cast<int>(value.size()),key.data(),size,nullptr,nullptr);return key;
 }
 bool Matches(const RuleSelector& s,const NativeIconRecord& r){
-    return !s.executable.empty()&&Normalize(s.executable)==Normalize(r.executable)&&s.windowClass==r.windowClass&&s.hasGuid==r.identity.hasGuid&&(s.hasGuid?IsEqualGUID(s.guid,r.identity.guid):s.uid==r.identity.uid);
+    if(s.executable.empty()||Normalize(s.executable)!=Normalize(r.executable)||(!s.windowClass.empty()&&s.windowClass!=r.windowClass)||s.hasGuid!=r.identity.hasGuid||!(s.hasGuid?IsEqualGUID(s.guid,r.identity.guid):s.uid==r.identity.uid))return false;
+    if(s.ownerPid&&(s.ownerPid!=r.identity.ownerPid||s.ownerCreatedAt!=r.identity.ownerCreatedAt))return false;
+    if(s.tipMode==1)return r.tip==s.tipPattern;if(s.tipMode==2)return r.tip.starts_with(s.tipPattern);if(s.tipMode==3)return r.tip.find(s.tipPattern)!=std::wstring::npos;return s.tipMode==0;
 }
 CatalogDelta MergeSnapshot(IconCatalog& catalog,const SnapshotResult& snapshot,uint64_t now){
     CatalogDelta delta;if(!snapshot.complete||snapshot.records.size()>256)return delta;

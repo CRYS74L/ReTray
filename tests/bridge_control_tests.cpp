@@ -15,6 +15,7 @@ int wmain(int argc,wchar_t** argv) {
         BridgeCommand hide;hide.operation=BridgeOperation::Visibility;hide.identity=original.identity;hide.visibility=1;CHECK(client.Command(hide));CHECK(find(client.Snapshot(),false).placement==static_cast<uint32_t>(Placement::Hidden));
         hide.visibility=0;CHECK(client.Command(hide));CHECK(find(client.Snapshot(),false).placement!=static_cast<uint32_t>(Placement::Hidden));
         auto icon=LoadIconW(nullptr,IDI_INFORMATION);BridgeCommand custom;custom.operation=BridgeOperation::Apply;custom.identity=original.identity;custom.replacementIcon=reinterpret_cast<uint64_t>(icon);CHECK(client.Command(custom));auto replaced=find(client.Snapshot(),false);CHECK(replaced.fingerprint!=changed.fingerprint);CHECK(replaced.callback==original.callback);CHECK(replaced.version==0);
+        SendMessageW(reinterpret_cast<HWND>(original.identity.ownerHwnd),WM_APP+24,0,0);refresh();CHECK(find(client.Snapshot(),false).sourceFingerprint==changed.sourceFingerprint);
         PostMessageW(reinterpret_cast<HWND>(original.identity.ownerHwnd),MakeOff,0,0);Sleep(150);refresh();CHECK(find(client.Snapshot(),false).transparent);
         PostMessageW(reinterpret_cast<HWND>(original.identity.ownerHwnd),ChangeColor,0xff1955e9,0);Sleep(150);refresh();CHECK(find(client.Snapshot(),false).fingerprint==replaced.fingerprint);
         BridgeCommand restore;restore.operation=BridgeOperation::Restore;restore.identity=original.identity;CHECK(client.Command(restore));CHECK(find(client.Snapshot(),false).fingerprint==changed.fingerprint);

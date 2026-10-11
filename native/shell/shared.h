@@ -44,6 +44,7 @@ struct BridgeState {
     BridgeIcon icons[MaxBridgeIcons];
 };
 inline std::wstring MappingName(uint32_t session) {return L"Local\\TrayAssistant.Bridge."+std::to_wstring(session);}
+inline std::wstring EndingEventName(uint32_t pid,uint64_t created){return L"Local\\TrayAssistant.Ending."+std::to_wstring(pid)+L"."+std::to_wstring(created);}
 inline CompactAdapter Compact(const SymbolAdapter& a) {
     CompactAdapter c;c.image=a.image;
     uint32_t fields[]={a.root,a.model,a.manager,a.promoted,a.overflow,a.itemVtable,a.vectorAt,a.vectorSize,a.vectorBegin,a.vectorEnd,a.window,a.uid,a.guid,a.version,a.callback,a.tip,a.imageObject,a.cachedIcon,a.setIcon,a.getIcon};

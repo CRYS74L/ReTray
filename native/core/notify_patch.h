@@ -1,6 +1,8 @@
 #pragma once
 #include "types.h"
 #include <span>
+#include <atomic>
+#include <mutex>
 namespace tray {
 struct IconPatch {
     uint32_t operation{},suppliedFlags{},state{},stateMask{},callbackMessage{},notifyVersion{};
@@ -13,8 +15,9 @@ struct FrameBaseline { bool reliable{}; uint64_t fingerprint{}; uint32_t width{}
 enum class FrameDecision { Native,CustomIdle,NativeOff,NativeDynamic,AwaitingBaseline };
 FrameDecision ChooseFrame(const Frame&,const FrameBaseline&,bool enabled);
 enum class SessionState { Starting,WaitingForShell,Ready,Reconnecting,UserStopping,SessionQuery,SessionEnding };
-struct SessionMachine { SessionState state{SessionState::Starting},beforeQuery{SessionState::Starting}; bool queryPending{}; };
+struct SessionMachine { std::atomic<SessionState> state{SessionState::Starting},beforeQuery{SessionState::Starting}; std::atomic<bool> queryPending{};std::mutex transition; };
 bool HandleSessionQuery(SessionMachine&);
 void HandleSessionEnd(SessionMachine&,bool ending);
 bool ShouldRecover(const SessionMachine&);
+void SetOperationalState(SessionMachine&,SessionState);
 }

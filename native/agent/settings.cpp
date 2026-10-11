@@ -1,5 +1,6 @@
 #include "settings.h"
 #include <fstream>
+#include <set>
 #include <objbase.h>
 #include <gdiplus.h>
 #include <shlobj.h>
@@ -99,14 +100,15 @@ Json DefaultSettings() {
               {"filterUnusedDays", 0},
               {"action", "menu"}}},
             {"hotkeys",
-             {{"open", (MOD_CONTROL | MOD_ALT) << 16 | 'T'},
-              {"menu", (MOD_WIN | MOD_ALT) << 16 | 'T'},
-              {"restoreIcons", (MOD_CONTROL | MOD_ALT) << 16 | 'R'}}},
+             {
+                 {"open", (MOD_CONTROL | MOD_ALT) << 16 | 'T'},
+                 {"menu", (MOD_WIN | MOD_ALT) << 16 | 'T'},
+             }},
             {"autoSort", false},
             {"newIconLocation", -1},
             {"reviewIntervalSeconds", 0},
             {"taskbar", {{"opacity", 255}, {"hideStart", false}}},
-            {"safeMode", false},
+            {"iconOrder", Json::array()},
             {"uiTopmost", false},
             {"uiOpacity", 255}};
 }
@@ -170,11 +172,22 @@ bool ValidateSettings(const Json& j) {
                 seen[id] = true;
             }
         }
-        for (const char* key : {"startup", "safeMode", "uiTopmost", "autoSort"})
+        for (const char* key : {"startup", "uiTopmost", "autoSort"})
             if (j.contains(key) && !j.at(key).is_boolean())
                 return false;
+        if (j.contains("iconOrder")) {
+            const auto& order = j.at("iconOrder");
+            if (!order.is_array() || order.size() > 256)
+                return false;
+            std::set<std::string> seen;
+            for (const auto& key : order)
+                if (!key.is_string() || key.get<std::string>().size() > 32768 ||
+                    !seen.insert(key.get<std::string>()).second)
+                    return false;
+        }
         const auto& own = j.at("ownIcon");
-        if (!own.at("visible").is_boolean() || !own.value("showInList", Json(true)).is_boolean() || !own.value("asset", Json("")).is_string() ||
+        if (!own.at("visible").is_boolean() || !own.value("showInList", Json(true)).is_boolean() ||
+            !own.value("asset", Json("")).is_string() ||
             own.value("tip", std::string{}).size() > 512)
             return false;
         int alpha = j.value("uiOpacity", 255);

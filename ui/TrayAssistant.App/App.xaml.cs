@@ -6,6 +6,8 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using Microsoft.Windows.AppLifecycle;
 using System.Runtime.InteropServices;
+using System.Diagnostics;
+using TrayAssistant_App.Services;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -17,6 +19,70 @@ namespace TrayAssistant_App;
 /// </summary>
 public partial class App : Application
 {
+    public static bool IsExiting { get; private set; }
+    private static Process? agent;
+    private static int observedAgentId;
+    public static void RegisterStartedAgent(Process process)
+    {
+        agent?.Dispose(); agent = process;
+        observedAgentId = 0;
+    }
+    public static void ObserveAgent(int processId)
+    {
+        if (IsExiting || observedAgentId == processId) return;
+        if (agent?.Id != processId) { agent?.Dispose(); agent = null; }
+        try
+        {
+            var process = agent?.Id == processId ? agent : Process.GetProcessById(processId);
+            if (!string.Equals(Path.GetFileName(process.MainModule?.FileName), "TrayAssistant.Agent.exe", StringComparison.OrdinalIgnoreCase)) { process.Dispose(); return; }
+            agent = process;
+            observedAgentId = processId;
+            process.Exited += (_, _) => DispatcherQueue.TryEnqueue(CloseInterface);
+            process.EnableRaisingEvents = true;
+        }
+        catch (ArgumentException) { CloseInterface(); }
+    }
+    private static void CloseInterface()
+    {
+        IsExiting = true;
+        agent?.Dispose(); agent = null;
+        Current.Exit();
+    }
+    public static async Task QuitAsync()
+    {
+        if (IsExiting) return;
+        IsExiting = true;
+        try
+        {
+            var until = DateTime.UtcNow.AddSeconds(2);
+            var window = FindWindow("TrayAssistant.Agent", null);
+            while (window == 0 && agent is { HasExited: false } && DateTime.UtcNow < until)
+            {
+                await Task.Delay(25);
+                window = FindWindow("TrayAssistant.Agent", null);
+            }
+            if (window != 0)
+            {
+                GetWindowThreadProcessId(window, out var owner);
+                using var process = Process.GetProcessById((int)owner);
+                var expected = Path.Combine(AppContext.BaseDirectory, "TrayAssistant.Agent.exe");
+                if (!string.Equals(process.MainModule?.FileName, expected, StringComparison.OrdinalIgnoreCase)) throw new IOException("后台身份不匹配，未能退出");
+                if (!PostMessage(window, 0x0010, 0, 0)) throw new IOException("退出请求未送达");
+                using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+                await process.WaitForExitAsync(deadline.Token);
+            }
+            else if (agent is { HasExited: false }) throw new IOException("后台正在启动，请稍后重试退出");
+            CloseInterface();
+        }
+        catch (Exception ex) when (ex is IOException or OperationCanceledException or System.ComponentModel.Win32Exception)
+        {
+            IsExiting = false;
+            if (Window.Content is Panel panel && panel.Children.OfType<Frame>().FirstOrDefault()?.Content is MainPage page) page.Vm.ReportError(ex);
+        }
+    }
+    [DllImport("user32.dll", EntryPoint="FindWindowW", CharSet=CharSet.Unicode)] private static extern nint FindWindow(string className, string? title);
+    [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(nint window, out uint processId);
+    [DllImport("user32.dll", SetLastError=true)] private static extern bool PostMessage(nint window, uint message, nint wparam, nint lparam);
     [DllImport("user32.dll")] private static extern bool ShowWindow(nint hwnd,int command);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(nint hwnd);
     /// <summary>
@@ -46,6 +112,11 @@ public partial class App : Application
     public App()
     {
         InitializeComponent();
+        UnhandledException += (_, args) =>
+        {
+            try { var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TrayIconAssistant"); Directory.CreateDirectory(folder); File.WriteAllText(Path.Combine(folder, "ui-crash.log"), args.Exception.ToString()); }
+            catch { }
+        };
     }
 
     /// <summary>

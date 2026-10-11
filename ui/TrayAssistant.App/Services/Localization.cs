@@ -36,6 +36,7 @@ public static class Localization
         ["批量可见性已应用"]="Visibility applied",
         ["已撤销上次规则操作"]="Last rule change undone",
         ["语言"]="Language",
+        ["退出软件"]="Exit",
         ["设置"]="Settings",
         ["状态"]="Status",
         ["隐藏"]="Hide",
@@ -46,7 +47,6 @@ public static class Localization
         ["图标提示"]="Tooltip",
         ["位置"]="Location",
         ["更多设置"]="More settings",
-        ["恢复默认"]="Reset",
         ["开机启动"]="Start at sign-in",
         ["显示助手托盘图标"]="Show assistant tray icon",
         ["保存设置"]="Save settings",
@@ -60,10 +60,7 @@ public static class Localization
         ["交换左右键"]="Swap mouse buttons",
         ["图标快捷键"]="Icon shortcut",
         ["打开助手快捷键"]="Open assistant shortcut",
-        ["恢复托盘快捷键"]="Restore tray shortcut",
         ["保存快捷键"]="Save shortcuts",
-        ["停止后台"]="Stop background",
-        ["恢复所有托盘图标"]="Restore all tray icons",
         ["重试"]="Retry",
         ["应用"]="Apply",
         ["关闭"]="Close",
@@ -80,7 +77,15 @@ public static class Localization
     };
     public static string Text(string text) => English ? map.GetValueOrDefault(text,text) : map.FirstOrDefault(pair=>pair.Value==text).Key??text;
     private static object? Translate(object? value) => value is string text ? Text(text) : value;
+    private static bool applying;
     public static void Apply(DependencyObject root)
+    {
+        if (applying) return;
+        applying = true;
+        try { ApplyCore(root); }
+        finally { applying = false; }
+    }
+    private static void ApplyCore(DependencyObject root)
     {
         if(root is ListView or InfoBar)return;
         if(root is TextBlock text)text.Text=Text(text.Text);
@@ -89,11 +94,8 @@ public static class Localization
         if(root is NumberBox number)number.Header=Translate(number.Header);
         if(root is Slider slider)slider.Header=Translate(slider.Header);
         if(root is ToggleSwitch toggle){toggle.Header=Translate(toggle.Header);toggle.OnContent=Translate(toggle.OnContent);toggle.OffContent=Translate(toggle.OffContent);}
-        if(root is ComboBox combo){combo.Header=Translate(combo.Header);int selected=combo.SelectedIndex;for(int i=0;i<combo.Items.Count;i++)if(combo.Items[i] is string item)combo.Items[i]=Text(item);combo.SelectedIndex=selected;}
+        if(root is ComboBox combo){combo.Header=Translate(combo.Header);int selected=combo.SelectedIndex;bool changed=false;for(int i=0;i<combo.Items.Count;i++)if(combo.Items[i] is string item){var translated=Text(item);if(translated!=item){combo.Items[i]=translated;changed=true;}}if(changed)combo.SelectedIndex=selected;}
         if(root is Expander expander)expander.Header=Translate(expander.Header);
-        for(int n=0;n<VisualTreeHelper.GetChildrenCount(root);n++)Apply(VisualTreeHelper.GetChild(root,n));
+        for(int n=0;n<VisualTreeHelper.GetChildrenCount(root);n++)ApplyCore(VisualTreeHelper.GetChild(root,n));
     }
 }
-
-
-

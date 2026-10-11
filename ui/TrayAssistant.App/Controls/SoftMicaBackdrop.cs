@@ -9,28 +9,37 @@ public sealed class SoftMicaBackdrop : SystemBackdrop
 {
     private MicaController? controller;
     private bool? darkAppearance;
+    private FrameworkElement? themeRoot;
+    private SystemBackdropConfiguration? configuration;
 
     protected override void OnTargetConnected(ICompositionSupportsSystemBackdrop target, XamlRoot root)
     {
         base.OnTargetConnected(target, root);
-        var configuration = GetDefaultSystemBackdropConfiguration(target, root);
+        configuration = GetDefaultSystemBackdropConfiguration(target, root);
+        themeRoot = root.Content as FrameworkElement;
+        if (themeRoot != null) themeRoot.ActualThemeChanged += RootThemeChanged;
         controller = new MicaController { Kind = MicaKind.BaseAlt };
         ApplyAppearance(configuration, root);
         controller.SetSystemBackdropConfiguration(configuration);
         controller.AddSystemBackdropTarget(target);
     }
 
+    private void RootThemeChanged(FrameworkElement sender, object args)
+    {
+        if (configuration != null && sender.XamlRoot != null) ApplyAppearance(configuration, sender.XamlRoot);
+    }
+
     protected override void OnDefaultSystemBackdropConfigurationChanged(ICompositionSupportsSystemBackdrop target, XamlRoot root)
     {
-        base.OnDefaultSystemBackdropConfigurationChanged(target, root);
-        ApplyAppearance(GetDefaultSystemBackdropConfiguration(target, root), root);
+        if (configuration != null) ApplyAppearance(configuration, root);
     }
 
     private void ApplyAppearance(SystemBackdropConfiguration configuration, XamlRoot root)
     {
         if (controller == null) return;
-        var dark = configuration.Theme == SystemBackdropTheme.Dark ||
-            (configuration.Theme == SystemBackdropTheme.Default && root.Content is FrameworkElement { ActualTheme: ElementTheme.Dark });
+        var dark = root.Content is FrameworkElement element
+            ? element.ActualTheme == ElementTheme.Dark
+            : configuration.Theme == SystemBackdropTheme.Dark;
         if (darkAppearance == dark) return;
         darkAppearance = dark;
         var color = dark ? Windows.UI.Color.FromArgb(255, 32, 32, 32) : Windows.UI.Color.FromArgb(255, 243, 243, 243);
@@ -43,6 +52,9 @@ public sealed class SoftMicaBackdrop : SystemBackdrop
 
     protected override void OnTargetDisconnected(ICompositionSupportsSystemBackdrop target)
     {
+        if (themeRoot != null) themeRoot.ActualThemeChanged -= RootThemeChanged;
+        themeRoot = null;
+        configuration = null;
         controller?.RemoveSystemBackdropTarget(target);
         controller?.Dispose();
         controller = null;

@@ -14,6 +14,7 @@
 #include <shobjidl.h>
 #include <unordered_map>
 #include <unordered_set>
+#include <tuple>
 #include <appmodel.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.ApplicationModel.h>
@@ -29,11 +30,12 @@ BridgeClient bridge;
 SymbolAdapter adapter;
 std::filesystem::path root, dataRoot, settingsPath;
 Json settings;
-bool recovered{}, ownAdded{}, safeMode{};
+bool recovered{}, ownAdded{};
 std::atomic<bool> stopping{};
 HICON ownImage{};
 std::unordered_map<std::string, IconRule> rules;
 std::unordered_map<std::string, std::string> applied;
+std::unordered_map<std::string, std::string> instanceOrderKeys;
 std::unordered_map<std::string, std::string> failedStamp;
 std::unordered_map<std::string, uint64_t> retryAfter;
 std::unordered_map<std::string, Json> outcomes;
@@ -131,7 +133,7 @@ void ScheduleHotkeys() {
     auto defaults = DefaultSettings()["hotkeys"];
     auto keys = settings.value("hotkeys", defaults);
     int id = 1;
-    for (const char* name : {"open", "menu", "restoreIcons"})
+    for (const char* name : {"open", "menu"})
         requested.push_back({{"id", id++},
                              {"code", keys.value(name, defaults.at(name).get<uint32_t>())},
                              {"action", name}});
@@ -271,7 +273,7 @@ bool SetStartup(bool enabled) {
     return code == ERROR_SUCCESS || (!enabled && code == ERROR_FILE_NOT_FOUND);
 }
 void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
-    if (!ShouldRecover(lifecycle) || safeMode)
+    if (!ShouldRecover(lifecycle))
         return;
     auto key = IdentityKey(row.identity);
     auto r = Record(row);
@@ -366,7 +368,7 @@ void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
     }
 }
 bool ApplyEnvironment(bool force = false) {
-    if (safeMode || !bridge.Alive() || !ShouldRecover(lifecycle))
+    if (!bridge.Alive() || !ShouldRecover(lifecycle))
         return false;
     auto now = GetTickCount64();
     if (!force && environmentEpoch == bridge.shared->epoch &&
@@ -419,6 +421,80 @@ bool ApplyEnvironment(bool force = false) {
     environmentOutcome =
         Result(ok, ok ? "任务栏设置已生效" : "设置已保存，等待原有系统控件或适配失败", error);
     return ok;
+}
+std::string StableIconKey(const BridgeIcon& row) {
+    if (row.identity.ownerPid == GetCurrentProcessId())
+        return "@assistant";
+    auto base = PersistentKey(SelectorFor(Record(row)));
+    auto owner = base + "|live:" + std::to_string(row.identity.ownerCreatedAt) + ":" +
+                 std::to_string(row.identity.ownerHwnd);
+    auto found = instanceOrderKeys.find(owner);
+    if (found != instanceOrderKeys.end())
+        return found->second;
+    std::unordered_set<std::string> activeOwners;
+    for (const auto& current : rows) {
+        auto currentBase = PersistentKey(SelectorFor(Record(current)));
+        activeOwners.insert(currentBase +
+                            "|live:" + std::to_string(current.identity.ownerCreatedAt) + ":" +
+                            std::to_string(current.identity.ownerHwnd));
+    }
+    for (auto it = instanceOrderKeys.begin(); it != instanceOrderKeys.end();)
+        if (!activeOwners.contains(it->first))
+            it = instanceOrderKeys.erase(it);
+        else
+            ++it;
+    std::unordered_set<std::string> occupied;
+    for (const auto& [token, assigned] : instanceOrderKeys)
+        occupied.insert(assigned);
+    size_t ordinal{};
+    while (occupied.contains(ordinal ? base + "|instance:" + std::to_string(ordinal) : base))
+        ++ordinal;
+    auto key = ordinal ? base + "|instance:" + std::to_string(ordinal) : base;
+    instanceOrderKeys.emplace(owner, key);
+    return key;
+}
+void ApplyIconOrder() {
+    auto order = settings.value("iconOrder", Json::array());
+    const bool automatic = settings.value("autoSort", false);
+    if (order.empty() && !automatic)
+        return;
+    const auto live = bridge.Snapshot();
+    std::unordered_map<std::string, size_t> ranks;
+    for (size_t i = 0; i < order.size(); ++i)
+        ranks[order[i].get<std::string>()] = i;
+    for (uint32_t placement = 0; placement < 2; ++placement) {
+        std::vector<BridgeIcon> actual;
+        for (const auto& row : live)
+            if (row.placement == placement)
+                actual.push_back(row);
+        std::sort(actual.begin(), actual.end(),
+                  [](const auto& a, const auto& b) { return a.index < b.index; });
+        auto wanted = actual;
+        auto rank = [&](const auto& row) {
+            auto it = ranks.find(StableIconKey(row));
+            return it == ranks.end() ? SIZE_MAX : it->second;
+        };
+        std::stable_sort(wanted.begin(), wanted.end(), [&](const auto& a, const auto& b) {
+            if (automatic)
+                return _wcsicmp(std::filesystem::path(a.executable).filename().c_str(),
+                                std::filesystem::path(b.executable).filename().c_str()) < 0;
+            return rank(a) < rank(b);
+        });
+        bool changed = false;
+        for (size_t i = 0; i < wanted.size(); ++i)
+            if (!SameIcon(actual[i].identity, wanted[i].identity))
+                changed = true;
+        if (!changed)
+            continue;
+        for (size_t i = 0; i < wanted.size(); ++i) {
+            BridgeCommand command;
+            command.operation = BridgeOperation::Move;
+            command.identity = wanted[i].identity;
+            command.location = placement;
+            command.index = static_cast<int32_t>(i);
+            bridge.Command(command);
+        }
+    }
 }
 void Refresh() {
     if (!ShouldRecover(lifecycle) || stopping)
@@ -510,7 +586,7 @@ void Refresh() {
         }
         ApplyRule(row, found.rule);
     }
-    if (delta.added && !safeMode && settings.value("newIconLocation", -1) != -1) {
+    if (delta.added && settings.value("newIconLocation", -1) != -1) {
         for (const auto& row : rows)
             if (!previous.contains(IdentityKey(row.identity)) &&
                 !ResolveRule(rules, Record(row)).rule &&
@@ -523,22 +599,7 @@ void Refresh() {
                 bridge.Command(command);
             }
     }
-    if (settings.value("autoSort", false) && !safeMode) {
-        auto sorted = rows;
-        std::stable_sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
-            return _wcsicmp(a.executable, b.executable) < 0;
-        });
-        int positions[2]{};
-        for (const auto& row : sorted)
-            if (row.placement < 2 && row.index != uint32_t(positions[row.placement]++)) {
-                BridgeCommand command;
-                command.operation = BridgeOperation::Move;
-                command.identity = row.identity;
-                command.location = row.placement;
-                command.index = positions[row.placement] - 1;
-                bridge.Command(command);
-            }
-    }
+    ApplyIconOrder();
     ScheduleHotkeys();
 }
 std::string Bytes64(const uint32_t* pixels, size_t count) {
@@ -576,6 +637,7 @@ Json CatalogJson() {
         auto j = RuleJson(rule);
         bool owned = row.identity.ownerPid == GetCurrentProcessId();
         j["owned"] = owned;
+        j["stableKey"] = StableIconKey(row);
         if (owned) {
             j["asset"] = settings["ownIcon"].value("asset", std::string{});
             j["tip"] = settings["ownIcon"].value("tip", std::string("托盘图标助手"));
@@ -620,22 +682,24 @@ Json Handle(const Json& req) {
     if (!d.is_object())
         return Result(false, "命令参数必须是对象", ERROR_INVALID_DATA);
     Json result = Result(true);
-    if (method == "icons.restoreAll") {
-
+    if (method == "icons.reorder") {
+        auto keys = d.at("keys");
+        if (!keys.is_array() || keys.size() > MaxBridgeIcons)
+            return Result(false, "图标顺序无效", ERROR_INVALID_DATA);
+        std::unordered_set<std::string> unique;
+        for (const auto& key : keys)
+            if (!key.is_string() || key.get<std::string>().size() > 32768 ||
+                !unique.insert(key.get<std::string>()).second)
+                return Result(false, "图标顺序无效", ERROR_INVALID_DATA);
         auto saved = settings;
-        for (auto& rule : settings["rules"])
-            rule["enabled"] = false;
-        settings["systemControls"] = Json::array();
-        settings["taskbar"] = {{"opacity", 255}, {"hideStart", false}};
+        settings["iconOrder"] = keys;
+        settings["autoSort"] = false;
         if (!Persist()) {
             settings = saved;
-            return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
+            return Result(false, "顺序保存失败", ERROR_WRITE_FAULT);
         }
-        bridge.Reset();
-        LoadRules();
-        seenSequence = -1;
-        Refresh();
-        result["detail"] = "已恢复原生托盘，已有规则已暂停";
+        ApplyIconOrder();
+        result["saved"] = true;
     } else if (method == "internal.openUi")
         OpenUI();
     else if (method == "internal.shellCreated") {
@@ -734,10 +798,14 @@ Json Handle(const Json& req) {
             return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
         }
         bridge.Reset();
+        settings.erase("safeMode");
+        if (settings.contains("hotkeys"))
+            settings["hotkeys"].erase("restoreIcons");
+        for (auto& entry : settings["rules"])
+            entry["enabled"] = true;
         LoadRules();
         SetOwnIcon();
         SetStartup(settings.value("startup", false));
-        safeMode = settings.value("safeMode", false);
         seenSequence = -1;
         Refresh();
         result["saved"] = true;
@@ -764,6 +832,11 @@ Json Handle(const Json& req) {
             settings = saved;
             return Result(false, "批量规则无法保存", ERROR_WRITE_FAULT);
         }
+        settings.erase("safeMode");
+        if (settings.contains("hotkeys"))
+            settings["hotkeys"].erase("restoreIcons");
+        for (auto& entry : settings["rules"])
+            entry["enabled"] = true;
         LoadRules();
         seenSequence = -1;
         Refresh();
@@ -793,6 +866,11 @@ Json Handle(const Json& req) {
             settings = saved;
             return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
         }
+        settings.erase("safeMode");
+        if (settings.contains("hotkeys"))
+            settings["hotkeys"].erase("restoreIcons");
+        for (auto& entry : settings["rules"])
+            entry["enabled"] = true;
         LoadRules();
         seenSequence = -1;
         Refresh();
@@ -824,9 +902,6 @@ Json Handle(const Json& req) {
             return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
         }
         bool ok = SetStartup(settings.value("startup", false));
-        safeMode = settings.value("safeMode", false);
-        if (safeMode)
-            bridge.Reset();
         applied.clear();
         seenSequence = -1;
         ScheduleHotkeys();
@@ -979,9 +1054,9 @@ DWORD WINAPI Worker(void*) {
 void TrayMenu() {
     HMENU menu = CreatePopupMenu();
     AppendMenuW(menu, MF_STRING, 1, L"打开助手");
-    AppendMenuW(menu, MF_STRING, 2, L"恢复托盘");
+
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(menu, MF_STRING, 3, L"退出");
+    AppendMenuW(menu, MF_STRING, 2, L"退出");
     POINT point{};
     GetCursorPos(&point);
     SetForegroundWindow(window);
@@ -992,8 +1067,6 @@ void TrayMenu() {
     if (selected == 1)
         PostJob("internal.openUi");
     else if (selected == 2)
-        PostJob("icons.restoreAll");
-    else if (selected == 3)
         PostMessageW(window, WM_CLOSE, 0, 0);
 }
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -1038,8 +1111,6 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     PostJob("internal.openUi");
                 else if (action == "menu")
                     TrayMenu();
-                else if (action == "restoreIcons")
-                    PostJob("icons.restoreAll");
                 else if (action == "icon")
                     PostJob("icon.invoke",
                             {{"key", item.at("key")}, {"action", item.at("iconAction")}});
@@ -1130,7 +1201,6 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             }
         }
         configRevision = settings.value("revision", uint64_t{});
-        safeMode = settings.value("safeMode", false);
 
         try {
             auto activityPath = dataRoot / L"activity.json";
@@ -1144,6 +1214,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         } catch (...) {
             activityHistory = Json::object();
         }
+        settings.erase("safeMode");
+        if (settings.contains("hotkeys"))
+            settings["hotkeys"].erase("restoreIcons");
+        for (auto& entry : settings["rules"])
+            entry["enabled"] = true;
         LoadRules();
         adapter = LoadAdapter(root / L"supported-adapters.json");
         auto endingSd = CurrentUserSecurity();

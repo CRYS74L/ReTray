@@ -7,6 +7,7 @@ namespace TrayAssistant_App.Models;
 public sealed class IconRow : ObservableObject
 {
     public string Key { get; }
+    public string StableKey => Rule["stableKey"]?.GetValue<string>() ?? Key;
     public JsonObject Rule { get; private set; } = new();
     private string name = "", tip = "", state = "", identity = "", executable = "";
     private WriteableBitmap? image, original;

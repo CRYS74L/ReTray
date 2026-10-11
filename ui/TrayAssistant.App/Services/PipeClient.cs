@@ -21,11 +21,12 @@ public sealed class PipeClient
             try { await pipe.ConnectAsync(800, deadline.Token); }
             catch (TimeoutException)
             {
-                if (!mayStart) throw new IOException("后台已停止。再次启动助手即可重新打开。");
+                if (!mayStart || App.IsExiting) throw new IOException("后台已停止。再次启动助手即可重新打开。");
                 mayStart = false;
                 var agent = Path.Combine(AppContext.BaseDirectory, "TrayAssistant.Agent.exe");
                 if (!File.Exists(agent)) throw new IOException("后台文件缺失，请使用完整安装包。");
-                Process.Start(new ProcessStartInfo(agent, "--background") { UseShellExecute = false, CreateNoWindow = true });
+                var started = Process.Start(new ProcessStartInfo(agent, "--background") { UseShellExecute = false, CreateNoWindow = true }) ?? throw new IOException("无法启动后台");
+                App.RegisterStartedAgent(started);
                 await pipe.ConnectAsync(3000, deadline.Token);
             }
             mayStart = false;
@@ -39,4 +40,3 @@ public sealed class PipeClient
         finally { gate.Release(); }
     }
 }
-

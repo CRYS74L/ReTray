@@ -15,10 +15,11 @@ public partial class TrayViewModel : ObservableObject
     public ObservableCollection<IconRow> Icons { get; } = new();
 
 
-    public List<IconRow> BatchSelection { get; } = new();
+
     private readonly Dictionary<string, IconRow> all = new();
-    private readonly Stack<(string key, JsonObject rule)> undo = new();
-    private bool polling, connectionError;
+
+    private bool polling, connectionError, initialized;
+    private List<string> iconOrder = new();
     private IconRow? selected;
     public IconRow? Selected { get => selected; set { if (SetProperty(ref selected, value)) { OnPropertyChanged(nameof(HasSelection)); if(value != null) ReadEditor(value); } } }
     public bool HasSelection => Selected != null;
@@ -64,7 +65,7 @@ public partial class TrayViewModel : ObservableObject
     [ObservableProperty] public partial bool OwnInList { get; set; } = true;
     [ObservableProperty] public partial string OwnTip { get; set; } = "托盘图标助手";
     [ObservableProperty] public partial string OwnAsset { get; set; } = "";
-    [ObservableProperty] public partial bool SafeMode { get; set; }
+
     [ObservableProperty] public partial int ThemeIndex { get; set; }
     [ObservableProperty] public partial int LanguageIndex { get; set; }
     public event Action? LanguageChanged;
@@ -101,12 +102,13 @@ public partial class TrayViewModel : ObservableObject
 
     public JsonObject Settings { get; private set; } = new();
     public event Action<int>? ThemeChanged;
+    partial void OnThemeIndexChanged(int value){App.DispatcherQueue.TryEnqueue(()=>ThemeChanged?.Invoke(value));if(initialized)_=Execute(async()=>await Call("settings.apply",new(){["theme"]=new[]{"system","light","dark"}[value]}));}
     public event Action<bool,byte>? WindowStyleChanged;
 
 
     private void SynchronizeList()
     {
-        var wanted = all.Values.ToList();
+        var ranks=iconOrder.Select((key,index)=>(key,index)).ToDictionary(x=>x.key,x=>x.index); var wanted = AutoSort?all.Values.OrderBy(row=>Path.GetFileName(row.Executable),StringComparer.OrdinalIgnoreCase).ToList():all.Values.OrderBy(row=>ranks.GetValueOrDefault(row.StableKey,int.MaxValue)).ToList();
         for (int i = Icons.Count - 1; i >= 0; i--) if (!wanted.Contains(Icons[i])) Icons.RemoveAt(i);
 
         foreach (var row in wanted) if (!Icons.Contains(row)) Icons.Add(row);
@@ -116,10 +118,10 @@ public partial class TrayViewModel : ObservableObject
     {
         try
         {
-            var result = await Call("settings.read"); Settings = (JsonObject)result["data"]!.DeepClone();
-            Startup = Settings["startup"]?.GetValue<bool>() ?? false; OwnVisible = Settings["ownIcon"]!["visible"]!.GetValue<bool>(); OwnAsset = Settings["ownIcon"]!["asset"]!.GetValue<string>(); SafeMode = Settings["safeMode"]?.GetValue<bool>() ?? false;
+            initialized=false;var result = await Call("settings.read"); Settings = (JsonObject)result["data"]!.DeepClone();iconOrder=Settings["iconOrder"]?.AsArray().Select(x=>x!.GetValue<string>()).ToList()??new();
+            Startup = Settings["startup"]?.GetValue<bool>() ?? false; OwnVisible = Settings["ownIcon"]!["visible"]!.GetValue<bool>(); OwnAsset = Settings["ownIcon"]!["asset"]!.GetValue<string>();
             OwnTip=Settings["ownIcon"]?["tip"]?.GetValue<string>()??"托盘图标助手";OwnInList=Settings["ownIcon"]?["showInList"]?.GetValue<bool>()??true;
-            Hotkeys=(JsonObject?)Settings["hotkeys"]?.DeepClone()??new();
+            Hotkeys=(JsonObject?)Settings["hotkeys"]?.DeepClone()??new();Hotkeys.Remove("restoreIcons");
             var menu=Settings["menu"]; MenuProgramNames=menu?["programNames"]?.GetValue<bool>()??true;
             MenuReverse=menu?["reverse"]?.GetValue<bool>()??false;MenuNewFirst=menu?["newFirst"]?.GetValue<bool>()??true;
             MenuHoverDelay=menu?["hoverDelayMs"]?.GetValue<int>()??0;MenuUnusedDays=menu?["filterUnusedDays"]?.GetValue<int>()??0;
@@ -130,7 +132,7 @@ public partial class TrayViewModel : ObservableObject
             LanguageIndex=Settings["language"]?.GetValue<string>()=="en"?1:0;
             TaskbarOpacity=Settings["taskbar"]?["opacity"]?.GetValue<int>()??255;HideStart=Settings["taskbar"]?["hideStart"]?.GetValue<bool>()??false;UiTopmost=Settings["uiTopmost"]?.GetValue<bool>()??false;UiOpacity=Settings["uiOpacity"]?.GetValue<int>()??255;WindowStyleChanged?.Invoke(UiTopmost,(byte)UiOpacity);
             var aumid = global::Windows.ApplicationModel.Package.Current.Id.FamilyName + "!App";
-            await Call("settings.apply", new() { ["uiActivation"] = aumid }); await RefreshAsync();
+            await Call("settings.apply", new() { ["uiActivation"] = aumid }); await RefreshAsync();initialized=true;
         }
         catch (Exception ex) { IsReady=false;IsLoading=false;ReportError(ex,true); }
     }
@@ -139,10 +141,10 @@ public partial class TrayViewModel : ObservableObject
         if (polling || IsDragging) return; polling = true;
         try
         {
-            var health = await Call("status.read"); var h = health["data"]!; if(!h["ready"]!.GetValue<bool>()||!h["connected"]!.GetValue<bool>()){IsReady=false;IsLoading=true;return;} var result = await Call("catalog.read"); var data = result["data"]!["icons"]!.AsArray(); var active = new HashSet<string>();
+            var health = await Call("status.read"); var h = health["data"]!; App.ObserveAgent(h["pid"]!.GetValue<int>()); if(!h["ready"]!.GetValue<bool>()||!h["connected"]!.GetValue<bool>()){IsReady=false;IsLoading=true;return;} var result = await Call("catalog.read"); var data = result["data"]!["icons"]!.AsArray(); var active = new HashSet<string>();
             foreach (var item in data) { var j = item!.AsObject(); var key = j["key"]!.GetValue<string>(); active.Add(key); if (all.TryGetValue(key, out var row)) row.Update(j); else all[key] = new IconRow(j); }
             foreach (var key in all.Keys.Where(k => !active.Contains(k)).ToList()) all.Remove(key);
-            SynchronizeList(); 
+            SynchronizeList();
             if (Selected != null && !active.Contains(Selected.Key)) {
                 var prior=Selected.Rule;
                 var matches=all.Values.Where(r=>r.Executable.Equals(Selected.Executable,StringComparison.OrdinalIgnoreCase)&&r.Rule["selector"]?["uid"]?.ToJsonString()==prior["selector"]?["uid"]?.ToJsonString()&&r.Rule["selector"]?["guid"]?.ToJsonString()==prior["selector"]?["guid"]?.ToJsonString()&&r.Rule["pid"]?.ToJsonString()==prior["pid"]?.ToJsonString()&&r.Rule["created"]?.ToJsonString()==prior["created"]?.ToJsonString()).ToList();
@@ -172,15 +174,11 @@ public partial class TrayViewModel : ObservableObject
     {
         if (Selected == null) return; var row = Selected;
         if(row.Owned){var read=await Call("settings.read");var own=(JsonObject)read["data"]!["ownIcon"]!.DeepClone();own["asset"]=Asset;own["tip"]=Tip.Length>0?Tip:"托盘图标助手";await Call("ownIcon.apply",own);OwnAsset=Asset;OwnTip=own["tip"]!.GetValue<string>();Status="已生效";await RefreshAsync();return;}
-        undo.Push((row.Key, EditableRule(row))); var j = EditableRule(row);
+        var j = EditableRule(row);
         if (Asset.Length>0 && (Asset != row.Rule["asset"]!.GetValue<string>() || row.Rule["baselineWidth"]?.GetValue<int>() == 0)) { j["baselineFingerprint"] = row.Rule["sourceFingerprint"]!.DeepClone(); j["baselineWidth"] = row.Rule["sourceWidth"]!.DeepClone(); j["baselineHeight"] = row.Rule["sourceHeight"]!.DeepClone(); } j["selector"]!["windowClass"]=MatchClass;j["selector"]!["tipPattern"]=MatchTip;j["selector"]!["tipMode"]=MatchTipMode;j["selector"]!["ownerPid"]=CurrentInstance?row.Rule["pid"]!.DeepClone():JsonValue.Create(0);j["selector"]!["ownerCreatedAt"]=CurrentInstance?row.Rule["created"]!.DeepClone():JsonValue.Create(0);j["swapButtons"]=SwapButtons;j["assetIndex"]=(int)AssetIndex;j["asset"] = Asset; j["tip"] = Tip; j["visibility"] = VisibilityIndex - 1; j["location"] = LocationIndex - 1; j["order"] = (int)Order; j["inactiveSeconds"] = (int)InactiveSeconds; j["unusedDays"] = (int)UnusedDays; j["menuVisible"] = MenuVisible; j["alwaysShow"] = AlwaysShow;
         j["enabled"]=true;j["hotkey"]=Hotkey;j["hotkeyAction"]=HotkeyAction;j["newState"]=NewStateIndex-1;
         var result = await Call("rule.apply", new() { ["rule"] = j, ["previousSelector"] = row.Rule["selector"]!.DeepClone() }); Status = result["detail"]?.GetValue<string>() ?? "规则已保存"; await RefreshAsync();
     });
-    [RelayCommand] private Task ResetRuleAsync() => Execute(async () => { if (Selected == null) return; if(Selected.Owned){var read=await Call("settings.read");var own=(JsonObject)read["data"]!["ownIcon"]!.DeepClone();own["asset"]="";own["tip"]="托盘图标助手";await Call("ownIcon.apply",own);OwnAsset="";OwnTip="托盘图标助手";Asset="";Tip="托盘图标助手";}else{undo.Push((Selected.Key, EditableRule(Selected)));await Call("rule.remove", new() { ["rule"] = EditableRule(Selected) });} Status = "已恢复默认设置"; await RefreshAsync(); if (Selected != null) ReadEditor(Selected); });
-    [RelayCommand] private Task UndoAsync() => Execute(async () => { if (!undo.TryPop(out var previous)) return; await Call("rule.apply", new() { ["rule"] = previous.rule }); Status = "已撤销上次规则操作"; await RefreshAsync(); if (Selected != null) ReadEditor(Selected); });
-    [RelayCommand] private Task OriginalMenuAsync() => Execute(async () => { if (Selected != null) await Call("icon.invoke", new() { ["key"] = Selected.Key, ["action"] = "menu" }); });
-    [RelayCommand] private Task OpenIconAsync() => Execute(async () => { if (Selected != null) await Call("icon.invoke", new() { ["key"] = Selected.Key, ["action"] = "double" }); });
     private static async Task<string?> ChooseAssetAsync()
     {
         var picker = new FileOpenPicker(App.Window.AppWindow.Id); foreach (var ext in new[] { ".ico", ".png", ".bmp", ".jpg", ".exe", ".dll" }) picker.FileTypeFilter.Add(ext);
@@ -190,7 +188,7 @@ public partial class TrayViewModel : ObservableObject
     [RelayCommand] private Task ChooseIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) Asset = path; });
     [RelayCommand] private void UseOriginalAsset() { Asset=""; AssetIndex=0; }
     [RelayCommand] private Task ChooseOwnIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) OwnAsset = path; });
-    [RelayCommand] private Task SavePreferencesAsync() => Execute(async () => { var theme = new[] { "system", "light", "dark" }[ThemeIndex]; await Call("settings.apply", new() { ["startup"] = Startup, ["theme"] = theme, ["safeMode"] = SafeMode,["language"]=LanguageIndex==1?"en":"zh" }); await Call("ownIcon.apply", new() { ["visible"] = OwnVisible, ["asset"] = OwnAsset, ["tip"] = OwnTip, ["showInList"]=OwnInList }); ThemeChanged?.Invoke(ThemeIndex); Status = "偏好已保存并应用"; });
+    [RelayCommand] private Task SavePreferencesAsync() => Execute(async () => { var theme = new[] { "system", "light", "dark" }[ThemeIndex]; await Call("settings.apply", new() { ["startup"] = Startup, ["theme"] = theme, ["language"]=LanguageIndex==1?"en":"zh" }); await Call("ownIcon.apply", new() { ["visible"] = OwnVisible, ["asset"] = OwnAsset, ["tip"] = OwnTip, ["showInList"]=OwnInList }); ThemeChanged?.Invoke(ThemeIndex); Status = "偏好已保存并应用"; });
 
 
 
@@ -199,21 +197,10 @@ public partial class TrayViewModel : ObservableObject
 
 
     [RelayCommand] private Task SaveMenuAsync()=>Execute(async()=>{await Call("settings.apply",new(){["menu"]=new JsonObject{["programNames"]=MenuProgramNames,["reverse"]=MenuReverse,["newFirst"]=MenuNewFirst,["hoverDelayMs"]=(int)MenuHoverDelay,["filterUnusedDays"]=(int)MenuUnusedDays,["action"]=new[]{"click","menu","double","rightDouble"}[MenuActionIndex]},["hotkeys"]=Hotkeys.DeepClone(),["autoSort"]=AutoSort,["newIconLocation"]=NewLocationIndex-1,["reviewIntervalSeconds"]=(int)ReviewInterval});Status="菜单、快捷键和排序设置已应用";});
+    public async Task PersistOrderAsync(){var ordered=Icons.Select(row=>row.StableKey).ToList();if(ordered.SequenceEqual(iconOrder))return;try{var keys=new JsonArray();foreach(var key in ordered)keys.Add(key);await Call("icons.reorder",new(){["keys"]=keys});iconOrder=ordered;AutoSort=false;}catch(Exception ex){ReportError(ex);SynchronizeList();}}
     public static string DescribeHotkey(int code){if(code==0)return "未设置";var modifiers=code>>16;return ((modifiers&2)!=0?"Ctrl + ":"")+((modifiers&1)!=0?"Alt + ":"")+((modifiers&4)!=0?"Shift + ":"")+((modifiers&8)!=0?"Win + ":"")+(global::Windows.System.VirtualKey)(code&65535);}
-    public Task ApplyOrderAsync(bool reverse=false,bool alphabetic=false)=>Execute(async()=>{var ordered=Icons.ToList();if(reverse)ordered.Reverse();if(alphabetic)ordered=ordered.OrderBy(r=>r.Name,StringComparer.CurrentCultureIgnoreCase).ToList();var list=new JsonArray();var positions=new int[2];foreach(var row in ordered){var placement=row.Rule["placement"]!.GetValue<int>();if(placement>1)continue;var rule=EditableRule(row);rule["location"]=placement;rule["order"]=positions[placement]++;list.Add(rule);}await Call("rules.apply",new(){["rules"]=list});Status="顺序已应用到实际托盘";await RefreshAsync();});
-    public Task BatchVisibilityAsync(int visibility)=>Execute(async()=>{if(BatchSelection.Count==0){Status="请先选择图标；按 Ctrl / Shift 可选择多个。";return;}var list=new JsonArray();foreach(var row in BatchSelection){var rule=EditableRule(row);rule["visibility"]=visibility;list.Add(rule);}await Call("rules.apply",new(){["rules"]=list});Status="批量可见性已应用";await RefreshAsync();});
-    public async Task MoveSelectedAsync(int direction){if(Selected==null)return;int current=Icons.IndexOf(Selected),next=current+direction;if(next<0||next>=Icons.Count||Icons[next].Rule["placement"]!.GetValue<int>()!=Selected.Rule["placement"]!.GetValue<int>())return;Icons.Move(current,next);await ApplyOrderAsync();}
-    [RelayCommand] private Task StopAgentAsync() => Execute(async () => { await Call("agent.stop"); Status = "后台已停止，托盘已恢复"; });
     [RelayCommand] private Task SaveAdvancedAsync()=>Execute(async()=>{await Call("settings.apply",new(){["uiTopmost"]=UiTopmost,["uiOpacity"]=(int)UiOpacity});await Call("taskbar.apply",new(){["opacity"]=(int)TaskbarOpacity,["hideStart"]=HideStart});WindowStyleChanged?.Invoke(UiTopmost,(byte)UiOpacity);Status="窗口与任务栏设置已应用";});
 
 
 
 }
-
-
-
-
-
-
-
-

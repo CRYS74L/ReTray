@@ -339,11 +339,12 @@ void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
         cmd.operation = BridgeOperation::Tip;
         wcsncpy_s(cmd.tip, std::size(cmd.tip), rule->tip.c_str(), _TRUNCATE);
         send(cmd);
-        {
+        if (rule->location == -1 || row.placement != static_cast<uint32_t>(rule->location)) {
             cmd = {};
             cmd.operation = BridgeOperation::Move;
             cmd.location = rule->location;
-            cmd.index = rule->location == -1 ? -1 : rule->order < 0 ? 0 : rule->order;
+            // Region rules leave ordering to Windows; -1 appends only when the region changes.
+            cmd.index = -1;
             send(cmd);
         }
     }
@@ -454,49 +455,6 @@ std::string StableIconKey(const BridgeIcon& row) {
     instanceOrderKeys.emplace(owner, key);
     return key;
 }
-void ApplyIconOrder() {
-    auto order = settings.value("iconOrder", Json::array());
-    const bool automatic = settings.value("autoSort", false);
-    if (order.empty() && !automatic)
-        return;
-    const auto live = bridge.Snapshot();
-    std::unordered_map<std::string, size_t> ranks;
-    for (size_t i = 0; i < order.size(); ++i)
-        ranks[order[i].get<std::string>()] = i;
-    for (uint32_t placement = 0; placement < 2; ++placement) {
-        std::vector<BridgeIcon> actual;
-        for (const auto& row : live)
-            if (row.placement == placement)
-                actual.push_back(row);
-        std::sort(actual.begin(), actual.end(),
-                  [](const auto& a, const auto& b) { return a.index < b.index; });
-        auto wanted = actual;
-        auto rank = [&](const auto& row) {
-            auto it = ranks.find(StableIconKey(row));
-            return it == ranks.end() ? SIZE_MAX : it->second;
-        };
-        std::stable_sort(wanted.begin(), wanted.end(), [&](const auto& a, const auto& b) {
-            if (automatic)
-                return _wcsicmp(std::filesystem::path(a.executable).filename().c_str(),
-                                std::filesystem::path(b.executable).filename().c_str()) < 0;
-            return rank(a) < rank(b);
-        });
-        bool changed = false;
-        for (size_t i = 0; i < wanted.size(); ++i)
-            if (!SameIcon(actual[i].identity, wanted[i].identity))
-                changed = true;
-        if (!changed)
-            continue;
-        for (size_t i = 0; i < wanted.size(); ++i) {
-            BridgeCommand command;
-            command.operation = BridgeOperation::Move;
-            command.identity = wanted[i].identity;
-            command.location = placement;
-            command.index = static_cast<int32_t>(i);
-            bridge.Command(command);
-        }
-    }
-}
 void Refresh() {
     if (!ShouldRecover(lifecycle) || stopping)
         return;
@@ -587,20 +545,21 @@ void Refresh() {
         }
         ApplyRule(row, found.rule);
     }
-    if (delta.added && settings.value("newIconLocation", -1) != -1) {
+    const auto newIconLocation = settings.value("newIconLocation", -1);
+    if (delta.added && newIconLocation != -1) {
         for (const auto& row : rows)
             if (!previous.contains(IdentityKey(row.identity)) &&
                 !ResolveRule(rules, Record(row)).rule &&
-                row.identity.ownerPid != GetCurrentProcessId()) {
+                row.identity.ownerPid != GetCurrentProcessId() &&
+                row.placement != static_cast<uint32_t>(newIconLocation)) {
                 BridgeCommand command;
                 command.operation = BridgeOperation::Move;
                 command.identity = row.identity;
-                command.location = settings.value("newIconLocation", -1);
-                command.index = 0;
+                command.location = newIconLocation;
+                command.index = -1;
                 bridge.Command(command);
             }
     }
-    ApplyIconOrder();
     ScheduleHotkeys();
 }
 std::string Bytes64(const uint32_t* pixels, size_t count) {
@@ -715,7 +674,6 @@ Json Handle(const Json& req) {
             settings = saved;
             return Result(false, "顺序保存失败", ERROR_WRITE_FAULT);
         }
-        ApplyIconOrder();
         result["saved"] = true;
     } else if (method == "internal.openUi")
         OpenUI();

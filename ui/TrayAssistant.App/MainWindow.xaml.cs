@@ -16,6 +16,9 @@ public sealed partial class MainWindow : Window
         SystemBackdrop = new SoftMicaBackdrop { InitialTheme = WindowRoot.RequestedTheme };
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory,"Assets","AppIcon.ico"));
         var scale = GetDpiForWindow(WinRT.Interop.WindowNative.GetWindowHandle(this)) / 96.0;
+        var presenter = (Microsoft.UI.Windowing.OverlappedPresenter)AppWindow.Presenter;
+        presenter.PreferredMinimumWidth = (int)(380 * scale);
+        presenter.PreferredMinimumHeight = (int)(400 * scale);
         AppWindow.Resize(new SizeInt32((int)(440*scale),(int)(720*scale)));
         var root = (FrameworkElement)Content;
         root.ActualThemeChanged += (_, _) => WindowAppearance.ApplyNativeTheme(this, root.ActualTheme);

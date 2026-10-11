@@ -38,6 +38,7 @@ public static class WindowAppearance
     {
         var presenter = (OverlappedPresenter)window.AppWindow.Presenter;
         presenter.SetBorderAndTitleBar(true, false);
+        presenter.IsMaximizable = false;
         var bar = new Grid { Height = 32 };
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
@@ -60,15 +61,9 @@ public static class WindowAppearance
         if (main)
         {
             Caption("CaptionMinimize", "最小化", "\uE921", () => presenter.Minimize());
-            var maximize = Caption("CaptionMaximize", "最大化", "\uE922", () =>
-            {
-                if (presenter.State == OverlappedPresenterState.Maximized) presenter.Restore();
-                else presenter.Maximize();
-            });
-            window.AppWindow.Changed += (_, _) => ((FontIcon)maximize.Content).Glyph = presenter.State == OverlappedPresenterState.Maximized ? "\uE923" : "\uE922";
         }
         Caption("CaptionClose", "关闭", "\uE8BB", () => RequestClose(window));
-        bar.Loaded += (_, _) => window.SetTitleBar(drag);
+        bar.Loaded += (_, _) => { window.SetTitleBar(drag); presenter.SetBorderAndTitleBar(true, false); };
         window.ExtendsContentIntoTitleBar = true;
         return bar;
     }

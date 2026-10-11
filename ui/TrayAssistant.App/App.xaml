@@ -14,12 +14,12 @@
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FFF3F3F3" />
-                    <SolidColorBrush x:Key="CaptionHoverBrush" Color="#FFE2E2E2" />
+                    <SolidColorBrush x:Key="CaptionHoverBrush" Color="#FFD0D0D0" />
                     <SolidColorBrush x:Key="CaptionPressedBrush" Color="#FFD3D3D3" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="ComboBoxDropDownBackground" Color="#FF292929" />
-                    <SolidColorBrush x:Key="CaptionHoverBrush" Color="#FF484848" />
+                    <SolidColorBrush x:Key="CaptionHoverBrush" Color="#FF707070" />
                     <SolidColorBrush x:Key="CaptionPressedBrush" Color="#FF555555" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="HighContrast">
@@ -28,8 +28,13 @@
                     <SolidColorBrush x:Key="CaptionPressedBrush" Color="{ThemeResource SystemColorHighlightColor}" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
-            <Style x:Key="OpaqueSelectionFlyoutStyle" TargetType="MenuFlyoutPresenter">
-                <Setter Property="Background" Value="{ThemeResource ComboBoxDropDownBackground}"/>
+            <FontFamily x:Key="AppUiFontFamily">Microsoft YaHei UI</FontFamily>
+            <FontFamily x:Key="ContentControlThemeFontFamily">Microsoft YaHei UI</FontFamily>
+            <FontFamily x:Key="ControlContentThemeFontFamily">Microsoft YaHei UI</FontFamily>
+            <Style x:Key="MaterialSelectionFlyoutStyle" TargetType="MenuFlyoutPresenter">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="FontFamily" Value="{StaticResource AppUiFontFamily}"/>
+                <Setter Property="FontSize" Value="14"/>
                 <Setter Property="MaxHeight" Value="280"/>
             </Style>
             <Style x:Key="InlineToggleStyle" TargetType="ToggleSwitch" BasedOn="{StaticResource DefaultToggleSwitchStyle}">
@@ -43,6 +48,8 @@
                 <Setter Property="MinWidth" Value="0"/><Setter Property="MinHeight" Value="0"/>
                 <Setter Property="Background" Value="Transparent"/><Setter Property="Foreground" Value="{ThemeResource TextFillColorPrimaryBrush}"/>
                 <Setter Property="UseSystemFocusVisuals" Value="True"/>
+                <Setter Property="FocusVisualPrimaryBrush" Value="{ThemeResource TextFillColorPrimaryBrush}"/>
+                <Setter Property="FocusVisualSecondaryBrush" Value="{ThemeResource CaptionHoverBrush}"/>
                 <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="Button">
                     <Grid x:Name="Surface" Background="{TemplateBinding Background}">
                         <VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="CommonStates">

@@ -57,13 +57,14 @@ public sealed partial class BelowComboBox : Control
         for (var index = 0; index < Items.Count; index++)
         {
             var captured = index;
-            var item = new RadioMenuFlyoutItem { Text = Items[index]?.ToString() ?? "", IsChecked = SelectedIndex == index };
+            var item = new RadioMenuFlyoutItem { Text = Items[index]?.ToString() ?? "", IsChecked = SelectedIndex == index, FontFamily = (Microsoft.UI.Xaml.Media.FontFamily)Application.Current.Resources["AppUiFontFamily"], FontSize = FontSize };
             item.Click += (_, _) => { SelectedIndex = captured; menu.Hide(); };
             menu.Items.Add(item);
         }
-        var style = new Style(typeof(MenuFlyoutPresenter)) { BasedOn = (Style)Application.Current.Resources["OpaqueSelectionFlyoutStyle"] };
+        var style = new Style(typeof(MenuFlyoutPresenter)) { BasedOn = (Style)Application.Current.Resources["MaterialSelectionFlyoutStyle"] };
         style.Setters.Add(new Setter(FrameworkElement.MinWidthProperty, button?.ActualWidth ?? ActualWidth));
         style.Setters.Add(new Setter(FrameworkElement.RequestedThemeProperty, ActualTheme));
+        style.Setters.Add(new Setter(MenuFlyoutPresenter.SystemBackdropProperty, new SoftMicaBackdrop { InitialTheme = ActualTheme }));
         menu.MenuFlyoutPresenterStyle = style;
     }
     private void SetExpanded(bool value)

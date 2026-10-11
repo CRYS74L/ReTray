@@ -1,4 +1,5 @@
 #include "../native/shell/bridge_client.h"
+#include "../native/core/notify_patch.h"
 #include <cstdio>
 #include <stdexcept>
 using namespace tray;
@@ -41,6 +42,10 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(changed.fingerprint != original.fingerprint);
         CHECK(changed.revision > original.revision);
         CHECK(changed.callback == original.callback && changed.version == original.version);
+        CHECK(changed.originalWidth > 0 && changed.originalHeight > 0);
+        CHECK(std::any_of(changed.originalPixels,
+                          changed.originalPixels + changed.originalWidth * changed.originalHeight,
+                          [](uint32_t pixel) { return (pixel >> 24) != 0; }));
         BridgeCommand hide;
         hide.operation = BridgeOperation::Visibility;
         hide.identity = original.identity;
@@ -94,7 +99,20 @@ int wmain(int argc, wchar_t** argv) {
         PostMessageW(reinterpret_cast<HWND>(original.identity.ownerHwnd), MakeOff, 0, 0);
         Sleep(150);
         refresh();
-        CHECK(find(client.Snapshot(), false).transparent);
+        auto off = find(client.Snapshot(), false);
+        // A transparent native frame still drives flashing; only the UI original preview is held.
+        CHECK(off.live && off.transparent && off.custom);
+        CHECK(off.decision == static_cast<uint32_t>(FrameDecision::NativeOff));
+        CHECK(off.sourceFingerprint == off.fingerprint);
+        CHECK(off.sourceFingerprint != changed.sourceFingerprint);
+        CHECK(off.sourceWidth == off.width && off.sourceHeight == off.height);
+        CHECK(std::all_of(off.pixels, off.pixels + off.width * off.height,
+                          [](uint32_t pixel) { return (pixel >> 24) == 0; }));
+        CHECK(off.originalWidth == changed.originalWidth &&
+              off.originalHeight == changed.originalHeight);
+        CHECK(std::equal(changed.originalPixels,
+                         changed.originalPixels + changed.originalWidth * changed.originalHeight,
+                         off.originalPixels));
         PostMessageW(reinterpret_cast<HWND>(original.identity.ownerHwnd), ChangeColor, 0xff1955e9,
                      0);
         Sleep(150);
@@ -118,11 +136,14 @@ int wmain(int argc, wchar_t** argv) {
         custom.identity = guid.identity;
         CHECK(client.Command(custom));
         auto customGuid = find(client.Snapshot(), true).fingerprint;
+        auto beforeRegionRestore = find(client.Snapshot(), true);
         move.location = -1;
         CHECK(client.Command(move));
-        CHECK(find(client.Snapshot(), true).index == guid.index);
-        CHECK(find(client.Snapshot(), true).placement == guid.placement);
-        CHECK(find(client.Snapshot(), true).fingerprint == customGuid);
+        auto restoredRegion = find(client.Snapshot(), true);
+        CHECK(restoredRegion.placement == guid.placement);
+        if (beforeRegionRestore.placement == guid.placement)
+            CHECK(restoredRegion.index == beforeRegionRestore.index);
+        CHECK(restoredRegion.fingerprint == customGuid);
         move.location = 1;
         move.index = 255;
         CHECK(client.Command(move));
@@ -152,6 +173,20 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(find(client.Snapshot(), true).index == bounded.index);
         move.index = guid.index == 0 ? 1 : 0;
         CHECK(client.Command(move));
+        // Applying a region-only rule to an icon already there must preserve every native index.
+        auto beforeRegionRule = client.Snapshot();
+        move.index = -1;
+        CHECK(client.Command(move));
+        auto afterRegionRule = client.Snapshot();
+        CHECK(afterRegionRule.size() == beforeRegionRule.size());
+        for (const auto& item : beforeRegionRule) {
+            auto found = std::find_if(afterRegionRule.begin(), afterRegionRule.end(),
+                                      [&](const auto& candidate) {
+                                          return SameIcon(item.identity, candidate.identity);
+                                      });
+            CHECK(found != afterRegionRule.end());
+            CHECK(found->placement == item.placement && found->index == item.index);
+        }
         hide.identity = guid.identity;
         hide.visibility = 1;
         CHECK(client.Command(hide));
@@ -229,6 +264,16 @@ int wmain(int argc, wchar_t** argv) {
             fflush(stdout);
             ExitProcess(0);
         }
+        auto unchangedNativeOrder = client.Snapshot();
+        unchangedNativeOrder.erase(
+            std::remove_if(unchangedNativeOrder.begin(), unchangedNativeOrder.end(),
+                           [&](const auto& item) {
+                               return item.placement != guid.placement ||
+                                      SameIcon(item.identity, original.identity);
+                           }),
+            unchangedNativeOrder.end());
+        std::sort(unchangedNativeOrder.begin(), unchangedNativeOrder.end(),
+                  [](const auto& a, const auto& b) { return a.index < b.index; });
         client.Detach();
         CHECK(client.shared->status == 2);
         auto after = ReadSnapshot(adapter, ExplorerPid(), original.identity.shellEpoch);
@@ -242,11 +287,24 @@ int wmain(int argc, wchar_t** argv) {
                 return r.identity.ownerPid == sourcePid && r.identity.hasGuid;
             });
         CHECK(finalGuid != after.records.end());
-        CHECK(finalGuid->nativeIndex == guid.index);
+        CHECK(finalGuid->placement == static_cast<Placement>(guid.placement));
+        std::vector<NativeIconRecord> peersAfterDetach;
+        for (const auto& item : after.records)
+            if (std::any_of(unchangedNativeOrder.begin(), unchangedNativeOrder.end(),
+                            [&](const auto& before) {
+                                return SameIcon(item.identity, before.identity);
+                            }))
+                peersAfterDetach.push_back(item);
+        CHECK(peersAfterDetach.size() == unchangedNativeOrder.size());
+        std::sort(peersAfterDetach.begin(), peersAfterDetach.end(),
+                  [](const auto& a, const auto& b) { return a.nativeIndex < b.nativeIndex; });
+        for (size_t i = 0; i < unchangedNativeOrder.size(); ++i)
+            CHECK(SameIcon(peersAfterDetach[i].identity, unchangedNativeOrder[i].identity));
         CHECK(final->tip == std::wstring(original.tip));
         printf("PASS source-before-attach + legacy/v4 + current updates + GUID/legacy hide/show + "
-               "custom + off/flash cycle + lossless restore + native move + actual original menu + "
-               "detach visibility restoration\n");
+               "custom + stable original preview during off/flash + lossless frame restore + "
+               "native move + region-only restoration + actual original menu + "
+               "detach visibility restoration without native reordering\n");
         return 0;
     } catch (const std::exception& error) {
         fprintf(stderr, "FAIL bridge control: %s\n", error.what());

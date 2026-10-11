@@ -75,6 +75,8 @@ struct Entry {
     NativeIconRecord record;
     IUnknown* original{};
     Frame source;
+    // The UI original preview keeps the last visible source frame within this registration only.
+    Frame originalPreview;
     FrameBaseline baseline;
     HICON replacement{};
     bool custom{}, customPainted{}, moved{}, tipChanged{}, swapButtons{};
@@ -82,7 +84,6 @@ struct Entry {
     int visibility{-1};
     Placement originalPlacement{Placement::Overflow};
     bool originalHidden{};
-    uint32_t originalIndex{};
     uint64_t revision{}, lastAccessAt{};
     ~Entry() {
         if (original)
@@ -195,6 +196,10 @@ void SaveOriginal(Entry& entry) {
     entry.original = object;
     entry.source = SourceFrame(object);
     entry.source.revision = ++entry.revision;
+    if (entry.source.origin == FrameOrigin::SourceLive && !entry.source.transparent &&
+        entry.source.width && entry.source.height &&
+        entry.source.pixels.size() >= static_cast<size_t>(entry.source.width) * entry.source.height)
+        entry.originalPreview = entry.source;
 }
 void DrawPolicy(Entry& entry) {
     if (entry.source.origin != FrameOrigin::SourceLive)
@@ -265,6 +270,16 @@ bool MoveIcon(const NativeIconRecord& record, int location, uint32_t index) {
         reinterpret_cast<void*>(model + 0x20), reinterpret_cast<void*>(record.recordAddress + 0x10),
         location, index));
 }
+bool MoveRegion(const NativeIconRecord& record, int location) {
+    // Visibility restoration can change placement before this call; use the actual current region.
+    auto live = ReadSnapshot(adapter, GetCurrentProcessId(), state->epoch, false);
+    auto current = std::find_if(live.records.begin(), live.records.end(), [&](const auto& item) {
+        return SameIcon(item.identity, record.identity);
+    });
+    return live.complete && current != live.records.end() &&
+           (static_cast<int>(current->placement) == location ||
+            MoveIcon(*current, location, UINT32_MAX));
+}
 void FillRow(BridgeIcon& row, Entry& entry) {
     auto& record = entry.record;
     row = {};
@@ -296,15 +311,15 @@ void FillRow(BridgeIcon& row, Entry& entry) {
     row.sourceHeight = entry.source.height;
     row.decision = static_cast<uint32_t>(ChooseFrame(entry.source, entry.baseline, entry.custom));
     wcsncpy_s(row.originalTip, std::size(row.originalTip), entry.originalTip.c_str(), _TRUNCATE);
-    row.originalWidth = std::min<uint32_t>(64, entry.source.width);
-    row.originalHeight = std::min<uint32_t>(64, entry.source.height);
+    const auto& preview = entry.originalPreview;
+    row.originalWidth = std::min<uint32_t>(64, preview.width);
+    row.originalHeight = std::min<uint32_t>(64, preview.height);
     for (uint32_t y = 0; y < row.originalHeight; ++y)
         for (uint32_t x = 0; x < row.originalWidth; ++x)
             row.originalPixels[y * row.originalWidth + x] =
-                entry.source
-                    .pixels[static_cast<size_t>(y) * entry.source.height / row.originalHeight *
-                                entry.source.width +
-                            static_cast<size_t>(x) * entry.source.width / row.originalWidth];
+                preview.pixels[static_cast<size_t>(y) * preview.height / row.originalHeight *
+                                   preview.width +
+                               static_cast<size_t>(x) * preview.width / row.originalWidth];
     row.dynamic =
         ChooseFrame(entry.source, entry.baseline, entry.custom) == FrameDecision::NativeDynamic;
     row.managed = entry.custom || entry.visibility != -1 || entry.tipChanged || entry.moved ||
@@ -330,20 +345,23 @@ void Publish(bool refreshOriginal, const WireEvent* event = nullptr) {
             item->record = record;
             item->originalHidden = record.placement == Placement::Hidden;
             item->originalPlacement = item->originalHidden ? Placement::Overflow : record.placement;
-            item->originalIndex = record.nativeIndex;
             item->originalTip = record.tip;
             SaveOriginal(*item);
             found = entries.emplace(key, std::move(item)).first;
         }
         auto& entry = *found->second;
-        entry.record = record;
+        const bool changedObject = entry.record.recordAddress != record.recordAddress;
         bool sourceUpdate = event && ((event->identity.hasGuid && record.identity.hasGuid &&
                                        IsEqualGUID(event->identity.guid, record.identity.guid)) ||
                                       (!event->identity.hasGuid && !record.identity.hasGuid &&
                                        event->identity.ownerHwnd == record.identity.ownerHwnd &&
                                        event->identity.uid == record.identity.uid));
-        if (sourceUpdate &&
-            (event->patch.operation == NIM_ADD || (event->patch.suppliedFlags & NIF_ICON))) {
+        if (changedObject || (sourceUpdate && event->patch.operation == NIM_ADD))
+            entry.originalPreview = {};
+        entry.record = record;
+        if (changedObject ||
+            (sourceUpdate &&
+             (event->patch.operation == NIM_ADD || (event->patch.suppliedFlags & NIF_ICON)))) {
             SaveOriginal(entry);
             DrawPolicy(entry);
         } else if (refreshOriginal && !entry.custom)
@@ -518,17 +536,15 @@ bool MembershipDelta(const WireEvent& event) {
         entry->record = record;
         entry->originalHidden = record.placement == Placement::Hidden;
         entry->originalPlacement = entry->originalHidden ? Placement::Overflow : record.placement;
-        entry->originalIndex = record.nativeIndex;
         entry->originalTip = record.tip;
         SaveOriginal(*entry);
         current = entries.emplace(key, std::move(entry)).first;
     } else {
-        auto changedObject = current->second->record.recordAddress != record.recordAddress;
+        // A successful NIM_ADD starts a new registration, even when Explorer reuses the address.
+        current->second->originalPreview = {};
         current->second->record = record;
-        if ((event.patch.suppliedFlags & NIF_ICON) || changedObject) {
-            SaveOriginal(*current->second);
-            DrawPolicy(*current->second);
-        }
+        SaveOriginal(*current->second);
+        DrawPolicy(*current->second);
         if (event.patch.suppliedFlags & NIF_TIP)
             current->second->originalTip = record.tip;
     }
@@ -568,7 +584,7 @@ void Detach() {
     ownOperation = true;
     RemoveBehaviorHooks();
     auto live = ReadSnapshot(adapter, GetCurrentProcessId(), state->epoch, false);
-    std::vector<Entry*> restoreOrder;
+    std::vector<Entry*> restoreRegions;
     if (!state->sessionEnding && live.complete)
         for (auto& [key, entry] : entries) {
             auto current =
@@ -583,15 +599,12 @@ void Detach() {
                     SetTip(*current, entry->originalTip);
                 if (entry->visibility != -1 || entry->tipChanged || entry->moved)
                     SetVisibility(*current, entry->originalHidden);
-                if (entry->moved && entry->originalPlacement != Placement::Hidden)
-                    restoreOrder.push_back(entry.get());
+                if (entry->moved && !entry->originalHidden)
+                    restoreRegions.push_back(entry.get());
             }
         }
-    std::sort(restoreOrder.begin(), restoreOrder.end(),
-              [](auto a, auto b) { return a->originalIndex < b->originalIndex; });
-    for (auto entry : restoreOrder)
-        MoveIcon(entry->record, static_cast<int>(entry->originalPlacement),
-                 std::min<uint32_t>(255, entry->originalIndex));
+    for (auto entry : restoreRegions)
+        MoveRegion(entry->record, static_cast<int>(entry->originalPlacement));
     if (!state->sessionEnding && live.complete)
         for (auto& [key, entry] : entries)
             if (entry->visibility != -1 || entry->tipChanged || entry->moved)
@@ -710,9 +723,11 @@ void ExecuteCommand() {
                         entry.tipChanged = false;
                     }
                     if (entry.moved) {
-                        MoveIcon(*match, static_cast<int>(entry.originalPlacement),
-                                 std::min<uint32_t>(255, entry.originalIndex));
-                        entry.moved = false;
+                        if (!entry.originalHidden &&
+                            !MoveRegion(*match, static_cast<int>(entry.originalPlacement)))
+                            error = ERROR_INVALID_DATA;
+                        else
+                            entry.moved = false;
                     }
                     if (restoreVisibility && !SetVisibility(*match, entry.originalHidden, true))
                         error = ERROR_INVALID_DATA;
@@ -723,16 +738,17 @@ void ExecuteCommand() {
                         error = ERROR_INVALID_DATA;
                 } else if (cmd.operation == BridgeOperation::Move) {
                     if (cmd.location == -1) {
-                        if (entry.moved &&
-                            !MoveIcon(*match, static_cast<int>(entry.originalPlacement),
-                                      std::min<uint32_t>(255, entry.originalIndex)))
+                        if (entry.moved && !entry.originalHidden &&
+                            !MoveRegion(*match, static_cast<int>(entry.originalPlacement)))
                             error = ERROR_INVALID_DATA;
                         else
                             entry.moved = false;
-                    } else if (cmd.location > 1 || cmd.index < 0 || cmd.index >= 256 ||
-                               !MoveIcon(*match, cmd.location, cmd.index))
+                    } else if (cmd.location < 0 || cmd.location > 1 || cmd.index < -1 ||
+                               cmd.index >= 256 ||
+                               !(cmd.index == -1 ? MoveRegion(*match, cmd.location)
+                                                : MoveIcon(*match, cmd.location, cmd.index)))
                         error = ERROR_INVALID_DATA;
-                    else
+                    else if (cmd.index != -1 || static_cast<int>(match->placement) != cmd.location)
                         entry.moved = true;
                 } else if (cmd.operation == BridgeOperation::Tip) {
                     entry.customTip = cmd.tip;

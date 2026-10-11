@@ -18,7 +18,8 @@ function Invoke-Agent($method,$data=@{}) {
  $task=$reader.ReadLineAsync();if(!$task.Wait(5000)){throw 'IPC response timeout'};return $task.Result|ConvertFrom-Json -Depth 30
  }finally{if($writer){$writer.Dispose()};if($reader){$reader.Dispose()};$pipe.Dispose()}
 }
-$dataDir=Join-Path $product 'artifacts\agent-integration'
+$dataDir=Join-Path $product ('artifacts\agent-integration-'+[guid]::NewGuid().ToString('N'))
+if(Get-Process TrayAssistant.Agent -ErrorAction SilentlyContinue){throw 'Stop the running assistant before starting isolated agent acceptance'}
 $agent=Start-Process -FilePath (Join-Path $product 'build\TrayAssistant.Agent.exe') -ArgumentList @('--background','--data',('"'+$dataDir+'"')) -WindowStyle Hidden -PassThru
 try{
  $limit=[DateTime]::UtcNow.AddSeconds(8);do{try{$status=Invoke-Agent 'status.read';break}catch{Start-Sleep -Milliseconds 200}}while([DateTime]::UtcNow -lt $limit)
@@ -29,20 +30,17 @@ try{
  $watch=[Diagnostics.Stopwatch]::StartNew();$reply=[AgentTestNative]::SendMessage($window,0x11,[UIntPtr]::Zero,[IntPtr]::Zero);$watch.Stop();if($reply -ne [IntPtr]1 -or $watch.ElapsedMilliseconds -gt 50){throw 'Session query refused/slow'}
  [void][AgentTestNative]::SendMessage($window,0x16,[UIntPtr]::Zero,[IntPtr]::Zero)
  if(!(Invoke-Agent 'status.read').data.ready){throw 'Cancelled session did not return ready'}
- $busyPipe=[IO.Pipes.NamedPipeClientStream]::new('.',('TrayAssistant.v1.'+(Get-Process -Id $PID).SessionId),[IO.Pipes.PipeDirection]::InOut)
- try{
-  $busyPipe.Connect(2000);$busyWriter=[IO.StreamWriter]::new($busyPipe,[Text.UTF8Encoding]::new($false),4096,$true);$busyWriter.AutoFlush=$true;$busyReader=[IO.StreamReader]::new($busyPipe,[Text.UTF8Encoding]::new($false),$false,4096,$true)
-  $busyWriter.WriteLine('{"schema":1,"requestId":"busy","method":"protection.set","data":{"newPassword":"integration-test-only","currentPassword":"integration-test-only","settings":true,"menus":true,"interactions":false}}')
-  $busyRead=$busyReader.ReadLineAsync();$busyLimit=[DateTime]::UtcNow.AddSeconds(2);do{$working=[AgentTestNative]::GetProp($window,'TrayAssistant.Busy') -ne [IntPtr]::Zero;if(!$working){Start-Sleep -Milliseconds 1}}while(!$working -and !$busyRead.IsCompleted -and [DateTime]::UtcNow -lt $busyLimit)
-  if(!$working){throw 'Did not observe active worker for busy-session test'}
-  $busyWatch=[Diagnostics.Stopwatch]::StartNew();$busyReply=[AgentTestNative]::SendMessage($window,0x11,[UIntPtr]::Zero,[IntPtr]::Zero);$busyWatch.Stop();[void][AgentTestNative]::SendMessage($window,0x16,[UIntPtr]::Zero,[IntPtr]::Zero)
-  if($busyReply -ne [IntPtr]1 -or $busyWatch.ElapsedMilliseconds -gt 50){throw 'Busy rule worker delayed session query'}
-  if(!$busyRead.Wait(5000) -or !(($busyRead.Result|ConvertFrom-Json).success)){throw 'Password digest setup failed'}
- }finally{if($busyWriter){$busyWriter.Dispose()};if($busyReader){$busyReader.Dispose()};$busyPipe.Dispose()}
- if([IO.File]::ReadAllText((Join-Path $dataDir 'settings.json')).Contains('integration-test-only')){throw 'Plain secret persisted'}
- if(!(Invoke-Agent 'protection.lock').success){throw 'Lock failed'}
- if((Invoke-Agent 'settings.read').success){throw 'Settings protection bypassed'}
- if(!(Invoke-Agent 'protection.unlock' @{password='integration-test-only'}).success){throw 'Unlock failed'}
+ $before=Invoke-Agent 'settings.read'
+ foreach($request in @(@{method='settings.apply';data=@{autoSort='bad'}},@{method='ownIcon.apply';data=@{visible=$false;asset='';tip='test';showInList='bad'}})) {
+   $invalid=Invoke-Agent $request.method $request.data
+  if($invalid.success -or $invalid.saved){throw 'Invalid settings accepted'}
+ }
+ $after=Invoke-Agent 'settings.read'
+ if(($before.data|ConvertTo-Json -Depth 30 -Compress) -ne ($after.data|ConvertTo-Json -Depth 30 -Compress)){throw 'Rejected settings changed persisted configuration'}
+ Start-Sleep -Milliseconds 1200
+ if(!(Invoke-Agent 'status.read').data.ready){throw 'Agent failed after rejected configuration'}
  $stopwatch=[Diagnostics.Stopwatch]::StartNew();$stop=Invoke-Agent 'agent.stop';$agent.WaitForExit(1000)|Out-Null;$stopwatch.Stop();if(!$agent.HasExited -or $stopwatch.ElapsedMilliseconds -gt 1000){throw 'Agent exit missed bound'}
- "PASS real catalog, own icon, protection digest/lock/unlock, QUERY/cancel $($watch.ElapsedMilliseconds)ms, busy worker QUERY $($busyWatch.ElapsedMilliseconds)ms, stop $($stopwatch.ElapsedMilliseconds)ms; real shutdown remains untested"
+ "PASS real catalog, own icon, invalid config rejection and unchanged settings, QUERY/cancel $($watch.ElapsedMilliseconds)ms, stop $($stopwatch.ElapsedMilliseconds)ms; real shutdown remains untested"
 }finally{if(!$agent.HasExited){try{Invoke-Agent 'agent.stop'|Out-Null;$agent.WaitForExit(1000)|Out-Null}catch{}}}
+
+

@@ -4,6 +4,8 @@ using Microsoft.UI.Xaml.Data;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using Microsoft.Windows.AppLifecycle;
+using System.Runtime.InteropServices;
 
 // To learn more about WinUI, the WinUI project structure,
 // and more about our project templates, see: http://aka.ms/winui-project-info.
@@ -15,6 +17,8 @@ namespace TrayAssistant_App;
 /// </summary>
 public partial class App : Application
 {
+    [DllImport("user32.dll")] private static extern bool ShowWindow(nint hwnd,int command);
+    [DllImport("user32.dll")] private static extern bool SetForegroundWindow(nint hwnd);
     /// <summary>
     /// The main application window. Use <c>App.Window</c> from any class that needs
     /// the window reference (for dialogs, pickers, interop, etc.).
@@ -48,10 +52,13 @@ public partial class App : Application
     /// Invoked when the application is launched.
     /// </summary>
     /// <param name="args">Details about the launch request and process.</param>
-    protected override void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(Microsoft.UI.Xaml.LaunchActivatedEventArgs args)
     {
+        var instance=AppInstance.FindOrRegisterForKey("TrayAssistant.UI."+System.Diagnostics.Process.GetCurrentProcess().SessionId);
+        if(!instance.IsCurrent){await instance.RedirectActivationToAsync(AppInstance.GetCurrent().GetActivatedEventArgs());Environment.Exit(0);return;}
         Window = new MainWindow();
         DispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        instance.Activated+=(_,_)=>DispatcherQueue.TryEnqueue(()=>{ShowWindow(WindowHandle,9);Window.Activate();SetForegroundWindow(WindowHandle);});
         Window.Activate();
     }
 }

@@ -8,6 +8,7 @@ public sealed class PipeClient
 {
     private readonly SemaphoreSlim gate = new(1, 1);
     private bool mayStart = true;
+    public void AllowStart() => mayStart = true;
     public async Task<JsonObject> RequestAsync(string method, JsonObject? data = null, CancellationToken token = default)
     {
         await gate.WaitAsync(token);
@@ -38,3 +39,4 @@ public sealed class PipeClient
         finally { gate.Release(); }
     }
 }
+

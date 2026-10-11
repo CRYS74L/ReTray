@@ -11,6 +11,12 @@ public sealed class IconRow : ObservableObject
     private string name = "", tip = "", state = "", identity = "", executable = "";
     private WriteableBitmap? image, original;
     private string pixels = "", originalPixels = "";
+    private bool visible,isBusy;
+    public bool Visible { get=>visible;set=>SetProperty(ref visible,value); }
+    public bool ActualVisible=>Rule["placement"]?.GetValue<int>()!=2;
+    public bool Owned=>Rule["owned"]?.GetValue<bool>()==true;
+    public bool IsBusy { get=>isBusy;set{if(SetProperty(ref isBusy,value))OnPropertyChanged(nameof(CanToggle));} }
+    public bool CanToggle=>!IsBusy;
     public string Name { get => name; private set => SetProperty(ref name, value); }
     public string Tip { get => tip; private set => SetProperty(ref tip, value); }
     public string State { get => state; private set => SetProperty(ref state, value); }
@@ -22,17 +28,20 @@ public sealed class IconRow : ObservableObject
     public void Update(JsonObject json)
     {
         Rule = (JsonObject)json.DeepClone();
+        if(!IsBusy)Visible=ActualVisible;
         Executable = json["selector"]!["executable"]!.GetValue<string>();
         Name = Path.GetFileNameWithoutExtension(Executable);
+        Name=Name.ToLowerInvariant() switch{"weixin"=>"微信","qq"=>"QQ","trayassistant.agent"=>"托盘图标助手",_=>Name};
         Tip = json["tipCurrent"]?.GetValue<string>() ?? "";
         Identity = (json["selector"]!["hasGuid"]!.GetValue<bool>() ? "GUID" : $"UID {json["selector"]!["uid"]}") + $" · PID {json["pid"]}";
-        State = json["dynamic"]?.GetValue<bool>() == true ? "原应用动态帧" : json["placement"]!.GetValue<int>() == 2 ? "已隐藏" : json["custom"]?.GetValue<bool>() == true ? "自定义图标" : json["placement"]!.GetValue<int>() == 0 ? "任务栏" : "折叠区";
+        State = json["decision"]?.GetValue<int>()==4?"待确认静态图像":json["decision"]?.GetValue<int>()==2?"原应用闪烁空帧":json["dynamic"]?.GetValue<bool>() == true ? "原应用动态帧" : json["placement"]!.GetValue<int>() == 2 ? "已隐藏" : json["custom"]?.GetValue<bool>() == true ? "自定义图标" : json["placement"]!.GetValue<int>() == 0 ? "任务栏" : "折叠区";
+        State=Services.Localization.Text(State);
         var value = json["pixels"]!.GetValue<string>();
         if (pixels != value) { pixels = value; Image = Decode(value, json["width"]!.GetValue<int>(), json["height"]!.GetValue<int>()); }
         value = json["originalPixels"]!.GetValue<string>();
         if (originalPixels != value) { originalPixels = value; Original = Decode(value, json["originalWidth"]!.GetValue<int>(), json["originalHeight"]!.GetValue<int>()); }
     }
-    private static WriteableBitmap? Decode(string data, int width, int height)
+    public static WriteableBitmap? Decode(string data, int width, int height)
     {
         if (width <= 0 || height <= 0 || width > 64 || height > 64) return null;
         var bytes = Convert.FromBase64String(data); if (bytes.Length != width * height * 4) return null;

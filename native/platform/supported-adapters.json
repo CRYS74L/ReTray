@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "adapters": [
+    {
+      "vectorBegin": 88,
+      "itemVtable": 1866144,
+      "getIcon": 165808,
+      "model": 608,
+      "promoted": 24,
+      "imageSize": 3198976,
+      "version": 148,
+      "vectorEnd": 96,
+      "tip": 160,
+      "manager": 576,
+      "root": 2371816,
+      "setIcon": 261528,
+      "vectorAt": 488048,
+      "imageObject": 200,
+      "guid": 92,
+      "timestamp": 1079624481,
+      "vectorSize": 513936,
+      "callback": 152,
+      "checks": [
+        {
+          "bytes": "48895C2410555657488BEC4883EC4048",
+          "rva": 684304
+        },
+        {
+          "bytes": "40534883EC30488B4150488BDA488902",
+          "rva": 168648
+        },
+        {
+          "bytes": "48895C2408488974241048897C241855",
+          "rva": 716912
+        },
+        {
+          "bytes": "48895C24084889742410574883EC2049",
+          "rva": 474512
+        },
+        {
+          "bytes": "48895C2408488974241048897C242055",
+          "rva": 261528
+        },
+        {
+          "bytes": "48895C241048896C2418488974242057",
+          "rva": 165932
+        },
+        {
+          "bytes": "40534883EC20488B4118488BDA488BCA",
+          "rva": 841500
+        },
+        {
+          "bytes": "40534883EC20488B4120488BDA488BCA",
+          "rva": 663964
+        },
+        {
+          "bytes": "4883EC384C8BD2488D41E848F7D94D1B",
+          "rva": 513936
+        },
+        {
+          "bytes": "40534883EC30498BD8448BC2488BD133",
+          "rva": 488048
+        }
+      ],
+      "overflow": 32,
+      "cachedIcon": 304,
+      "module": "Taskbar.dll",
+      "age": 1,
+      "uid": 88,
+      "window": 80,
+      "pdb": "0851BC0F-80DA-3FBD-8E9E-2AC73B87C2E8"
+    }
+  ]
+}

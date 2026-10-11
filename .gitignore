@@ -1,0 +1,16 @@
+build/
+artifacts/
+.superpowers/
+tools/
+**/bin/
+**/obj/
+*.user
+*.log
+*.pdb
+*.dmp
+*.tmp
+.env
+.env.*
+.vs/
+publish/
+dist/

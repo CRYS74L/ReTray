@@ -31,8 +31,8 @@ public sealed class IconEditorWindow : LanDeviceMonitor.MainWindow
         }
         Preview(0, "原图标", "Selected.Original"); Preview(1, "替代图标", nameof(vm.AssetPreview)); content.Children.Add(previews);
         var buttons = new WrapPanel { Margin = new Thickness(0, 0, 0, 14) };
-        buttons.Children.Add(new Button { Content = "选择图标…", Command = vm.ChooseIconCommand, Margin = new Thickness(0, 0, 8, 0) });
-        buttons.Children.Add(new Button { Content = "使用原图标", Command = vm.UseOriginalAssetCommand }); content.Children.Add(buttons);
+        buttons.Children.Add(new Button { Style = (Style)FindResource("StudioActionButtonStyle"), Content = "选择图标…", Command = vm.ChooseIconCommand, Margin = new Thickness(0, 0, 8, 0) });
+        buttons.Children.Add(new Button { Style = (Style)FindResource("StudioActionButtonStyle"), Content = "使用原图标", Command = vm.UseOriginalAssetCommand }); content.Children.Add(buttons);
         var summary = new TextBlock { FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 14) };
         summary.SetResourceReference(TextBlock.ForegroundProperty, "MutedTextBrush"); summary.SetBinding(TextBlock.TextProperty, nameof(vm.AssetSummary)); content.Children.Add(summary);
         var tip = new TextBox { MaxLength = 127, Margin = new Thickness(0, 8, 0, 14) };
@@ -67,7 +67,7 @@ public sealed class IconEditorWindow : LanDeviceMonitor.MainWindow
         Identify(more, "IconAdvancedSettings"); content.Children.Add(more); content.Children.Add(disclosure);
         var error = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 }; error.SetResourceReference(TextBlock.ForegroundProperty, "DangerTextBrush");
         error.SetBinding(TextBlock.TextProperty, nameof(vm.Error)); content.Children.Add(error);
-        var scroll = new ScrollViewer { Style = (Style)FindResource("FadingDetailScrollViewerStyle"), Content = content, Margin = new Thickness(14, 12, 0, 14) };
+        var scroll = new ScrollViewer { Style = (Style)FindResource("FadingDetailScrollViewerStyle"), Content = content, Margin = new Thickness(14, 12, 0, 0) };
         DeviceListViewport.SetEnabled(scroll, true); Identify(scroll, "IconEditorScroll"); TrayContent = scroll;
         Loaded += (_, _) => Localization.Apply(this);
         ThemeService.PaletteChanged += RefreshAppearance;

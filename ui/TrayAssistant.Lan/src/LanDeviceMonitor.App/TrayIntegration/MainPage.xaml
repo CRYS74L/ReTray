@@ -1,7 +1,6 @@
 <UserControl x:Class="TrayAssistant_App.MainPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:LanDeviceMonitor.Controls" xmlns:tray="clr-namespace:TrayAssistant_App.Controls" UseLayoutRounding="False" SnapsToDevicePixels="False">
   <UserControl.Resources>
     <Style TargetType="ListBoxItem" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" x:Key="TrayListItemStyle">
-      <Setter Property="controls:CapsulePressMotion.Enabled" Value="True" />
       <Setter Property="Padding" Value="0" />
       <Setter Property="Margin" Value="0,0,0,5" />
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -11,45 +10,9 @@
         <Setter.Value>
           <ControlTemplate TargetType="ListBoxItem">
             <Grid x:Name="ItemMotionRoot" MinHeight="{TemplateBinding MinHeight}" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-              <Border x:Name="ItemBorder" Background="{DynamicResource DeviceListItemBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}" />
-              <Border x:Name="SelectedBorder" Background="{DynamicResource DeviceListItemSelectedBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}" Opacity="0" IsHitTestVisible="False" />
-              <Border x:Name="HoverBorder" Background="{DynamicResource FooterHoverBrush}" BorderBrush="{DynamicResource FooterHoverBrush}" BorderThickness="1" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}" Opacity="0" IsHitTestVisible="False" />
-              <Border x:Name="PressedBorder" Background="{DynamicResource DevicePressedBrush}" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}" Opacity="0" IsHitTestVisible="False" />
+              <Border Background="Transparent" />
               <ContentPresenter Margin="{TemplateBinding Padding}" UseLayoutRounding="False" />
             </Grid>
-            <ControlTemplate.Triggers>
-              <Trigger Property="IsSelected" Value="True">
-                <Setter TargetName="SelectedBorder" Property="Opacity" Value="1" />
-              </Trigger>
-              <Trigger Property="IsMouseOver" Value="True">
-                <Trigger.EnterActions>
-                  <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
-                    <Storyboard>
-                      <DoubleAnimation Storyboard.TargetName="HoverBorder" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.24">
-                        <DoubleAnimation.EasingFunction>
-                          <CubicEase EasingMode="EaseOut" />
-                        </DoubleAnimation.EasingFunction>
-                      </DoubleAnimation>
-                    </Storyboard>
-                  </BeginStoryboard>
-                </Trigger.EnterActions>
-                <Trigger.ExitActions>
-                  <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
-                    <Storyboard>
-                      <DoubleAnimation Storyboard.TargetName="HoverBorder" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.24">
-                        <DoubleAnimation.EasingFunction>
-                          <CubicEase EasingMode="EaseOut" />
-                        </DoubleAnimation.EasingFunction>
-                      </DoubleAnimation>
-                    </Storyboard>
-                  </BeginStoryboard>
-                </Trigger.ExitActions>
-              </Trigger>
-              <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=(controls:CapsulePressMotion.IsPressed)}" Value="True">
-                <Setter TargetName="HoverBorder" Property="Visibility" Value="Collapsed" />
-                <Setter TargetName="PressedBorder" Property="Opacity" Value="1" />
-              </DataTrigger>
-            </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
@@ -87,18 +50,25 @@
       </Grid>
     </DataTemplate>
   </UserControl.Resources>
-  <Grid>
+  <AdornerDecorator>
+  <Grid x:Name="PageRoot">
     <Grid.RowDefinitions>
       <RowDefinition Height="48" />
       <RowDefinition />
       <RowDefinition Height="Auto" />
     </Grid.RowDefinitions>
-    <controls:SegmentedControl x:Name="Navigation" Margin="14,6,14,6" Height="36" SelectedIndex="0" SelectionChanged="Navigate" AutomationProperties.AutomationId="Navigation">
-      <controls:SegmentItem x:Name="NavIcons" Content="托盘图标" Tag="icons" AutomationProperties.AutomationId="NavIcons" />
-      <controls:SegmentItem x:Name="NavSettings" Content="设置" Tag="settings" AutomationProperties.AutomationId="NavSettings" />
-      <controls:SegmentItem x:Name="NavDiagnostics" Content="状态" Tag="diagnostics" AutomationProperties.AutomationId="NavDiagnostics" />
+    <controls:SegmentedControl x:Name="Navigation" Margin="14,6,14,6" Height="36" SelectedIndex="0" SelectionChanged="Navigate" AutomationProperties.AutomationId="Navigation" AnimationMilliseconds="480" FontSize="14">
+      <controls:SegmentItem x:Name="NavIcons" Tag="icons" AutomationProperties.AutomationId="NavIcons">
+        <TextBlock Text="托盘图标" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=controls:SegmentItem}}" />
+      </controls:SegmentItem>
+      <controls:SegmentItem x:Name="NavSettings" Tag="settings" AutomationProperties.AutomationId="NavSettings">
+        <TextBlock Text="设置" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=controls:SegmentItem}}" />
+      </controls:SegmentItem>
+      <controls:SegmentItem x:Name="NavDiagnostics" Tag="diagnostics" AutomationProperties.AutomationId="NavDiagnostics">
+        <TextBlock Text="状态" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=controls:SegmentItem}}" />
+      </controls:SegmentItem>
     </controls:SegmentedControl>
-    <Grid Grid.Row="1" Margin="14,6,0,14">
+    <Grid Grid.Row="1" Margin="14,6,0,0" x:Name="PagesHost" ClipToBounds="True">
       <ListBox x:Name="IconList" Style="{StaticResource DeviceListBoxStyle}" ItemsSource="{Binding Icons}" ItemTemplate="{StaticResource IconRowTemplate}" AllowDrop="True" SelectionMode="Single" PreviewMouseLeftButtonDown="DragStarting" PreviewMouseMove="DragMoving" DragOver="DragOverRow" Drop="DropRow" AutomationProperties.AutomationId="TrayIconList">
         <ListBox.ItemContainerStyle>
           <Style TargetType="ListBoxItem" BasedOn="{StaticResource TrayListItemStyle}">
@@ -234,7 +204,7 @@
         <StackPanel>
           <TextBlock Text="{Binding Diagnostics}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,14" />
           <Button Content="退出软件" Click="ExitClick" HorizontalAlignment="Left" Margin="0,0,0,14" AutomationProperties.AutomationId="ExitAssistant" />
-          <TextBlock Text="v0.1.14 · 开发中" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" />
+          <TextBlock Text="v0.1.15 · 开发中" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" />
         </StackPanel>
       </ScrollViewer>
     </Grid>
@@ -245,4 +215,5 @@
       </StackPanel>
     </controls:RoundedCardBorder>
   </Grid>
+  </AdornerDecorator>
 </UserControl>

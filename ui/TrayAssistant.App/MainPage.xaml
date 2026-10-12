@@ -66,7 +66,7 @@
       </StackPanel></Border>
      </StackPanel>
     </ScrollViewer>
-    <ScrollViewer x:Name="DiagnosticsView" Visibility="Collapsed" Style="{StaticResource EdgeScrollViewerStyle}"><StackPanel Spacing="14"><TextBlock Text="{x:Bind Vm.Diagnostics, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"/><Button Content="退出软件" AutomationProperties.AutomationId="ExitAssistant" Click="Exit_Click"/><TextBlock Text="v0.1.14 · 开发中" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel></ScrollViewer>
+    <ScrollViewer x:Name="DiagnosticsView" Visibility="Collapsed" Style="{StaticResource EdgeScrollViewerStyle}"><StackPanel Spacing="14"><TextBlock Text="{x:Bind Vm.Diagnostics, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"/><Button Content="退出软件" AutomationProperties.AutomationId="ExitAssistant" Click="Exit_Click"/><TextBlock Text="v0.1.15 · 开发中" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel></ScrollViewer>
     <InfoBar x:Name="ErrorNotice" Grid.Row="1" Margin="0,0,12,0" IsOpen="False" IsClosable="False" Severity="Error" Message="{x:Bind Vm.Error, Mode=OneWay}" AutomationProperties.AutomationId="OperationError"><InfoBar.ActionButton><Button Content="重试" Command="{x:Bind Vm.ReconnectCommand}"/></InfoBar.ActionButton></InfoBar>
    </Grid>
   </NavigationView>

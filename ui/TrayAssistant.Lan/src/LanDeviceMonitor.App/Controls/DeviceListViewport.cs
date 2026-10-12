@@ -32,8 +32,8 @@ public static class DeviceListViewport
         var height=Math.Max(1,viewport.ActualHeight);
         // Keep alpha zero at a clipped edge. Grow the fade's length as content
         // moves beyond that edge; changing endpoint alpha leaves a visible cut.
-        var top=Math.Min(36,Math.Max(0,viewer.VerticalOffset));
-        var bottom=Math.Min(36,Math.Max(0,viewer.ScrollableHeight-viewer.VerticalOffset));
+        var top=Math.Min(12,Math.Max(0,viewer.VerticalOffset));
+        var bottom=Math.Min(12,Math.Max(0,viewer.ScrollableHeight-viewer.VerticalOffset));
         if (viewport.GetValue(FadeStateProperty) is FadeState previous &&
             previous.Height == height && previous.Top == top && previous.Bottom == bottom &&
             ReferenceEquals(viewport.OpacityMask, previous.Brush)) return;

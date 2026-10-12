@@ -6,8 +6,10 @@ using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using TrayAssistant_App.Controls;
 using LanDeviceMonitor.Controls;
@@ -27,9 +29,11 @@ public partial class MainPage : UserControl
     private readonly ToggleButton[] systemToggles = new ToggleButton[SystemNames.Length];
     private readonly bool[] systemAvailable = new bool[SystemNames.Length];
     private string tab = "icons";
+    private Action? finishPageTransition;
     private bool loaded, systemLoading, systemLoaded, systemRefreshPending, editorOpen;
     private IconRow? dragRow;
     private Point dragStart;
+    private Point dragHotspot;
 
     public MainPage()
     {
@@ -42,7 +46,7 @@ public partial class MainPage : UserControl
         Vm.LanguageChanged += () => Localization.Apply(this);
         Vm.WindowStyleChanged += (topmost, _) => App.Window.Topmost = topmost;
         timer.Tick += async (_, _) => await Vm.RefreshAsync();
-        Loaded += PageLoaded; Unloaded += (_, _) => timer.Stop();
+        Loaded += PageLoaded; Unloaded += (_, _) => { timer.Stop(); finishPageTransition?.Invoke(); };
 
         UpdatePresentation();
     }
@@ -64,6 +68,7 @@ public partial class MainPage : UserControl
     private void UpdatePresentation()
     {
         if (IconList == null) return;
+        finishPageTransition?.Invoke();
         IconList.Visibility = tab == "icons" && Vm.IsReady ? Visibility.Visible : Visibility.Collapsed;
         LoadingList.Visibility = tab == "icons" && Vm.IsLoading ? Visibility.Visible : Visibility.Collapsed;
         SettingsView.Visibility = tab == "settings" ? Visibility.Visible : Visibility.Collapsed;
@@ -73,8 +78,88 @@ public partial class MainPage : UserControl
     private void Navigate(object sender, SelectionChangedEventArgs args)
     {
         if (Navigation?.SelectedItem is not SegmentItem item) return;
-        tab = item.Tag?.ToString() ?? "icons";
-        UpdatePresentation(); if (tab == "settings") _ = LoadSystemAsync(true);
+        var next = item.Tag?.ToString() ?? "icons";
+        if (next == tab) return;
+        finishPageTransition?.Invoke();
+        var previous = tab;
+        var outgoing = PanelFor(previous);
+        tab = next;
+        var incoming = PanelFor(next);
+        if (PagesHost == null || !IsLoaded || !SystemParameters.ClientAreaAnimation || outgoing == incoming)
+            UpdatePresentation();
+        else
+            SlidePage(outgoing, incoming, PageIndex(next) > PageIndex(previous) ? 1 : -1);
+        if (tab == "settings") _ = LoadSystemAsync(true);
+    }
+    private FrameworkElement PanelFor(string page) => page switch
+    {
+        "settings" => SettingsView,
+        "diagnostics" => DiagnosticsView,
+        _ => Vm.IsReady ? IconList : LoadingList
+    };
+    private static int PageIndex(string page) => page switch { "settings" => 1, "diagnostics" => 2, _ => 0 };
+    private static ScrollViewer? ViewerFor(FrameworkElement panel)
+    {
+        if (panel is ScrollViewer viewer) return viewer;
+        if (panel is not ListBox list) return null;
+        list.ApplyTemplate();
+        return list.Template.FindName("PART_ScrollViewer", list) as ScrollViewer;
+    }
+    private static FrameworkElement MotionFor(FrameworkElement panel)
+    {
+        if (ViewerFor(panel) is not { } viewer) return panel;
+        viewer.ApplyTemplate();
+        return (viewer.Template.FindName("DeviceViewportMask", viewer) ??
+                viewer.Template.FindName("DetailViewportMask", viewer)) as FrameworkElement ?? panel;
+    }
+    private static System.Windows.Controls.Primitives.ScrollBar? BarFor(FrameworkElement panel)
+    {
+        if (ViewerFor(panel) is not { } viewer) return null;
+        viewer.ApplyTemplate();
+        return viewer.Template.FindName("PART_VerticalScrollBar", viewer) as System.Windows.Controls.Primitives.ScrollBar;
+    }
+    private void SlidePage(FrameworkElement outgoing, FrameworkElement incoming, int direction)
+    {
+        outgoing.Visibility = incoming.Visibility = Visibility.Visible;
+        outgoing.UpdateLayout(); incoming.UpdateLayout();
+        var leaving = MotionFor(outgoing); var entering = MotionFor(incoming);
+        var exitTranslate = new TranslateTransform();
+        var enterTranslate = new TranslateTransform(340d * direction, 0);
+        leaving.RenderTransformOrigin = entering.RenderTransformOrigin = new Point(.5, .5);
+        leaving.RenderTransform = exitTranslate; entering.RenderTransform = enterTranslate;
+        leaving.Opacity = 1; entering.Opacity = 0;
+        leaving.CacheMode = new BitmapCache { RenderAtScale = 1d };
+        entering.CacheMode = new BitmapCache { RenderAtScale = 1d };
+        outgoing.IsHitTestVisible = incoming.IsHitTestVisible = false;
+        var duration = TimeSpan.FromMilliseconds(LanDeviceMonitor.MainWindow.GetDeviceFilterTransitionDurationMilliseconds());
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var oldBar = BarFor(outgoing); var newBar = BarFor(incoming);
+        var finished = false;
+        void Finish()
+        {
+            if (finished) return;
+            finished = true; finishPageTransition = null;
+            exitTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+            enterTranslate.BeginAnimation(TranslateTransform.XProperty, null);
+            leaving.BeginAnimation(OpacityProperty, null); entering.BeginAnimation(OpacityProperty, null);
+            leaving.RenderTransform = entering.RenderTransform = Transform.Identity;
+            leaving.Opacity = entering.Opacity = 1;
+            leaving.CacheMode = entering.CacheMode = null;
+            oldBar?.BeginAnimation(OpacityProperty, null); newBar?.BeginAnimation(OpacityProperty, null);
+            if (oldBar != null) oldBar.Opacity = 1;
+            if (newBar != null) newBar.Opacity = 1;
+            outgoing.IsHitTestVisible = incoming.IsHitTestVisible = true;
+            UpdatePresentation();
+        }
+        finishPageTransition = Finish;
+        var enter = new DoubleAnimation(340d * direction, 0, duration) { EasingFunction = ease };
+        enter.Completed += (_, _) => Finish();
+        exitTranslate.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(0, -340d * direction, duration) { EasingFunction = ease });
+        enterTranslate.BeginAnimation(TranslateTransform.XProperty, enter);
+        entering.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, duration) { EasingFunction = ease });
+        leaving.BeginAnimation(OpacityProperty, new DoubleAnimation(1, 0, duration) { EasingFunction = ease });
+        oldBar?.BeginAnimation(OpacityProperty, new DoubleAnimation(oldBar.Opacity, 0, duration) { EasingFunction = ease });
+        newBar?.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, duration) { EasingFunction = ease });
     }
     private void CreateLoadingRows()
     {
@@ -112,7 +197,10 @@ public partial class MainPage : UserControl
     {
         dragRow = null;
         if (args.OriginalSource is not DependencyObject origin || FindAncestor<ButtonBase>(origin) != null) return;
-        if (FindAncestor<ListBoxItem>(origin)?.DataContext is IconRow row) { dragRow = row; dragStart = args.GetPosition(IconList); }
+        if (FindAncestor<ListBoxItem>(origin) is { DataContext: IconRow row } container)
+        {
+            dragRow = row; dragStart = args.GetPosition(IconList); dragHotspot = args.GetPosition(container);
+        }
     }
     private async void DragMoving(object sender, MouseEventArgs args)
     {
@@ -120,7 +208,24 @@ public partial class MainPage : UserControl
         var point = args.GetPosition(IconList);
         if (Math.Abs(point.X - dragStart.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(point.Y - dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
         var row = dragRow; dragRow = null; Vm.IsDragging = true;
-        try { DragDrop.DoDragDrop(IconList, new DataObject("TrayAssistant.Row", row), DragDropEffects.Move); await Vm.PersistOrderAsync(); }
+        var container = (ListBoxItem)IconList.ItemContainerGenerator.ContainerFromItem(row);
+        var layer = AdornerLayer.GetAdornerLayer(PageRoot)!;
+        var preview = new RowDragPreview(PageRoot, container, dragHotspot);
+        void FollowPointer(object? sender, GiveFeedbackEventArgs feedback) => preview.FollowPointer();
+        try
+        {
+            layer.Add(preview); preview.FollowPointer();
+            container.Opacity = .3;
+            IconList.GiveFeedback += FollowPointer;
+            try { DragDrop.DoDragDrop(IconList, new DataObject("TrayAssistant.Row", row), DragDropEffects.Move); }
+            finally
+            {
+                IconList.GiveFeedback -= FollowPointer;
+                container.Opacity = 1;
+                layer.Remove(preview);
+            }
+            await Vm.PersistOrderAsync();
+        }
         finally { Vm.IsDragging = false; await Vm.RefreshAsync(); }
     }
     private void DragOverRow(object sender, DragEventArgs args)

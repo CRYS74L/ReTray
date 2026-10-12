@@ -32,7 +32,7 @@ public sealed class IconEditorPanel : UserControl
         dismiss.Click += async (_, _) => await close();
         System.Windows.Automation.AutomationProperties.SetAutomationId(dismiss, "IconEditorClose");
         Grid.SetColumn(dismiss, 1); header.Children.Add(dismiss); root.Children.Add(header);
-        var content = new StackPanel();
+        var content = new StackPanel { Margin = new Thickness(4) };
         var previews = new Grid { Margin = new Thickness(0, 4, 0, 18) };
         previews.ColumnDefinitions.Add(new ColumnDefinition()); previews.ColumnDefinitions.Add(new ColumnDefinition());
         void Preview(int column, string caption, string property, string buttonText, System.Windows.Input.ICommand command)

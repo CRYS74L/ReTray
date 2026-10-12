@@ -399,16 +399,17 @@ public partial class MainPage : UserControl
     {
         for (var id = 0; id < SystemNames.Length; id++)
         {
-            var row = new Grid { MinHeight = 36, Margin = new Thickness(0, 10, 0, 10) };
+            var row = new Grid { Height = 34 };
             row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.Children.Add(new TextBlock { Text = SystemNames[id], Margin = new Thickness(0, 0, 20, 0), VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.Wrap });
-            var toggle = new SwitchControl { Style = (Style)Resources["SettingToggle"], Tag = id, IsEnabled = false };
+            row.Children.Add(new TextBlock { Text = SystemNames[id], Margin = new Thickness(4, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center });
+            var toggle = new SwitchControl { Style = (Style)Resources["TrayRowToggle"], Tag = id, IsEnabled = false,
+                Margin = new Thickness(0, 0, 4, 0) };
             System.Windows.Automation.AutomationProperties.SetAutomationId(toggle, "System" + id);
             System.Windows.Automation.AutomationProperties.SetName(toggle, SystemNames[id]);
             toggle.Click += SystemVisibilityClick; Grid.SetColumn(toggle, 1); row.Children.Add(toggle); SystemList.Children.Add(row); systemToggles[id] = toggle;
             if (id + 1 < SystemNames.Length)
             {
-                var divider = new Border { Height = 1, Margin = new Thickness(0, 5, 0, 5) };
+                var divider = new Border { Height = .5, Margin = new Thickness(4, 0, 0, 0) };
                 divider.SetResourceReference(Border.BackgroundProperty, "BorderBrush"); SystemList.Children.Add(divider);
             }
         }

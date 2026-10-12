@@ -47,7 +47,7 @@ inline void Prepare(const std::filesystem::path& root, POINT point) {
     if (typeface.font && typeface.dpi == dpiX) return;
     if (typeface.font) DeleteObject(typeface.font);
     typeface.dpi = dpiX;
-    typeface.font = CreateFontW(-Scale(14), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    typeface.font = CreateFontW(-Scale(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_NATURAL_QUALITY,
         DEFAULT_PITCH | FF_SWISS, L"Noto Sans SC");
 }
@@ -59,8 +59,8 @@ inline bool Measure(LPARAM argument) {
     SIZE size{};
     auto label = Label(item->itemID);
     GetTextExtentPoint32W(dc, label, static_cast<int>(wcslen(label)), &size);
-    item->itemWidth = size.cx + Scale(36);
-    item->itemHeight = static_cast<UINT>(Scale(34));
+    item->itemWidth = size.cx + Scale(24);
+    item->itemHeight = static_cast<UINT>(Scale(27));
     SelectObject(dc, previous); ReleaseDC(nullptr, dc);
     return true;
 }
@@ -80,10 +80,40 @@ inline bool Draw(LPARAM argument) {
     auto previous = SelectObject(item->hDC, typeface.font);
     auto oldMode = SetBkMode(item->hDC, TRANSPARENT);
     auto oldColor = SetTextColor(item->hDC, foreground);
-    auto bounds = item->rcItem; bounds.left += Scale(18); bounds.right -= Scale(18);
+    auto bounds = item->rcItem; bounds.left += Scale(12); bounds.right -= Scale(12);
     DrawTextW(item->hDC, Label(item->itemID), -1, &bounds, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
     SetTextColor(item->hDC, oldColor); SetBkMode(item->hDC, oldMode);
     SelectObject(item->hDC, previous);
     return true;
 }
+inline HWND roundedWindow{};
+inline SIZE roundedSize{};
+inline LRESULT CALLBACK RoundMenuHook(int code, WPARAM argument, LPARAM value) {
+    if (code == HC_ACTION) {
+        auto event = reinterpret_cast<CWPSTRUCT*>(value);
+        if (event->message == WM_WINDOWPOSCHANGED) {
+            wchar_t name[32]{};
+            GetClassNameW(event->hwnd, name, 32);
+            if (wcscmp(name, L"#32768") == 0) {
+                RECT bounds{}; GetWindowRect(event->hwnd, &bounds);
+                SIZE size{bounds.right - bounds.left, bounds.bottom - bounds.top};
+                if (size.cx > 0 && size.cy > 0 &&
+                    (roundedWindow != event->hwnd || roundedSize.cx != size.cx || roundedSize.cy != size.cy)) {
+                    roundedWindow = event->hwnd; roundedSize = size;
+                    auto region = CreateRoundRectRgn(0, 0, size.cx + 1, size.cy + 1, Scale(16), Scale(16));
+                    if (region && !SetWindowRgn(event->hwnd, region, TRUE)) DeleteObject(region);
+                }
+            }
+        }
+    }
+    return CallNextHookEx(nullptr, code, argument, value);
+}
+struct RoundedMenuScope {
+    HHOOK hook{};
+    RoundedMenuScope() {
+        roundedWindow = nullptr; roundedSize = {};
+        hook = SetWindowsHookExW(WH_CALLWNDPROC, RoundMenuHook, nullptr, GetCurrentThreadId());
+    }
+    ~RoundedMenuScope() { if (hook) UnhookWindowsHookEx(hook); roundedWindow = nullptr; }
+};
 }

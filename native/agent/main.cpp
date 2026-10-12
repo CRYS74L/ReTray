@@ -1449,9 +1449,12 @@ void TrayMenu() {
     AppendMenuW(menu, MF_OWNERDRAW, 2, tray_menu_typography::Data(2));
     AppendMenuW(menu, MF_OWNERDRAW, 3, tray_menu_typography::Data(3));
     SetForegroundWindow(window);
-    auto selected =
-        TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_BOTTOMALIGN,
-                       point.x, point.y, 0, window, nullptr);
+    UINT selected{};
+    {
+        tray_menu_typography::RoundedMenuScope roundedMenu;
+        selected = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_BOTTOMALIGN,
+                                 point.x, point.y, 0, window, nullptr);
+    }
     DestroyMenu(menu);
     PostMessageW(window, WM_NULL, 0, 0);
     if (previousDpi) SetThreadDpiAwarenessContext(previousDpi);

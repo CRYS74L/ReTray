@@ -148,13 +148,7 @@
             <StackPanel x:Name="LoadingRows" />
           </ScrollViewer>
           <ScrollViewer x:Name="SystemView" Visibility="Collapsed" Style="{StaticResource FadingDetailScrollViewerStyle}" controls:DeviceListViewport.Enabled="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.AutomationId="SystemScroll">
-            <StackPanel Margin="0,12,0,0">
-              <controls:RoundedCardBorder Style="{StaticResource SettingsCard}">
-                <StackPanel>
-                  <StackPanel x:Name="SystemList" />
-                </StackPanel>
-              </controls:RoundedCardBorder>
-            </StackPanel>
+            <StackPanel x:Name="SystemList" Margin="0,12,0,0" />
           </ScrollViewer>
           <ScrollViewer x:Name="SettingsView" Visibility="Collapsed" Style="{StaticResource FadingDetailScrollViewerStyle}" controls:DeviceListViewport.Enabled="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.AutomationId="SettingsScroll">
             <Grid MinHeight="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
@@ -164,51 +158,42 @@
                 <RowDefinition Height="Auto" />
               </Grid.RowDefinitions>
               <StackPanel Margin="0,12,0,0">
-                <controls:RoundedCardBorder Style="{StaticResource SettingsCard}">
-                  <StackPanel>
-                    <Grid Margin="0,10">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition />
-                        <ColumnDefinition Width="Auto" />
-                      </Grid.ColumnDefinitions>
-                      <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
-                        <TextBlock Text="开机启动" />
-                      </StackPanel>
-                      <controls:SwitchControl Grid.Column="1" IsChecked="{Binding Startup,Mode=TwoWay}" AutomationProperties.AutomationId="StartupToggle" />
-                    </Grid>
-                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,5" />
-                    <Grid Margin="0,10">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition />
-                        <ColumnDefinition Width="Auto" />
-                      </Grid.ColumnDefinitions>
-                      <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
-                        <TextBlock Text="主题" />
-                      </StackPanel>
-                      <ComboBox x:Name="ThemeChoice" Grid.Column="1" Width="150" SelectedIndex="{Binding ThemeIndex,Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.AutomationId="ThemeChoice" />
-                    </Grid>
-                    <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,5" />
-                    <Grid Margin="0,10">
-                      <Grid.ColumnDefinitions>
-                        <ColumnDefinition />
-                        <ColumnDefinition Width="Auto" />
-                      </Grid.ColumnDefinitions>
-                      <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
-                        <TextBlock Text="语言" />
-                      </StackPanel>
-                      <ComboBox x:Name="LanguageChoice" Grid.Column="1" Width="150" SelectedIndex="{Binding LanguageIndex,Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.AutomationId="LanguageChoice" />
-                    </Grid>
+                <Grid Margin="4,0,4,0" Height="34">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
+                    <TextBlock Text="开机启动" />
                   </StackPanel>
-                </controls:RoundedCardBorder>
-                <controls:RoundedCardBorder Style="{StaticResource SettingsCard}">
-                  <StackPanel>
-                    <TextBlock Text="高级设置" Style="{StaticResource DetailSectionTitleStyle}" Margin="0,10,0,12" />
-                    <WrapPanel Margin="0,0,0,10">
-                      <Button Content="导出配置…" Click="ExportClick" Margin="0,0,8,0" />
-                      <Button Content="导入配置…" Click="ImportClick" />
-                    </WrapPanel>
+                  <controls:SwitchControl Grid.Column="1" IsChecked="{Binding Startup,Mode=TwoWay}" AutomationProperties.AutomationId="StartupToggle" Style="{StaticResource TrayRowToggle}" />
+                </Grid>
+                <Border Height="0.5" Background="{DynamicResource BorderBrush}" Margin="4,0,0,0" />
+                <Grid Margin="4,0,4,0" Height="34">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
+                    <TextBlock Text="主题" />
                   </StackPanel>
-                </controls:RoundedCardBorder>
+                  <ComboBox x:Name="ThemeChoice" Grid.Column="1" Width="132" SelectedIndex="{Binding ThemeIndex,Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.AutomationId="ThemeChoice" Height="28" MinHeight="28" />
+                </Grid>
+                <Border Height="0.5" Background="{DynamicResource BorderBrush}" Margin="4,0,0,0" />
+                <Grid Margin="4,0,4,0" Height="34">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
+                    <TextBlock Text="语言" />
+                  </StackPanel>
+                  <ComboBox x:Name="LanguageChoice" Grid.Column="1" Width="132" SelectedIndex="{Binding LanguageIndex,Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.AutomationId="LanguageChoice" Height="28" MinHeight="28" />
+                </Grid>
+                <WrapPanel Margin="4,8,4,0">
+                  <Button Content="导出配置" Click="ExportClick" Margin="0,0,8,0" MinHeight="28" Height="28" Padding="12,2" />
+                  <Button Content="导入配置" Click="ImportClick" MinHeight="28" Height="28" Padding="12,2" />
+                </WrapPanel>
               </StackPanel>
               <TextBlock x:Name="VersionText" Grid.Row="2" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" Margin="0,8,0,16" AutomationProperties.AutomationId="SoftwareVersion" />
             </Grid>

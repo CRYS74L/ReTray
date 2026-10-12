@@ -25,7 +25,9 @@ public sealed class TrayIconButton : Button
     public TrayIconButton()
     {
         SetResourceReference(StyleProperty, "SidebarIconButtonStyle");
-        var image = new Image { Width = 20, Height = 20, Stretch = Stretch.Uniform };
+        UseLayoutRounding = true; SnapsToDevicePixels = true;
+        var image = new Image { Width = 20, Height = 20, Stretch = Stretch.Uniform,
+            UseLayoutRounding = true, SnapsToDevicePixels = true };
         image.SetBinding(Image.SourceProperty, new System.Windows.Data.Binding(nameof(ImageSource)) { Source = this });
         RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
         Content = image;

@@ -41,6 +41,8 @@ public static class Localization
         ["助手窗口置顶"]="Keep assistant on top",
         ["导出配置…"]="Export…",
         ["导入配置…"]="Import…",
+        ["导出配置"]="Export",
+        ["导入配置"]="Import",
         ["未设置"]="Not set",
         ["待确认静态图像"]="Waiting for a static image",
         ["原应用闪烁空帧"]="Original blink off frame",

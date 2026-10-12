@@ -12,7 +12,7 @@
   <Identity
     Name="CRYS74L.TrayIconAssistant"
     Publisher="CN=CRYS74L"
-    Version="0.1.18.0" />
+    Version="0.1.19.0" />
 
   <mp:PhoneIdentity PhoneProductId="F009C149-FCFD-4A90-BC35-8C4C3C8AD211" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 

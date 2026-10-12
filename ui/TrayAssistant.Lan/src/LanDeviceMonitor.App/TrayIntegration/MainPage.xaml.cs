@@ -38,7 +38,7 @@ public partial class MainPage : UserControl
     public MainPage()
     {
         InitializeComponent(); DataContext = Vm;
-        ThemeChoice.Items.Add("跟随 Windows"); ThemeChoice.Items.Add("浅色"); ThemeChoice.Items.Add("深色"); ThemeChoice.SelectedIndex = 0;
+        ThemeChoice.Items.Add("跟随系统"); ThemeChoice.Items.Add("浅色"); ThemeChoice.Items.Add("深色"); ThemeChoice.SelectedIndex = 0;
         LanguageChoice.Items.Add("简体中文"); LanguageChoice.Items.Add("English"); LanguageChoice.SelectedIndex = 0;
         CreateSystemRows(); CreateLoadingRows();
         Vm.PropertyChanged += PresentationChanged;

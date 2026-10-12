@@ -64,7 +64,8 @@ public sealed class IconEditorWindow : LanDeviceMonitor.MainWindow
         chevron.SetBinding(RotatingChevron.StrokeProperty, new Binding(nameof(Button.Foreground)) { Source = more });
         moreContent.Children.Add(moreText); moreContent.Children.Add(chevron); more.Content = moreContent;
         more.Click += (_, _) => { disclosure.VisibleCount = disclosure.VisibleCount == 0 ? 1 : 0; chevron.IsReversed = disclosure.VisibleCount > 0; };
-        Identify(more, "IconAdvancedSettings"); content.Children.Add(more); content.Children.Add(disclosure);
+        Identify(more, "IconAdvancedSettings");
+        if (!row.Owned) { content.Children.Add(more); content.Children.Add(disclosure); }
         var error = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 }; error.SetResourceReference(TextBlock.ForegroundProperty, "DangerTextBrush");
         error.SetBinding(TextBlock.TextProperty, nameof(vm.Error)); content.Children.Add(error);
         var scroll = new ScrollViewer { Style = (Style)FindResource("FadingDetailScrollViewerStyle"), Content = content, Margin = new Thickness(14, 12, 0, 0) };

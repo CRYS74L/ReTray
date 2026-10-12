@@ -32,14 +32,19 @@ public static class DeviceListViewport
         var height=Math.Max(1,viewport.ActualHeight);
         // Keep alpha zero at a clipped edge. Grow the fade's length as content
         // moves beyond that edge; changing endpoint alpha leaves a visible cut.
-        var top=Math.Min(12,Math.Max(0,viewer.VerticalOffset));
+        var top=Math.Min(6,Math.Max(0,viewer.VerticalOffset));
         var bottom=Math.Min(12,Math.Max(0,viewer.ScrollableHeight-viewer.VerticalOffset));
         if (viewport.GetValue(FadeStateProperty) is FadeState previous &&
             previous.Height == height && previous.Top == top && previous.Bottom == bottom &&
             ReferenceEquals(viewport.OpacityMask, previous.Brush)) return;
         var brush=new LinearGradientBrush {StartPoint=new System.Windows.Point(0,0),EndPoint=new System.Windows.Point(0,1)};
-        foreach(var (position,opacity) in new[]{(0d,0d),(.25,.15625),(.5,.5),(.75,.84375),(1d,1d)})
+        for(var step=0;step<=8;step++)
+        {
+            var position=step/8d;
+            var smooth=position*position*(3-2*position);
+            var opacity=1-(1-smooth)*(1-smooth);
             brush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb((byte)Math.Round(opacity*255),0,0,0),position*top/height));
+        }
         foreach(var (position,opacity) in new[]{(0d,1d),(.25,.84375),(.5,.5),(.75,.15625),(1d,0d)})
             brush.GradientStops.Add(new GradientStop(System.Windows.Media.Color.FromArgb((byte)Math.Round(opacity*255),0,0,0),1-bottom/height+position*bottom/height));
         brush.Freeze();viewport.OpacityMask=brush;

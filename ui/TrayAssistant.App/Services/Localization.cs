@@ -72,7 +72,7 @@ public static class Localization
         ["自动按名称排序"]="Sort by name automatically",
         ["新图标位置"]="New icon location",
         ["应用排序"]="Apply ordering",
-        ["跟随 Windows"]="Follow Windows",
+        ["跟随系统"]="Follow system",
         ["交换左右键"]="Swap mouse buttons",
         ["图标快捷键"]="Icon shortcut",
         ["打开助手快捷键"]="Open assistant shortcut",

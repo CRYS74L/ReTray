@@ -45,7 +45,7 @@
      <StackPanel Spacing="12">
       <Border Style="{StaticResource Card}"><StackPanel Spacing="14">
        <Grid MinHeight="32"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="开机启动" VerticalAlignment="Center"/><ToggleSwitch Grid.Column="1" IsOn="{x:Bind Vm.Startup, Mode=TwoWay}" AutomationProperties.Name="开机启动" AutomationProperties.AutomationId="StartupToggle"/></Grid>
-       <controls:BelowComboBox AutomationProperties.AutomationId="ThemeChoice" Header="主题" HorizontalAlignment="Stretch" SelectedIndex="{x:Bind Vm.ThemeIndex, Mode=TwoWay}"><x:String>跟随 Windows</x:String><x:String>浅色</x:String><x:String>深色</x:String></controls:BelowComboBox>
+       <controls:BelowComboBox AutomationProperties.AutomationId="ThemeChoice" Header="主题" HorizontalAlignment="Stretch" SelectedIndex="{x:Bind Vm.ThemeIndex, Mode=TwoWay}"><x:String>跟随系统</x:String><x:String>浅色</x:String><x:String>深色</x:String></controls:BelowComboBox>
        <controls:BelowComboBox AutomationProperties.AutomationId="LanguageChoice" Header="语言" HorizontalAlignment="Stretch" SelectedIndex="{x:Bind Vm.LanguageIndex, Mode=TwoWay}"><x:String>简体中文</x:String><x:String>English</x:String></controls:BelowComboBox>
       </StackPanel></Border>
       <Border Style="{StaticResource Card}"><StackPanel Spacing="14">
@@ -66,7 +66,7 @@
       </StackPanel></Border>
      </StackPanel>
     </ScrollViewer>
-    <ScrollViewer x:Name="DiagnosticsView" Visibility="Collapsed" Style="{StaticResource EdgeScrollViewerStyle}"><StackPanel Spacing="14"><TextBlock Text="{x:Bind Vm.Diagnostics, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"/><Button Content="退出软件" AutomationProperties.AutomationId="ExitAssistant" Click="Exit_Click"/><TextBlock Text="v0.1.15 · 开发中" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel></ScrollViewer>
+    <ScrollViewer x:Name="DiagnosticsView" Visibility="Collapsed" Style="{StaticResource EdgeScrollViewerStyle}"><StackPanel Spacing="14"><TextBlock Text="{x:Bind Vm.Diagnostics, Mode=OneWay}" FontSize="12" TextWrapping="Wrap"/><Button Content="退出软件" AutomationProperties.AutomationId="ExitAssistant" Click="Exit_Click"/><TextBlock Text="v0.1.16 · 开发中" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel></ScrollViewer>
     <InfoBar x:Name="ErrorNotice" Grid.Row="1" Margin="0,0,12,0" IsOpen="False" IsClosable="False" Severity="Error" Message="{x:Bind Vm.Error, Mode=OneWay}" AutomationProperties.AutomationId="OperationError"><InfoBar.ActionButton><Button Content="重试" Command="{x:Bind Vm.ReconnectCommand}"/></InfoBar.ActionButton></InfoBar>
    </Grid>
   </NavigationView>

@@ -1,0 +1,248 @@
+<UserControl x:Class="TrayAssistant_App.MainPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="clr-namespace:LanDeviceMonitor.Controls" xmlns:tray="clr-namespace:TrayAssistant_App.Controls" UseLayoutRounding="False" SnapsToDevicePixels="False">
+  <UserControl.Resources>
+    <Style TargetType="ListBoxItem" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" x:Key="TrayListItemStyle">
+      <Setter Property="controls:CapsulePressMotion.Enabled" Value="True" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,0,0,5" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <Grid x:Name="ItemMotionRoot" MinHeight="{TemplateBinding MinHeight}" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+              <Border x:Name="ItemBorder" Background="{DynamicResource DeviceListItemBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}" />
+              <Border x:Name="SelectedBorder" Background="{DynamicResource DeviceListItemSelectedBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}" Opacity="0" IsHitTestVisible="False" />
+              <Border x:Name="HoverBorder" Background="{DynamicResource FooterHoverBrush}" BorderBrush="{DynamicResource FooterHoverBrush}" BorderThickness="1" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}" Opacity="0" IsHitTestVisible="False" />
+              <Border x:Name="PressedBorder" Background="{DynamicResource DevicePressedBrush}" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}" Opacity="0" IsHitTestVisible="False" />
+              <ContentPresenter Margin="{TemplateBinding Padding}" UseLayoutRounding="False" />
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsSelected" Value="True">
+                <Setter TargetName="SelectedBorder" Property="Opacity" Value="1" />
+              </Trigger>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Trigger.EnterActions>
+                  <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="HoverBorder" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.24">
+                        <DoubleAnimation.EasingFunction>
+                          <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                      </DoubleAnimation>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="HoverBorder" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.24">
+                        <DoubleAnimation.EasingFunction>
+                          <CubicEase EasingMode="EaseOut" />
+                        </DoubleAnimation.EasingFunction>
+                      </DoubleAnimation>
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.ExitActions>
+              </Trigger>
+              <DataTrigger Binding="{Binding RelativeSource={RelativeSource Self}, Path=(controls:CapsulePressMotion.IsPressed)}" Value="True">
+                <Setter TargetName="HoverBorder" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="PressedBorder" Property="Opacity" Value="1" />
+              </DataTrigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="SettingToggle" TargetType="controls:SwitchControl" BasedOn="{StaticResource {x:Type controls:SwitchControl}}">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+    <Style x:Key="TrayRowToggle" TargetType="controls:SwitchControl" BasedOn="{StaticResource SettingToggle}">
+      <Setter Property="LayoutTransform">
+        <Setter.Value>
+          <ScaleTransform ScaleX="0.74" ScaleY="0.74" />
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="SettingsCard" TargetType="Border" BasedOn="{StaticResource CardStyle}">
+      <Setter Property="Padding" Value="20,8" />
+      <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+    <DataTemplate x:Key="IconRowTemplate">
+      <Grid Height="34" Background="Transparent">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="28" />
+          <ColumnDefinition />
+          <ColumnDefinition Width="46" />
+          <ColumnDefinition Width="28" />
+        </Grid.ColumnDefinitions>
+        <tray:TrayIconButton Width="28" Height="28" MinWidth="0" MinHeight="0" ImageSource="{Binding Image}" Tag="{Binding}" NativeAction="IconNativeAction" VerticalAlignment="Center" AutomationProperties.AutomationId="TrayNativeAction" AutomationProperties.Name="{Binding Name}" />
+        <TextBlock Grid.Column="1" Margin="8,0,8,0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+        <controls:SwitchControl Grid.Column="2" Style="{StaticResource TrayRowToggle}" Margin="0,0,8,0" IsChecked="{Binding Visible,Mode=OneWay}" IsEnabled="{Binding CanToggle}" Tag="{Binding}" Click="VisibilityClick" AutomationProperties.AutomationId="TrayVisibility" AutomationProperties.Name="{Binding Name}" />
+        <Button Grid.Column="3" Style="{StaticResource FooterCircleButtonStyle}" Width="28" Height="28" MinWidth="0" MinHeight="0" Tag="{Binding}" Click="IconSettingsClick" VerticalAlignment="Center" AutomationProperties.AutomationId="IconSettings" AutomationProperties.Name="图标设置">
+          <TextBlock Text="" FontFamily="{StaticResource AppIconFont}" FontSize="12" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" controls:GlyphInkAlignment.Enabled="True" />
+        </Button>
+        <Border Grid.Column="1" Grid.ColumnSpan="3" Height="0.5" Margin="8,0,0,0" Background="{DynamicResource BorderBrush}" VerticalAlignment="Bottom" IsHitTestVisible="False" />
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+  <Grid>
+    <Grid.RowDefinitions>
+      <RowDefinition Height="48" />
+      <RowDefinition />
+      <RowDefinition Height="Auto" />
+    </Grid.RowDefinitions>
+    <controls:SegmentedControl x:Name="Navigation" Margin="14,6,14,6" Height="36" SelectedIndex="0" SelectionChanged="Navigate" AutomationProperties.AutomationId="Navigation">
+      <controls:SegmentItem x:Name="NavIcons" Content="托盘图标" Tag="icons" AutomationProperties.AutomationId="NavIcons" />
+      <controls:SegmentItem x:Name="NavSettings" Content="设置" Tag="settings" AutomationProperties.AutomationId="NavSettings" />
+      <controls:SegmentItem x:Name="NavDiagnostics" Content="状态" Tag="diagnostics" AutomationProperties.AutomationId="NavDiagnostics" />
+    </controls:SegmentedControl>
+    <Grid Grid.Row="1" Margin="14,6,0,14">
+      <ListBox x:Name="IconList" Style="{StaticResource DeviceListBoxStyle}" ItemsSource="{Binding Icons}" ItemTemplate="{StaticResource IconRowTemplate}" AllowDrop="True" SelectionMode="Single" PreviewMouseLeftButtonDown="DragStarting" PreviewMouseMove="DragMoving" DragOver="DragOverRow" Drop="DropRow" AutomationProperties.AutomationId="TrayIconList">
+        <ListBox.ItemContainerStyle>
+          <Style TargetType="ListBoxItem" BasedOn="{StaticResource TrayListItemStyle}">
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Focusable" Value="False" />
+          </Style>
+        </ListBox.ItemContainerStyle>
+      </ListBox>
+      <ScrollViewer x:Name="LoadingList" Style="{StaticResource DeviceListScrollViewerStyle}" IsHitTestVisible="False" AutomationProperties.AutomationId="TrayLoadingPlaceholders">
+        <StackPanel x:Name="LoadingRows" />
+      </ScrollViewer>
+      <ScrollViewer x:Name="SettingsView" Visibility="Collapsed" Style="{StaticResource FadingDetailScrollViewerStyle}" controls:DeviceListViewport.Enabled="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.AutomationId="SettingsScroll">
+        <StackPanel>
+          <controls:RoundedCardBorder Style="{StaticResource SettingsCard}">
+            <StackPanel>
+              <Grid Margin="0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
+                  <TextBlock Text="开机启动" />
+                </StackPanel>
+                <controls:SwitchControl Grid.Column="1" IsChecked="{Binding Startup,Mode=TwoWay}" AutomationProperties.AutomationId="StartupToggle" />
+              </Grid>
+              <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,5" />
+              <Grid Margin="0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
+                  <TextBlock Text="主题" />
+                </StackPanel>
+                <ComboBox x:Name="ThemeChoice" Grid.Column="1" Width="150" SelectedIndex="{Binding ThemeIndex,Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.AutomationId="ThemeChoice" />
+              </Grid>
+              <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,5" />
+              <Grid Margin="0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
+                  <TextBlock Text="语言" />
+                </StackPanel>
+                <ComboBox x:Name="LanguageChoice" Grid.Column="1" Width="150" SelectedIndex="{Binding LanguageIndex,Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.AutomationId="LanguageChoice" />
+              </Grid>
+            </StackPanel>
+          </controls:RoundedCardBorder>
+          <controls:RoundedCardBorder Style="{StaticResource SettingsCard}">
+            <StackPanel>
+              <TextBlock Text="助手图标" Style="{StaticResource DetailSectionTitleStyle}" Margin="0,10,0,8" />
+              <Grid Margin="0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
+                  <TextBlock Text="显示助手托盘图标" TextWrapping="Wrap" />
+                </StackPanel>
+                <controls:SwitchControl Grid.Column="1" IsChecked="{Binding OwnVisible,Mode=TwoWay}" AutomationProperties.AutomationId="OwnIconToggle" />
+              </Grid>
+              <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,5" />
+              <StackPanel Margin="0,12">
+                <TextBlock Text="图标提示" controls:FieldLabelAlignment.Target="{Binding ElementName=OwnTipInput}" Margin="15,0,0,0" />
+                <TextBox x:Name="OwnTipInput" Text="{Binding OwnTip,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" MaxLength="127" Margin="0,8,0,14" AutomationProperties.AutomationId="OwnIconTip" />
+                <Button Content="选择助手图标…" Command="{Binding ChooseOwnIconCommand}" HorizontalAlignment="Left" />
+                <TextBlock Text="{Binding OwnAsset}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{DynamicResource MutedTextBrush}" Margin="15,8,0,0" />
+              </StackPanel>
+            </StackPanel>
+          </controls:RoundedCardBorder>
+          <controls:RoundedCardBorder Style="{StaticResource SettingsCard}">
+            <StackPanel>
+              <TextBlock Text="系统图标" Style="{StaticResource DetailSectionTitleStyle}" Margin="0,10,0,8" />
+              <StackPanel x:Name="SystemList" />
+            </StackPanel>
+          </controls:RoundedCardBorder>
+          <controls:RoundedCardBorder Style="{StaticResource SettingsCard}">
+            <StackPanel>
+              <TextBlock Text="高级设置" Style="{StaticResource DetailSectionTitleStyle}" Margin="0,10,0,8" />
+              <Grid Margin="0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
+                  <TextBlock Text="助手窗口置顶" />
+                </StackPanel>
+                <controls:SwitchControl Grid.Column="1" IsChecked="{Binding UiTopmost,Mode=TwoWay}" AutomationProperties.AutomationId="TopmostToggle" />
+              </Grid>
+              <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,5" />
+              <Grid Margin="0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
+                  <TextBlock Text="隐藏开始按钮" />
+                </StackPanel>
+                <controls:SwitchControl Grid.Column="1" IsChecked="{Binding HideStart,Mode=TwoWay}" AutomationProperties.AutomationId="HideStartToggle" />
+              </Grid>
+              <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,5" />
+              <StackPanel Margin="0,12">
+                <TextBlock Text="任务栏不透明度" controls:FieldLabelAlignment.Target="{Binding ElementName=OpacityInput}" Margin="15,0,0,0" />
+                <TextBox x:Name="OpacityInput" Text="{Binding TaskbarOpacity,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" Margin="0,8,0,0" AutomationProperties.AutomationId="TaskbarOpacity" />
+              </StackPanel>
+              <Border Height="1" Background="{DynamicResource BorderBrush}" Margin="0,5" />
+              <Grid Margin="0,10">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <StackPanel Margin="0,0,20,0" VerticalAlignment="Center">
+                  <TextBlock Text="自动按名称排序" TextWrapping="Wrap" />
+                </StackPanel>
+                <controls:SwitchControl Grid.Column="1" IsChecked="{Binding AutoSort,Mode=TwoWay}" AutomationProperties.AutomationId="AutoSortToggle" />
+              </Grid>
+              <StackPanel Margin="0,12">
+                <TextBlock Text="打开助手快捷键" controls:FieldLabelAlignment.Target="{Binding ElementName=OpenHotkey}" Margin="15,0,0,0" />
+                <TextBox x:Name="OpenHotkey" IsReadOnly="True" PreviewKeyDown="OpenHotkeyKeyDown" Margin="0,8,0,14" AutomationProperties.AutomationId="OpenHotkey" />
+                <WrapPanel>
+                  <Button Content="导出配置…" Click="ExportClick" Margin="0,0,8,0" />
+                  <Button Content="导入配置…" Click="ImportClick" />
+                </WrapPanel>
+              </StackPanel>
+            </StackPanel>
+          </controls:RoundedCardBorder>
+        </StackPanel>
+      </ScrollViewer>
+      <ScrollViewer x:Name="DiagnosticsView" Visibility="Collapsed" Style="{StaticResource FadingDetailScrollViewerStyle}" controls:DeviceListViewport.Enabled="True">
+        <StackPanel>
+          <TextBlock Text="{Binding Diagnostics}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,14" />
+          <Button Content="退出软件" Click="ExitClick" HorizontalAlignment="Left" Margin="0,0,0,14" AutomationProperties.AutomationId="ExitAssistant" />
+          <TextBlock Text="v0.1.14 · 开发中" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" />
+        </StackPanel>
+      </ScrollViewer>
+    </Grid>
+    <controls:RoundedCardBorder x:Name="ErrorNotice" Grid.Row="2" Style="{StaticResource CardStyle}" Visibility="Collapsed" Margin="14,0,14,12" Background="{DynamicResource DangerSurfaceBrush}" AutomationProperties.AutomationId="OperationError">
+      <StackPanel>
+        <TextBlock Text="{Binding Error}" Foreground="{DynamicResource DangerTextBrush}" TextWrapping="Wrap" Margin="0,0,0,8" />
+        <Button Content="重试" Command="{Binding ReconnectCommand}" HorizontalAlignment="Left" />
+      </StackPanel>
+    </controls:RoundedCardBorder>
+  </Grid>
+</UserControl>

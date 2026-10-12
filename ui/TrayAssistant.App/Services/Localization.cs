@@ -187,7 +187,7 @@ public static class Localization
         if (root is ContentControl) TranslateProperty(root, ContentControl.ContentProperty);
         if (root is HeaderedContentControl) TranslateProperty(root, HeaderedContentControl.HeaderProperty);
         if (root is HeaderedItemsControl) TranslateProperty(root, HeaderedItemsControl.HeaderProperty);
-        if (root is TrayAssistant_App.Controls.BelowComboBox) TranslateProperty(root, TrayAssistant_App.Controls.BelowComboBox.HeaderProperty);
+
         if (root is Window) TranslateProperty(root, Window.TitleProperty);
         if (root is FrameworkElement element)
         {

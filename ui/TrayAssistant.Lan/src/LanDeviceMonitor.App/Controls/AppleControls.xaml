@@ -1,0 +1,80 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:controls="clr-namespace:LanDeviceMonitor.Controls">
+    <controls:CapsuleRadiusConverter x:Key="CapsuleRadius"/>
+    <Style TargetType="controls:SwitchControl">
+        <Setter Property="Width" Value="51"/>
+        <Setter Property="Height" Value="36"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="controls:SwitchControl">
+                    <Grid Background="Transparent">
+                        <Border x:Name="Track" Height="31" CornerRadius="15.5" Background="{DynamicResource SwitchOffBrush}" VerticalAlignment="Center"/>
+                        <Border x:Name="PART_Knob" Width="27" Height="27" Margin="2,0,0,0" CornerRadius="13.5" HorizontalAlignment="Left" VerticalAlignment="Center" Background="White">
+                            <Border.Effect><DropShadowEffect BlurRadius="3" ShadowDepth="1" Opacity="0.18"/></Border.Effect>
+                        </Border>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="{DynamicResource SwitchOnBrush}"/></Trigger>
+                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="PART_Knob" Property="Opacity" Value="0.85"/></Trigger>
+                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
+                        <DataTrigger Binding="{Binding Source={x:Static SystemParameters.HighContrast}}" Value="True">
+                            <Setter TargetName="Track" Property="BorderThickness" Value="1"/>
+                            <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                            <Setter TargetName="PART_Knob" Property="Background" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>
+                        </DataTrigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style TargetType="controls:SegmentedControl">
+        <Style.Resources>
+            <Style TargetType="TextBlock">
+                <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
+                <Setter Property="FontSize" Value="{Binding FontSize, RelativeSource={RelativeSource AncestorType=controls:SegmentedControl}}"/>
+                <Setter Property="FontWeight" Value="{Binding FontWeight, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
+            </Style>
+        </Style.Resources>
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="FontSize" Value="13"/>
+        <Setter Property="FontWeight" Value="Normal"/>
+        <Setter Property="SelectionMode" Value="Single"/>
+        <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+        <Setter Property="KeyboardNavigation.TabNavigation" Value="Once"/>
+        <Setter Property="ItemsPanel"><Setter.Value><ItemsPanelTemplate><UniformGrid Rows="1"/></ItemsPanelTemplate></Setter.Value></Setter>
+        <Setter Property="ItemContainerStyle">
+            <Setter.Value>
+                <Style TargetType="controls:SegmentItem">
+                    <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                    <Setter Property="VerticalContentAlignment" Value="Center"/>
+                    <Setter Property="ActiveBrush" Value="{DynamicResource TextBrush}"/>
+                    <Setter Property="InactiveBrush" Value="{DynamicResource SegmentInactiveTextBrush}"/>
+                    <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                    <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="controls:SegmentItem">
+                        <Border Background="Transparent" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}" Padding="8,0"><ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/></Border>
+                    </ControlTemplate></Setter.Value></Setter>
+
+                </Style>
+            </Setter.Value>
+        </Setter>
+        <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="controls:SegmentedControl">
+            <Grid>
+                <Border CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}" Background="{DynamicResource SegmentTrackBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1"/>
+                <Grid Margin="{x:Static controls:SegmentedControl.TrackPadding}">
+                    <Border x:Name="PART_Indicator" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}" HorizontalAlignment="Left" Background="{DynamicResource SegmentSelectionBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" IsHitTestVisible="False">
+                        <Border.Effect><DropShadowEffect BlurRadius="5" ShadowDepth="1" Opacity="0.12"/></Border.Effect>
+                    </Border>
+                    <ItemsPresenter/>
+                </Grid>
+            </Grid>
+            <ControlTemplate.Triggers>
+                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value></Setter>
+    </Style>
+</ResourceDictionary>

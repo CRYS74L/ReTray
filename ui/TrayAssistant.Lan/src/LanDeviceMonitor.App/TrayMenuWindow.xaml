@@ -1,0 +1,163 @@
+<Window x:Class="LanDeviceMonitor.TrayMenuWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="局域网设备助手"
+        FontFamily="{StaticResource AppTextFont}"
+        Width="180"
+        SizeToContent="Height"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        ResizeMode="NoResize"
+        Topmost="True"
+        Deactivated="Window_Deactivated"
+        Loaded="Window_Loaded">
+    <Window.Resources>
+        <Style x:Key="TrayMenuButtonStyle"
+               TargetType="Button"
+               BasedOn="{StaticResource FluentButtonBaseStyle}">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid>
+                            <Border x:Name="ButtonSurface"
+                                    Background="{TemplateBinding Background}"
+                                    CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}"/>
+                            <Border x:Name="HoverSurface"
+                                    Background="#30606060"
+                                    CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}"
+                                    Opacity="0"
+                                    IsHitTestVisible="False"/>
+                            <ContentPresenter Margin="{TemplateBinding Padding}"
+                                              HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverSurface"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="1"
+                                                             Duration="0:0:0.18">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <CubicEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverSurface"
+                                                             Storyboard.TargetProperty="Opacity"
+                                                             To="0"
+                                                             Duration="0:0:0.16">
+                                                <DoubleAnimation.EasingFunction>
+                                                    <QuadraticEase EasingMode="EaseOut"/>
+                                                </DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="HoverSurface" Property="Opacity" Value="0.72"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Border Margin="9"
+            Padding="5"
+            Background="#F7F9FC"
+            BorderBrush="#D6DDE8"
+            BorderThickness="1"
+            CornerRadius="22">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="8" ShadowDepth="2"
+                              Direction="270" Opacity="0.12" Color="#16223C"/>
+        </Border.Effect>
+        <StackPanel>
+            <Button x:Name="OpenButton"
+                    Click="OpenButton_Click"
+                    Style="{StaticResource TrayMenuButtonStyle}"
+                    Margin="0,0,0,1"
+                    HorizontalContentAlignment="Stretch"
+                    Background="Transparent"
+                    MinHeight="32"
+                    Padding="9,5"
+                    FontSize="14"
+                    FontWeight="Normal">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="26"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Viewbox x:Name="OpenIconViewbox"
+                             Width="16" Height="16"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             Stretch="Uniform">
+                        <Canvas Width="16" Height="16">
+                            <Path x:Name="OpenIconPath"
+                                  Data="M 2.5,3.5 L 9.5,3.5 M 2.5,3.5 L 2.5,13.5 L 12.5,13.5 L 12.5,9.5 M 8.5,2.5 L 13.5,2.5 L 13.5,7.5 M 13.2,2.8 L 7.5,8.5"
+                                  Stroke="{StaticResource AccentBrush}"
+                                  StrokeThickness="1.7"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"
+                                  StrokeLineJoin="Round"/>
+                        </Canvas>
+                    </Viewbox>
+                    <TextBlock x:Name="OpenText"
+                               Grid.Column="1"
+                               Text="打开主界面"
+                               Margin="8,0,0,0"
+                               VerticalAlignment="Center"/>
+                </Grid>
+            </Button>
+
+            <Button x:Name="ExitButton"
+                    Click="ExitButton_Click"
+                    Style="{StaticResource TrayMenuButtonStyle}"
+                    Margin="0,1,0,0"
+                    HorizontalContentAlignment="Stretch"
+                    Background="Transparent"
+                    MinHeight="32"
+                    Padding="9,5"
+                    FontSize="14"
+                    FontWeight="Normal">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="26"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Viewbox x:Name="ExitIconViewbox"
+                             Width="16" Height="16"
+                             HorizontalAlignment="Center"
+                             VerticalAlignment="Center"
+                             Stretch="Uniform">
+                        <Canvas Width="16" Height="16">
+                            <Path x:Name="ExitIconPath"
+                                  Data="M 3,3 L 13,13 M 13,3 L 3,13"
+                                  Stroke="#B42318"
+                                  StrokeThickness="1.7"
+                                  StrokeStartLineCap="Round"
+                                  StrokeEndLineCap="Round"/>
+                        </Canvas>
+                    </Viewbox>
+                    <TextBlock Grid.Column="1"
+                               Text="退出应用"
+                               Margin="8,0,0,0"
+                               VerticalAlignment="Center"/>
+                </Grid>
+            </Button>
+        </StackPanel>
+    </Border>
+</Window>

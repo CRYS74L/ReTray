@@ -1,0 +1,29 @@
+# 项目内工具链与构建产物
+.tools/
+.dotnet/
+dist/
+bin/
+obj/
+TestResults/
+
+# Visual Studio / Rider
+.vs/
+.idea/
+*.user
+*.suo
+*.rsuser
+
+# 本机配置、凭据与运行数据
+.env
+.env.*
+!.env.example
+*.local.json
+credentials/
+runtime-data/
+
+# Windows / 临时文件
+Thumbs.db
+Desktop.ini
+*.tmp
+*.log
+*.dmp

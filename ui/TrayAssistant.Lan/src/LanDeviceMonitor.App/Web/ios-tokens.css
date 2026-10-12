@@ -1,0 +1,79 @@
+/* Opaque content surfaces sampled from the user's iOS reference screenshots.
+   Glass belongs to navigation controls, not to wallpaper behind the content. */
+:root,
+html[data-theme="Light"] {
+  --page-background: #f2f2f6;
+  --surface-level-one: #f7f7fa;
+  --surface-level-two: #fcfcfd;
+  --surface-level-three: #ffffff;
+  --ios-card-radius: 26.6667px;
+  --ios-outer-card-radius: calc(var(--ios-card-radius) + 12px);
+  --section-title-card-gap: 11px;
+  --duration-shadow: #00000014;
+  --card-shadow: #0000000f;
+  --history-outline: #dcdce0;
+  --mica-card: var(--device-list-item);
+  --surface: var(--surface-level-two);
+  --surface-strong: var(--surface-level-three);
+  --shell-panel: transparent;
+  --plot-surface: var(--surface-level-two);
+  --timeline-item: var(--surface-level-two);
+  --timeline-duration: var(--surface-level-three);
+  --device-list-item: var(--surface-level-one);
+  --device-list-item-selected: #ffffff;
+  --device-list-item-hover: #fafafa;
+  --device-list-item-selected-hover: #f5f5f7;
+  --segment-track: #e9e9ec;
+  --segment-selection: #ffffff;
+  --border: #00000012;
+  --input-border: #00000012;
+  --timeline-item-border: #0000000a;
+  --footer-button-border: #00000020;
+  --footer-hover: #ffffff;
+  --footer-pressed: #e9e9ec;
+  --studio-surface: #ffffff;
+  --studio-hover: #f2f2f6;
+  --control: #ffffff;
+  --tool-tip: #ffffff;
+  --scroll-thumb: #00000030;
+  --scroll-thumb-hover: #00000070;
+  --fade-surface: #f2f2f6;
+  --navigation-glass: linear-gradient(#ffffffee, #ffffff88);
+  --glass-edge: #ffffff;
+}
+html[data-theme="Dark"] {
+  --page-background: #1c1c1d;
+  --surface-level-one: #2c2c2d;
+  --surface-level-two: #3a3a3c;
+  --surface-level-three: #48484a;
+  --duration-shadow: #00000048;
+  --card-shadow: #00000036;
+  --history-outline: #454548;
+  --mica-card: var(--device-list-item);
+  --surface: var(--surface-level-two);
+  --surface-strong: var(--surface-level-three);
+  --plot-surface: var(--surface-level-two);
+  --timeline-item: var(--surface-level-two);
+  --timeline-duration: var(--surface-level-three);
+  --device-list-item: var(--surface-level-one);
+  --device-list-item-selected: #3e3e41;
+  --device-list-item-hover: #363638;
+  --device-list-item-selected-hover: #414144;
+  --segment-track: #2c2c2d;
+  --segment-selection: #3e3e41;
+  --border: #ffffff16;
+  --input-border: #ffffff16;
+  --timeline-item-border: #ffffff0c;
+  --footer-button-border: #ffffff26;
+  --footer-hover: #48484a;
+  --footer-pressed: #555558;
+  --studio-surface: #3e3e41;
+  --studio-hover: #48484a;
+  --control: #3e3e41;
+  --tool-tip: #3e3e41;
+  --scroll-thumb: #ffffff30;
+  --scroll-thumb-hover: #ffffff70;
+  --fade-surface: #1c1c1d;
+  --navigation-glass: linear-gradient(#555558c0, #3e3e41c0);
+  --glass-edge: #ffffff22;
+}

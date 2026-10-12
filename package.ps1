@@ -1,17 +1,29 @@
-param([switch]$SkipNative)
+param([switch]$SkipNative,[string]$BuildSuffix='')
 $ErrorActionPreference='Stop'
 $productRoot=$PSScriptRoot
 $version=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
+if($version -notmatch '^\d+\.\d+\.\d+$'){throw 'VERSION must contain a three-part numeric version'}
+if($BuildSuffix -notmatch '^[A-Za-z0-9.-]*$'){throw 'BuildSuffix must contain only letters, digits, dots or hyphens'}
 $common=Join-Path (Split-Path (Split-Path $productRoot -Parent) -Parent) '【Common】'
 $dotnet=Join-Path $common 'DotNet\sdk-10\dotnet.exe'
 if(!(Test-Path -LiteralPath $dotnet)){$dotnet=(Get-Command dotnet -ErrorAction Stop).Source}
 $env:PATH=(Split-Path $dotnet -Parent)+';'+$env:PATH
 if(!$SkipNative){foreach($target in @('Agent','Bridge')){& (Join-Path $productRoot 'build.ps1') -Target $target;if($LASTEXITCODE -ne 0){throw "Native $target failed"}}}
-$layout=Join-Path $productRoot ('publish\'+$version+'\layout')
+$publishRoot=[System.IO.Path]::GetFullPath((Join-Path $productRoot 'publish'))
+$layout=[System.IO.Path]::GetFullPath((Join-Path $publishRoot ($version+'-origin'+$BuildSuffix+'\layout')))
+if(!$layout.StartsWith($publishRoot+[System.IO.Path]::DirectorySeparatorChar,[System.StringComparison]::OrdinalIgnoreCase)){throw 'Publish layout must remain inside this product publish directory'}
+if(Test-Path -LiteralPath $layout){Remove-Item -LiteralPath $layout -Recurse -Force}
+New-Item -ItemType Directory -Force -Path $layout | Out-Null
 $distribution=Join-Path $productRoot ('dist\'+$version)
 New-Item -ItemType Directory -Force -Path $distribution | Out-Null
-& $dotnet publish (Join-Path $productRoot 'ui\TrayAssistant.Desktop\TrayAssistant.Desktop.csproj') -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:PublishTrimmed=false -p:PublishReadyToRun=false -o $layout -v:minimal
-if($LASTEXITCODE -ne 0){throw 'UI publish failed'}
+$originRoot=Join-Path $productRoot 'ui\TrayAssistant.Lan'
+$originProject=Join-Path $originRoot 'src\LanDeviceMonitor.App\LanDeviceMonitor.App.csproj'
+if(!(Test-Path -LiteralPath $originProject)){throw 'The complete LAN source project is missing'}
+Push-Location -LiteralPath $originRoot
+try{
+    & $dotnet publish $originProject -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=false -p:PublishReadyToRun=false -o $layout -v:minimal
+    if($LASTEXITCODE -ne 0){throw 'UI publish failed'}
+}finally{Pop-Location}
 $manifest=Join-Path $layout 'AppxManifest.xml'
 $doc=[xml](Get-Content -LiteralPath (Join-Path $productRoot 'ui\TrayAssistant.App\Package.appxmanifest') -Raw)
 $doc.Package.Identity.Version=$version+'.0'

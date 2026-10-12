@@ -34,8 +34,7 @@ public partial class MainPage : UserControl
     private Action? finishPageTransition;
     private bool loaded, systemLoading, systemLoaded, systemRefreshPending, editorOpen;
     private bool closingFloating;
-    private readonly BlurEffect floatingBlur = new() { Radius = 0, RenderingBias = RenderingBias.Quality };
-    private Storyboard? floatingMotion;
+    private readonly BlurEffect floatingBlur = new() { Radius = 0, RenderingBias = RenderingBias.Performance };
     private TaskCompletionSource<bool>? importConfirmation;
     private IconRow? dragRow;
     private Point dragStart;
@@ -44,6 +43,7 @@ public partial class MainPage : UserControl
     public MainPage()
     {
         InitializeComponent(); DataContext = Vm;
+        VersionText.Text = $"v{typeof(MainPage).Assembly.GetName().Version!.ToString(3)}";
         ThemeChoice.Items.Add("跟随系统"); ThemeChoice.Items.Add("浅色"); ThemeChoice.Items.Add("深色"); ThemeChoice.SelectedIndex = 0;
         LanguageChoice.Items.Add("简体中文"); LanguageChoice.Items.Add("English"); LanguageChoice.SelectedIndex = 0;
         CreateSystemRows(); CreateLoadingRows();
@@ -212,10 +212,18 @@ public partial class MainPage : UserControl
         FloatingCard.MaxHeight = Math.Max(0, ActualHeight - 32);
         FloatingContent.Content = content; FloatingLayer.Visibility = Visibility.Visible;
         PageContent.IsHitTestVisible = false;
+        PageContent.CacheMode = new BitmapCache
+        {
+            RenderAtScale = VisualTreeHelper.GetDpi(PageContent).DpiScaleX
+        };
         PageContent.Effect = floatingBlur;
         FloatingLayer.Opacity = 0;
         FloatingScale.ScaleX = FloatingScale.ScaleY = .975;
         FloatingTranslate.Y = 18;
+        FloatingCard.RenderTransform = new TransformGroup
+        {
+            Children = new TransformCollection { FloatingScale, FloatingTranslate }
+        };
         AnimateFloating(true);
     }
     private void AnimateFloating(bool opening, Action? completed = null)
@@ -224,48 +232,55 @@ public partial class MainPage : UserControl
         IEasingFunction ease = opening
             ? new QuinticEase { EasingMode = EasingMode.EaseOut }
             : new CubicEase { EasingMode = EasingMode.EaseInOut };
-        var motion = new Storyboard();
-        void Add(DependencyObject target, DependencyProperty property, double to)
+        if (!opening && FloatingCard.RenderTransform is not TransformGroup)
         {
-            var animation = new DoubleAnimation((double)target.GetValue(property), to, duration) { EasingFunction = ease };
-            Storyboard.SetTarget(animation, target);
-            Storyboard.SetTargetProperty(animation, new PropertyPath(property));
-            motion.Children.Add(animation);
-        }
-        Add(FloatingLayer, OpacityProperty, opening ? 1 : 0);
-        Add(PageContent, OpacityProperty, opening ? .4 : 1);
-        var blurAnimation = new DoubleAnimation(
-            ((BlurEffect)PageContent.Effect).Radius, opening ? 12 : 0, duration) { EasingFunction = ease };
-        Storyboard.SetTarget(blurAnimation, PageContent);
-        Storyboard.SetTargetProperty(blurAnimation,
-            new PropertyPath("(0).(1)", UIElement.EffectProperty, BlurEffect.RadiusProperty));
-        motion.Children.Add(blurAnimation);
-        Add(FloatingScale, ScaleTransform.ScaleXProperty, opening ? 1 : .985);
-        Add(FloatingScale, ScaleTransform.ScaleYProperty, opening ? 1 : .985);
-        Add(FloatingTranslate, TranslateTransform.YProperty, opening ? 0 : 8);
-        floatingMotion?.Remove(this);
-        floatingMotion = motion;
-        if (!SystemParameters.ClientAreaAnimation)
-        {
-            FloatingLayer.Opacity = opening ? 1 : 0;
-            PageContent.Opacity = opening ? .4 : 1;
-            floatingBlur.Radius = opening ? 12 : 0;
-            FloatingScale.ScaleX = FloatingScale.ScaleY = opening ? 1 : .985;
-            FloatingTranslate.Y = opening ? 0 : 8;
-            completed?.Invoke(); return;
-        }
-        motion.Completed += (_, _) =>
-        {
-            if (opening)
+            FloatingCard.RenderTransform = new TransformGroup
             {
-                motion.Remove(this); floatingMotion = null;
-                FloatingLayer.Opacity = 1;
-                FloatingScale.ScaleX = FloatingScale.ScaleY = 1; FloatingTranslate.Y = 0;
-                floatingBlur.Radius = 12; PageContent.Effect = floatingBlur; PageContent.Opacity = .4;
-            }
-            completed?.Invoke();
+                Children = new TransformCollection { FloatingScale, FloatingTranslate }
+            };
+        }
+        DoubleAnimation Motion(double from, double to) => new(from, to, duration)
+        {
+            EasingFunction = ease, FillBehavior = FillBehavior.Stop
         };
-        motion.Begin(this, true);
+        void AnimateValue(Animatable target, DependencyProperty property, double to)
+        {
+            var from = (double)target.GetValue(property);
+            target.BeginAnimation(property, null); target.SetValue(property, to);
+            if (SystemParameters.ClientAreaAnimation)
+                target.BeginAnimation(property, Motion(from, to));
+        }
+        void AnimateElement(UIElement target, double to, EventHandler? finish = null)
+        {
+            var from = target.Opacity;
+            target.BeginAnimation(OpacityProperty, null); target.Opacity = to;
+            if (!SystemParameters.ClientAreaAnimation) return;
+            var animation = Motion(from, to);
+            if (finish != null) animation.Completed += finish;
+            target.BeginAnimation(OpacityProperty, animation);
+        }
+        void Finish()
+        {
+            ClearFloatingMotion();
+            if (opening) FloatingCard.RenderTransform = Transform.Identity;
+            completed?.Invoke();
+        }
+        AnimateValue(FloatingScale, ScaleTransform.ScaleXProperty, opening ? 1 : .985);
+        AnimateValue(FloatingScale, ScaleTransform.ScaleYProperty, opening ? 1 : .985);
+        AnimateValue(FloatingTranslate, TranslateTransform.YProperty, opening ? 0 : 8);
+        AnimateValue(floatingBlur, BlurEffect.RadiusProperty, opening ? 12 : 0);
+        AnimateElement(PageContent, opening ? .4 : 1);
+        AnimateElement(FloatingLayer, opening ? 1 : 0, (_, _) => Finish());
+        if (!SystemParameters.ClientAreaAnimation) Finish();
+    }
+    private void ClearFloatingMotion()
+    {
+        FloatingLayer.BeginAnimation(OpacityProperty, null);
+        PageContent.BeginAnimation(OpacityProperty, null);
+        floatingBlur.BeginAnimation(BlurEffect.RadiusProperty, null);
+        FloatingScale.BeginAnimation(ScaleTransform.ScaleXProperty, null);
+        FloatingScale.BeginAnimation(ScaleTransform.ScaleYProperty, null);
+        FloatingTranslate.BeginAnimation(TranslateTransform.YProperty, null);
     }
     private Task HideFloatingAsync()
     {
@@ -275,13 +290,13 @@ public partial class MainPage : UserControl
     }
     private void ClearFloating()
     {
-        floatingMotion?.Remove(this); floatingMotion = null;
+        ClearFloatingMotion();
         FloatingLayer.Visibility = Visibility.Collapsed; FloatingContent.Content = null;
         FloatingLayer.Opacity = 1;
         FloatingScale.ScaleX = FloatingScale.ScaleY = 1; FloatingTranslate.Y = 0;
         floatingBlur.Radius = 0;
         PageContent.IsHitTestVisible = true;
-        PageContent.Effect = null; PageContent.Opacity = 1;
+        PageContent.Effect = null; PageContent.CacheMode = null; PageContent.Opacity = 1;
     }
     private async Task CloseFloatingAsync()
     {

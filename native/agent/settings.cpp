@@ -82,6 +82,7 @@ Json DefaultSettings() {
             {"rules", Json::array()},
 
             {"systemControls", Json::array()},
+            {"splitInputIndicators", true},
             {"menu",
              {{"programNames", true},
               {"hoverDelayMs", 0},
@@ -150,12 +151,12 @@ bool ValidateSettings(const Json& j) {
         }
         if (j.contains("systemControls")) {
             const auto& controls = j["systemControls"];
-            if (!controls.is_array() || controls.size() > 9)
+            if (!controls.is_array() || controls.size() > 10)
                 return false;
-            std::array<bool, 9> seen{};
+            std::array<bool, 10> seen{};
             for (const auto& p : controls) {
                 int id = p.at("id");
-                if (id < 0 || id >= 9 || seen[id] || !p.at("hidden").is_boolean())
+                if (id < 0 || id >= 10 || seen[id] || !p.at("hidden").is_boolean())
                     return false;
                 seen[id] = true;
             }
@@ -270,6 +271,13 @@ Json NormalizeSettings(Json value) {
     value.erase("newIconLocation");
     auto result = DefaultSettings();
     result.update(value);
+    if (!value.value("splitInputIndicators", false)) {
+        auto& controls=result["systemControls"];
+        auto combined=std::find_if(controls.begin(),controls.end(),[](const auto& item){return item.at("id")==3;});
+        bool separate=std::any_of(controls.begin(),controls.end(),[](const auto& item){return item.at("id")==9;});
+        if(combined!=controls.end()&&!separate) controls.push_back({{"id",9},{"hidden",combined->at("hidden")}});
+    }
+    result["splitInputIndicators"]=true;
     for (const char* key : {"ownIcon"}) {
         auto merged = DefaultSettings().at(key);
         if (value.contains(key))

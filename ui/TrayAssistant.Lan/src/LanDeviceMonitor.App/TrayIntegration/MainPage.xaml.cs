@@ -24,8 +24,9 @@ public partial class MainPage : UserControl
     public TrayViewModel Vm { get; } = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly SemaphoreSlim systemSaveGate = new(1, 1);
-    private static readonly string[] SystemNames = ["网络", "音量", "电源", "输入法 / 语言", "时钟", "通知", "隐私指示器", "开始", "快速设置"];
-    private readonly ToggleButton[] systemToggles = new ToggleButton[SystemNames.Length];
+    private static readonly string[] SystemNames = ["网络", "音量", "电源", "输入法", "时钟", "通知", "隐私指示器", "开始", "快速设置", "语言"];
+    private readonly ToggleButton?[] systemToggles = new ToggleButton?[SystemNames.Length];
+    private readonly SystemGlyphImage?[] systemGlyphs = new SystemGlyphImage?[SystemNames.Length];
     private readonly bool[] systemAvailable = new bool[SystemNames.Length];
     private readonly bool[] systemSaving = new bool[SystemNames.Length];
     private string tab = "icons";
@@ -372,19 +373,36 @@ public partial class MainPage : UserControl
     public async Task<bool> FlushChangesAsync() { await systemSaveGate.WaitAsync(); systemSaveGate.Release(); return await Vm.FlushChangesAsync(); }
     private void CreateSystemRows()
     {
-        for (var id = 0; id < SystemNames.Length; id++)
+        foreach (var id in new[] { 0, 1, 2, 3, 9, 4, 6, 7 })
         {
+            if (id == 5 || id == 8) continue;
             var row = new Grid { Height = 34 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
             row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-            row.Children.Add(new TextBlock { Text = SystemNames[id], Margin = new Thickness(4, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center });
+            var glyph = new SystemGlyphImage { Width = 28, Height = 28, VerticalAlignment = VerticalAlignment.Center };
+            glyph.SetResourceReference(SystemGlyphImage.FontFamilyProperty, "AppIconFont");
+            glyph.SetResourceReference(SystemGlyphImage.ForegroundProperty, "TextBrush");
+            // Windows' own symbol font supplies static symbols for controls whose
+            // taskbar content is only created on demand or is a Composition animation.
+            glyph.Glyphs = id switch { 3 => "\uE765", 9 => "\uE765", 4 => "\uE917", 6 => "\uE720", _ => "" };
+            systemGlyphs[id] = glyph;
+            if ((id == 9 ? WindowsSystemIcon.InputMethod() : id == 7 ? WindowsSystemIcon.Start() : null) is { } systemBitmap)
+            {
+                var mask = new Border { Width = 20, Height = 20, VerticalAlignment = VerticalAlignment.Center,
+                    OpacityMask = new ImageBrush(systemBitmap) { Stretch = Stretch.Uniform } };
+                mask.SetResourceReference(Border.BackgroundProperty, "TextBrush"); row.Children.Add(mask);
+            }
+            else row.Children.Add(glyph);
+            var label = new TextBlock { Text = SystemNames[id], Margin = new Thickness(8, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
+            Grid.SetColumn(label, 1); row.Children.Add(label);
             var toggle = new SwitchControl { Style = (Style)Resources["TrayRowToggle"], Tag = id, IsEnabled = false,
                 Margin = new Thickness(0, 0, 4, 0) };
             System.Windows.Automation.AutomationProperties.SetAutomationId(toggle, "System" + id);
             System.Windows.Automation.AutomationProperties.SetName(toggle, SystemNames[id]);
-            toggle.Click += SystemVisibilityClick; Grid.SetColumn(toggle, 1); row.Children.Add(toggle); SystemList.Children.Add(row); systemToggles[id] = toggle;
-            if (id + 1 < SystemNames.Length)
+            toggle.Click += SystemVisibilityClick; Grid.SetColumn(toggle, 2); row.Children.Add(toggle); SystemList.Children.Add(row); systemToggles[id] = toggle;
+            if (id != 7)
             {
-                var divider = new Border { Height = .5, Margin = new Thickness(4, 0, 0, 0) };
+                var divider = new Border { Height = .5, Margin = new Thickness(36, 0, 0, 0) };
                 divider.SetResourceReference(Border.BackgroundProperty, "BorderBrush"); SystemList.Children.Add(divider);
             }
         }
@@ -395,7 +413,7 @@ public partial class MainPage : UserControl
         if (systemLoading) { systemRefreshPending |= refresh; return; }
         if (systemLoaded && !refresh) return;
         systemLoading = true;
-        if (!systemLoaded) foreach (var toggle in systemToggles) toggle.IsEnabled = false;
+        if (!systemLoaded) foreach (var toggle in systemToggles.OfType<ToggleButton>()) toggle.IsEnabled = false;
         await systemSaveGate.WaitAsync();
         try
         {
@@ -403,14 +421,19 @@ public partial class MainPage : UserControl
             Array.Clear(systemAvailable);
             foreach (var item in reply["data"]!.AsArray())
             {
-                var id = item!["id"]!.GetValue<int>(); if (id < 0 || id >= SystemNames.Length) continue;
+                var id = item!["id"]!.GetValue<int>(); if (id < 0 || id >= SystemNames.Length || systemToggles[id] is not { } toggle) continue;
+                if (id != 4 && item["glyph"]?.GetValue<string>() is { Length: > 0 } glyph && systemGlyphs[id] is { } glyphView)
+                {
+                    glyphView.Glyphs = glyph;
+                    glyphView.FontFamily = new FontFamily(item["fontFamily"]!.GetValue<string>());
+                }
                 var exists = (item["instances"]?.GetValue<int>() ?? 0) > 0;
                 var savedHidden = item["savedHidden"]?.GetValue<bool>() ?? false;
-                if (!systemSaving[id]) systemToggles[id].IsChecked = exists ? item["visible"]!.GetValue<bool>() : !savedHidden;
-                systemAvailable[id] = exists || savedHidden;
+                if (!systemSaving[id]) toggle.IsChecked = id == 6 ? !savedHidden : exists ? item["visible"]!.GetValue<bool>() : !savedHidden;
+                systemAvailable[id] = id == 6 || exists || savedHidden;
             }
             for (var id = 0; id < systemToggles.Length; id++)
-                if (!systemAvailable[id] && !systemSaving[id]) systemToggles[id].IsChecked = false;
+                if (!systemAvailable[id] && !systemSaving[id] && systemToggles[id] is { } toggle) toggle.IsChecked = false;
             systemLoaded = true;
         }
         catch (Exception exception) { Vm.ReportError(exception); }
@@ -419,8 +442,9 @@ public partial class MainPage : UserControl
             systemSaveGate.Release(); systemLoading = false;
             for (var id = 0; id < systemToggles.Length; id++)
             {
-                systemToggles[id].IsEnabled = systemAvailable[id] && !systemSaving[id];
-                systemToggles[id].ToolTip = systemAvailable[id] ? null : "当前系统没有可单独控制的图标";
+                if (systemToggles[id] is not { } toggle) continue;
+                toggle.IsEnabled = systemAvailable[id] && !systemSaving[id];
+                toggle.ToolTip = systemAvailable[id] ? null : "当前系统没有可单独控制的图标";
             }
             if (systemRefreshPending) { systemRefreshPending = false; _ = LoadSystemAsync(true); }
         }

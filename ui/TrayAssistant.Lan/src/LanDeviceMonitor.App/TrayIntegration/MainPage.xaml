@@ -59,7 +59,7 @@
           <ControlTemplate TargetType="Button">
             <Grid Background="Transparent">
               <controls:CircleButtonBorder Background="{TemplateBinding Background}" CornerRadius="18" />
-              <Border x:Name="CircleHover" Margin="0.75" Background="#28FFFFFF" CornerRadius="17.25" Opacity="0" IsHitTestVisible="False" />
+              <Border x:Name="CircleHover" Margin="0.75" Background="{DynamicResource TrayMoreHoverBrush}" CornerRadius="17.25" Opacity="0" IsHitTestVisible="False" />
               <Border x:Name="CirclePressed" Margin="0.75" Background="{DynamicResource FooterPressedBrush}" CornerRadius="17.25" Opacity="0" IsHitTestVisible="False" />
               <controls:CircleButtonBorder Background="Transparent" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="18" IsHitTestVisible="False" />
               <controls:CircleButtonBorder x:Name="CircleHoverOutline" Background="Transparent" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="18" Opacity="0" IsHitTestVisible="False" />

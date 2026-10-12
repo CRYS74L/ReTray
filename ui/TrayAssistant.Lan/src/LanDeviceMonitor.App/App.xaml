@@ -29,6 +29,7 @@
             <Color x:Key="MicaCardColor">#70FFFFFF</Color>
             <Color x:Key="MicaStrongColor">#88FFFFFF</Color>
             <Color x:Key="FloatingSurfaceColor">#E8FFFFFF</Color>
+            <Color x:Key="TrayMoreHoverColor">#90FFFFFF</Color>
             <Color x:Key="MeshGatewayColor">#88FFFFFF</Color>
             <SolidColorBrush x:Key="MeshGatewayBrush" Color="{DynamicResource MeshGatewayColor}"/>
             <Color x:Key="SurfaceColor">#70FFFFFF</Color>
@@ -112,6 +113,7 @@
             <SolidColorBrush x:Key="MicaCardBrush" Color="{StaticResource MicaCardColor}"/>
             <SolidColorBrush x:Key="MicaStrongBrush" Color="{StaticResource MicaStrongColor}"/>
             <SolidColorBrush x:Key="FloatingSurfaceBrush" Color="{DynamicResource FloatingSurfaceColor}"/>
+            <SolidColorBrush x:Key="TrayMoreHoverBrush" Color="{DynamicResource TrayMoreHoverColor}"/>
             <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}"/>
             <SolidColorBrush x:Key="SurfaceStrongBrush" Color="{StaticResource SurfaceStrongColor}"/>
             <SolidColorBrush x:Key="WindowBrush" Color="{StaticResource WindowColor}"/>

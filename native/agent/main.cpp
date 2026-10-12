@@ -72,7 +72,7 @@ uint64_t configRevision{};
 uint64_t environmentEpoch{}, lastEnvironmentCheck{};
 std::string environmentStamp;
 std::unordered_map<int, bool> environmentPolicies;
-std::array<bool, 9> environmentAvailable{};
+std::array<bool, 10> environmentAvailable{};
 Json environmentOutcome = {{"success", true}};
 struct Request {
     Json input, output;
@@ -429,29 +429,8 @@ bool RefreshSystemControls() {
     command.operation = BridgeOperation::SystemRead;
     if (!bridge.Command(command))
         return false;
-    bool appliedNewTarget = false;
-    DWORD error{};
-    for (const auto& policy : settings.value("systemControls", Json::array())) {
-        int id = policy.at("id");
-        bool exists = NativeSystemControlPresent(id);
-        if (policy.value("hidden", false) && exists && !environmentAvailable[id]) {
-            command.operation = BridgeOperation::SystemSet;
-            command.location = id;
-            command.visibility = 1;
-            if (!bridge.Command(command))
-                error = bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT;
-            environmentPolicies[id] = true;
-            appliedNewTarget = true;
-        }
-        environmentAvailable[id] = exists;
-    }
-    if (error)
-        environmentOutcome = Result(false, "已保存的系统图标策略无法应用到新对象", error);
-    if (appliedNewTarget) {
-        command = {};
-        command.operation = BridgeOperation::SystemRead;
-        return bridge.Command(command);
-    }
+    for (const auto& policy : settings.value("systemControls", Json::array()))
+        environmentAvailable[policy.at("id").get<int>()] = NativeSystemControlPresent(policy.at("id").get<int>());
     return true;
 }
 bool ApplyEnvironment(bool force = false) {
@@ -481,7 +460,7 @@ bool ApplyEnvironment(bool force = false) {
     DWORD error{};
     auto apply = [&](int id, bool hidden) {
         BridgeCommand command;
-        command.operation = BridgeOperation::SystemSet;
+        command.operation = BridgeOperation::SystemPolicy;
         command.location = id;
         command.visibility = hidden ? 1 : 0;
         if (!bridge.Command(command)) {
@@ -988,8 +967,8 @@ Json SetSystemVisibility(const Json& data) {
         return result;
     }
     const auto& requested = data.at("id");
-    if (requested.is_number_unsigned() ? requested.get<uint64_t>() >= 9
-                                      : requested.get<int64_t>() < 0 || requested.get<int64_t>() >= 9) {
+    if (requested.is_number_unsigned() ? requested.get<uint64_t>() >= 10
+                                      : requested.get<int64_t>() < 0 || requested.get<int64_t>() >= 10) {
         auto result = Result(false, "系统图标编号无效", ERROR_INVALID_DATA);
         result["saved"] = false;
         return result;
@@ -1015,14 +994,14 @@ Json SetSystemVisibility(const Json& data) {
     bool exists = NativeSystemControlPresent(id);
     if (environmentEpoch == bridge.shared->epoch)
         environmentAvailable[id] = exists;
-    if (!exists && !visible)
+    if (!exists && !visible && id != 6)
         return reply(false, "所选系统图标当前不存在，无法隐藏，配置未改变", ERROR_NOT_FOUND);
     auto previous = settings;
     bool priorHidden = false;
     for (const auto& policy : previous.value("systemControls", Json::array()))
         if (policy.at("id") == id)
             priorHidden = policy.value("hidden", false);
-    command.operation = BridgeOperation::SystemSet;
+    command.operation = id == 6 ? BridgeOperation::SystemPolicy : BridgeOperation::SystemSet;
     command.location = id;
     command.visibility = visible ? 0 : 1;
     auto restorePolicy = [&]() {
@@ -1172,7 +1151,7 @@ Json Handle(const Json& req) {
                           bridge.shared ? (bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT)
                                         : ERROR_NOT_READY);
         result["data"] = Json::array();
-        std::array<bool, 9> savedHidden{}, present{};
+        std::array<bool, 10> savedHidden{}, present{};
         for (const auto& policy : settings.value("systemControls", Json::array()))
             savedHidden[policy.at("id").get<int>()] = policy.value("hidden", false);
         for (uint32_t i = 0; i < bridge.shared->systemCount; ++i) {
@@ -1182,12 +1161,14 @@ Json Handle(const Json& req) {
                 present[row.id] = true;
             result["data"].push_back(
                 {{"id", row.id}, {"visible", row.visible}, {"instances", row.instances},
-                 {"savedHidden", saved}});
+                 {"savedHidden", saved}, {"glyph", Utf8(row.glyph)},
+                 {"fontFamily", Utf8(row.fontFamily)},
+                 {"prePaintHides", row.prePaintHides}, {"visibilityHides", row.visibilityHides}});
         }
         for (size_t id = 0; id < savedHidden.size(); ++id)
-            if (savedHidden[id] && !present[id])
+            if ((savedHidden[id] || id == 6) && !present[id])
                 result["data"].push_back({{"id", id}, {"instances", 0}, {"visible", false},
-                                           {"savedHidden", true}});
+                                           {"savedHidden", savedHidden[id]}});
     } else if (method == "system.set") {
         result = SetSystemVisibility(d);
     } else if (method == "system.apply") {

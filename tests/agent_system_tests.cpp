@@ -18,11 +18,13 @@ struct SystemTestBridgeClient {
     std::unique_ptr<BridgeState> state = std::make_unique<BridgeState>();
     BridgeState* shared{state.get()};
     std::map<int, bool> hidden{{0, false}, {1, false}};
+    std::map<int, bool> pendingPolicies;
     std::vector<BridgeCommand> commands;
     DWORD readError{}, setError{};
     int failingId{-1};
     bool failAfterChange{};
     bool Alive() const { return shared && shared->status == 1; }
+    void AddNativeControl(int id) { hidden[id] = pendingPolicies.contains(id) && pendingPolicies.at(id); }
     bool Attach(const SymbolAdapter&, const std::filesystem::path&) { return Alive(); }
     void Reset() { for (auto& [id, value] : hidden) value = false; }
     void PublishSystems() {
@@ -38,10 +40,11 @@ struct SystemTestBridgeClient {
         if (command.operation == BridgeOperation::SystemRead) {
             PublishSystems();
             shared->lastError = std::exchange(readError, 0);
-        } else if (command.operation == BridgeOperation::SystemSet) {
+        } else if (command.operation == BridgeOperation::SystemSet || command.operation == BridgeOperation::SystemPolicy) {
+            if (command.operation == BridgeOperation::SystemPolicy) pendingPolicies[command.location] = command.visibility == 1;
             PublishSystems();
             auto found = hidden.find(command.location);
-            if (found == hidden.end() && command.visibility == 1) shared->lastError = ERROR_NOT_FOUND;
+            if (found == hidden.end() && command.visibility == 1 && command.operation == BridgeOperation::SystemSet) shared->lastError = ERROR_NOT_FOUND;
             else if (found == hidden.end()) {}
             else if (failingId == command.location && setError) {
                 if (failAfterChange) found->second = command.visibility == 1;
@@ -84,6 +87,7 @@ void ResetFixture() {
     bridge.state = std::make_unique<BridgeState>(); bridge.shared = bridge.state.get();
     bridge.shared->status = 1; bridge.shared->epoch = 1;
     bridge.hidden = {{0, false}, {1, false}}; bridge.commands.clear();
+    bridge.pendingPolicies.clear();
     bridge.readError = bridge.setError = 0; bridge.failingId = -1; bridge.failAfterChange = false;
     lifecycle.state = SessionState::Ready; stopping = false; window = nullptr;
     settings = DefaultSettings(); settings["ownIcon"]["visible"] = false;
@@ -98,7 +102,7 @@ void ResetFixture() {
 std::vector<BridgeCommand> SystemChanges() {
     std::vector<BridgeCommand> result;
     for (const auto& command : bridge.commands)
-        if (command.operation == BridgeOperation::SystemSet) result.push_back(command);
+        if (command.operation == BridgeOperation::SystemSet || command.operation == BridgeOperation::SystemPolicy) result.push_back(command);
     return result;
 }
 void SingleSystemToggleIgnoresUnavailableSavedPeer() {
@@ -159,7 +163,7 @@ void FailedSystemNativeActionRestoresPolicyWithoutSaving() {
 }
 void InvalidSystemRequestCannotActOrPersist() {
     ResetFixture(); auto before = settings;
-    for (auto id : {Json(-1), Json(9), Json(0.0), Json("0"), Json(UINT64_MAX)}) {
+    for (auto id : {Json(-1), Json(10), Json(0.0), Json("0"), Json(UINT64_MAX)}) {
         auto response = Call("system.set", {{"id", id}, {"visible", false}});
         CHECK(!response.value("success", true)); CHECK(settings == before);
     }
@@ -176,21 +180,23 @@ void ReadFailureCannotPersistNewPolicy() {
     CHECK(settings == before); CHECK(SystemChanges().empty());
 }
 void UnchangedSystemFailuresAreNotRetriedInBackground() {
-    ResetFixture(); settings["systemControls"] = {{{"id", 5}, {"hidden", true}}};
+    ResetFixture(); settings["systemControls"] = {{{"id", 0}, {"hidden", true}}};
+    bridge.failingId = 0; bridge.setError = ERROR_NOT_SUPPORTED;
     CHECK(!ApplyEnvironment()); auto attempted = SystemChanges().size();
     lastEnvironmentCheck = 0; CHECK(!ApplyEnvironment());
     CHECK(SystemChanges().size() == attempted);
 }
 void SystemReadAppliesPolicyWhenMissingTargetAppears() {
-    ResetFixture(); settings["systemControls"] = {{{"id", 5}, {"hidden", true}}};
-    CHECK(!ApplyEnvironment()); bridge.commands.clear();
-    bridge.hidden.emplace(5, false); // A previously absent native target appears.
+    ResetFixture(); settings["systemControls"] = {{{"id", 6}, {"hidden", true}}};
+    CHECK(ApplyEnvironment()); bridge.commands.clear();
+    bridge.AddNativeControl(6); // The XAML event applies the preloaded policy before any RPC.
+    CHECK(bridge.hidden.at(6)); CHECK(bridge.commands.empty());
     auto response = Call("system.read", Json::object());
-    CHECK(response.value("success", false)); CHECK(bridge.hidden.at(5));
-    auto changes = SystemChanges(); CHECK(changes.size() == 1); CHECK(changes[0].location == 5);
-    CHECK(response["data"][2]["id"] == 5 && response["data"][2]["visible"] == false);
+    CHECK(response.value("success", false)); CHECK(bridge.hidden.at(6));
+    CHECK(SystemChanges().empty());
+    CHECK(response["data"][2]["id"] == 6 && response["data"][2]["visible"] == false);
     Call("system.read", Json::object()); lastEnvironmentCheck = 0; ApplyEnvironment();
-    CHECK(SystemChanges().size() == 1); CHECK(configRevision == 0);
+    CHECK(SystemChanges().empty()); CHECK(configRevision == 0);
 }
 void ExistingFailedTargetIsNotRetriedByObjectRefresh() {
     ResetFixture(); settings["systemControls"] = {{{"id", 0}, {"hidden", true}}};
@@ -201,22 +207,22 @@ void ExistingFailedTargetIsNotRetriedByObjectRefresh() {
 }
 void MaintenanceFailureDoesNotBlockCurrentSystemRows() {
     ResetFixture(); settings["systemControls"] = {{{"id", 5}, {"hidden", true}}};
-    CHECK(!ApplyEnvironment()); bridge.commands.clear();
-    bridge.hidden.emplace(5, false); bridge.failingId = 5; bridge.setError = ERROR_NOT_SUPPORTED;
+    CHECK(ApplyEnvironment()); bridge.commands.clear();
+    bridge.AddNativeControl(5);
     auto response = Call("system.set", {{"id", 0}, {"visible", false}});
     CHECK(response.value("success", false));
     response = Call("system.read", Json::object());
-    CHECK(response.value("success", false)); CHECK(response["data"].size() == 3);
-    CHECK(response["data"][0]["visible"] == false); CHECK(response["data"][2]["visible"] == true);
+    CHECK(response.value("success", false)); CHECK(response["data"].size() == 4);
+    CHECK(response["data"][0]["visible"] == false); CHECK(response["data"][2]["visible"] == false);
     auto attempted = SystemChanges().size(); Call("system.read", Json::object());
     CHECK(SystemChanges().size() == attempted);
 }
 void SystemRowsExposeAbsentSavedPreferenceWithoutApplyingAnything() {
     ResetFixture(); settings["systemControls"] = {{{"id", 0}, {"hidden", true}},
                                                    {{"id", 5}, {"hidden", true}}};
-    CHECK(!ApplyEnvironment()); bridge.commands.clear();
+    CHECK(ApplyEnvironment()); bridge.commands.clear();
     auto response = Call("system.read", Json::object());
-    CHECK(response.value("success", false)); CHECK(response["data"].size() == 3);
+    CHECK(response.value("success", false)); CHECK(response["data"].size() == 4);
     CHECK(response["data"][0]["id"] == 0 && response["data"][0]["savedHidden"] == true);
     CHECK(response["data"][1]["id"] == 1 && response["data"][1]["savedHidden"] == false);
     CHECK(response["data"][2] == Json({{"id", 5}, {"instances", 0}, {"visible", false},
@@ -225,10 +231,39 @@ void SystemRowsExposeAbsentSavedPreferenceWithoutApplyingAnything() {
 }
 void SuccessfulSystemTransactionDoesNotReplayFailedPeer() {
     ResetFixture(); settings["systemControls"] = {{{"id", 5}, {"hidden", true}}};
-    CHECK(!ApplyEnvironment()); bridge.commands.clear();
+    CHECK(ApplyEnvironment()); bridge.commands.clear();
     auto response = Call("system.set", {{"id", 0}, {"visible", false}});
     CHECK(response.value("success", false)); ApplyEnvironment();
     auto changes = SystemChanges(); CHECK(changes.size() == 1); CHECK(changes[0].location == 0);
+}
+void PrivacyPreferenceDoesNotRequireActiveIndicator() {
+    ResetFixture();
+    auto response=Call("system.set",{{"id",6},{"visible",false}});
+    CHECK(response.value("success",false));CHECK(response.value("saved",false));
+    CHECK(!bridge.hidden.contains(6));CHECK(bridge.pendingPolicies.at(6));
+    auto read=Call("system.read",Json::object());
+    CHECK(read["data"].back()["id"]==6);CHECK(read["data"].back()["savedHidden"]==true);
+    response=Call("system.set",{{"id",6},{"visible",true}});
+    CHECK(response.value("success",false));CHECK(!bridge.pendingPolicies.at(6));
+    read=Call("system.read",Json::object());
+    CHECK(read["data"].back()["id"]==6);CHECK(read["data"].back()["savedHidden"]==false);
+    CHECK(read["data"].back()["instances"]==0);
+    bridge.AddNativeControl(6);CHECK(!bridge.hidden.at(6));
+}
+void InputMethodAndLanguageAreIndependent() {
+    ResetFixture();bridge.hidden.emplace(3,false);bridge.hidden.emplace(9,false);
+    auto response=Call("system.set",{{"id",3},{"visible",false}});
+    CHECK(response.value("success",false));CHECK(bridge.hidden.at(3));CHECK(!bridge.hidden.at(9));
+    response=Call("system.set",{{"id",9},{"visible",false}});
+    CHECK(response.value("success",false));CHECK(bridge.hidden.at(3));CHECK(bridge.hidden.at(9));
+    response=Call("system.set",{{"id",3},{"visible",true}});
+    CHECK(response.value("success",false));CHECK(!bridge.hidden.at(3));CHECK(bridge.hidden.at(9));
+    bool recovered{};auto persisted=LoadSettings(settingsPath,recovered);
+    CHECK(persisted["systemControls"].size()==1);CHECK(persisted["systemControls"][0]["id"]==9);
+    CHECK(persisted["systemControls"][0]["hidden"]==true);CHECK(!recovered);
+    auto legacy=DefaultSettings();legacy.erase("splitInputIndicators");legacy["systemControls"]={{{"id",3},{"hidden",true}}};
+    auto migrated=NormalizeSettings(legacy);CHECK(migrated["systemControls"].size()==2);
+    CHECK(migrated["systemControls"][1]["id"]==9);CHECK(migrated["systemControls"][1]["hidden"]==true);
 }
 void CanceledAdvancedSettingsCannotApplyNativeBehavior() {
     ResetFixture();
@@ -296,6 +331,8 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"maintenance failure keeps current system rows readable", MaintenanceFailureDoesNotBlockCurrentSystemRows},
                             std::pair{"system rows expose absent saved preference", SystemRowsExposeAbsentSavedPreferenceWithoutApplyingAnything},
                             std::pair{"system success does not replay failed peer", SuccessfulSystemTransactionDoesNotReplayFailedPeer},
+                            std::pair{"privacy preference works without active indicator", PrivacyPreferenceDoesNotRequireActiveIndicator},
+                            std::pair{"input method and language remain independent", InputMethodAndLanguageAreIndependent},
                             std::pair{"canceled advanced native behavior", CanceledAdvancedSettingsCannotApplyNativeBehavior},
                             std::pair{"legacy settings keep appearance and manual visibility", LoadedLegacyPoliciesKeepCustomAppearanceAndManualVisibility}}) {
         try { test.second(); std::printf("PASS %s\n", test.first); }

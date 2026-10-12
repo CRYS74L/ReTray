@@ -22,7 +22,7 @@ public sealed class IconEditorPanel : UserControl
         header.Children.Add(new TextBlock { Text = row.Name, FontWeight = FontWeights.Medium,
             VerticalAlignment = VerticalAlignment.Center, TextTrimming = TextTrimming.CharacterEllipsis });
         var dismiss = new Button { Width = 32, Height = 32, MinWidth = 0, MinHeight = 0,
-            Margin = new Thickness(12, 0, 0, 0), ToolTip = "关闭" };
+            Margin = new Thickness(12, 0, 0, 0) };
         dismiss.SetResourceReference(StyleProperty, "FloatingCloseButtonStyle");
         var glyph = new TextBlock { Text = "\uE8BB", FontSize = 14 };
         glyph.SetResourceReference(TextBlock.FontFamilyProperty, "AppIconFont");
@@ -31,6 +31,7 @@ public sealed class IconEditorPanel : UserControl
         dismiss.Content = glyph;
         dismiss.Click += async (_, _) => await close();
         System.Windows.Automation.AutomationProperties.SetAutomationId(dismiss, "IconEditorClose");
+        System.Windows.Automation.AutomationProperties.SetName(dismiss, Localization.Text("关闭"));
         Grid.SetColumn(dismiss, 1); header.Children.Add(dismiss); root.Children.Add(header);
         var content = new StackPanel { Margin = new Thickness(4) };
         var previews = new Grid { Margin = new Thickness(0, 4, 0, 18) };
@@ -45,6 +46,7 @@ public sealed class IconEditorPanel : UserControl
             stack.Children.Add(image); stack.Children.Add(new TextBlock { Text = caption,
                 HorizontalAlignment = HorizontalAlignment.Center, FontSize = 12 });
             var action = new Button { Content = buttonText, Command = command,
+                Height = 36, MinHeight = 36, MinWidth = 0, Padding = new Thickness(10, 0, 10, 0),
                 HorizontalAlignment = HorizontalAlignment.Center, Margin = new Thickness(0, 14, 0, 0) };
             action.SetResourceReference(StyleProperty, "StudioActionButtonStyle");
             System.Windows.Automation.AutomationProperties.SetAutomationId(action,
@@ -55,11 +57,11 @@ public sealed class IconEditorPanel : UserControl
         Preview(0, "原图标", "Selected.Original", "使用原图标", vm.UseOriginalAssetCommand);
         Preview(1, "替代图标", nameof(vm.AssetPreview), "选择图标", vm.ChooseIconCommand);
         content.Children.Add(previews);
-        var tip = new TextBox { MaxLength = 127, Margin = new Thickness(0, 8, 0, 0) };
+        var tip = new TextBox { MaxLength = 127, Height = 36, MinHeight = 36, Margin = new Thickness(0, 8, 0, 0) };
         tip.SetBinding(TextBox.TextProperty, new Binding(nameof(vm.Tip))
             { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
         System.Windows.Automation.AutomationProperties.SetAutomationId(tip, "IconTip");
-        var label = new TextBlock { Text = "图标提示", Margin = new Thickness(15, 0, 0, 0) };
+        var label = new TextBlock { Text = "自定义悬停提示内容", Margin = new Thickness(15, 0, 0, 0) };
         FieldLabelAlignment.SetTarget(label, tip); content.Children.Add(label); content.Children.Add(tip);
         var error = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 10, 0, 0) };
         error.SetResourceReference(TextBlock.ForegroundProperty, "DangerTextBrush");

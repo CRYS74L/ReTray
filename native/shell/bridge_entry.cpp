@@ -636,10 +636,12 @@ void ExecuteCommand() {
             return;
         }
         if (cmd.operation == BridgeOperation::SystemRead ||
-            cmd.operation == BridgeOperation::SystemSet) {
+            cmd.operation == BridgeOperation::SystemSet || cmd.operation == BridgeOperation::SystemPolicy) {
             bool ok = ReadSystemControls(moduleBase, adapter, *state);
             if (ok && cmd.operation == BridgeOperation::SystemSet)
                 ok = SetSystemControl(cmd.location, cmd.visibility);
+            if (ok && cmd.operation == BridgeOperation::SystemPolicy)
+                ok = SetSystemPolicy(cmd.location, cmd.visibility);
             state->lastError = ok ? 0 : ERROR_NOT_SUPPORTED;
             InterlockedExchange(&state->replySequence, state->requestSequence);
             return;

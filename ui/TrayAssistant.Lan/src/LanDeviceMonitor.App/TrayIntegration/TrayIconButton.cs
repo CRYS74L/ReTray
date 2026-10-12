@@ -26,10 +26,9 @@ public sealed class TrayIconButton : Button
     {
         SetResourceReference(StyleProperty, "SidebarIconButtonStyle");
         UseLayoutRounding = true; SnapsToDevicePixels = true;
-        var image = new Image { Width = 20, Height = 20, Stretch = Stretch.Uniform,
+        var image = new TrayIconImage { Width = 28, Height = 28,
             UseLayoutRounding = true, SnapsToDevicePixels = true };
-        image.SetBinding(Image.SourceProperty, new System.Windows.Data.Binding(nameof(ImageSource)) { Source = this });
-        RenderOptions.SetBitmapScalingMode(image, BitmapScalingMode.HighQuality);
+        image.SetBinding(TrayIconImage.SourceProperty, new System.Windows.Data.Binding(nameof(ImageSource)) { Source = this });
         Content = image;
     }
     protected override void OnPreviewMouseLeftButtonDown(MouseButtonEventArgs args)

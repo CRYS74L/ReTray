@@ -560,11 +560,44 @@ void ImmediateVisibilityAfterGuidRecreationRestoresOtherPolicy() {
     Refresh(); CHECK(Target().custom); CHECK(Target().placement == 2);
     CHECK(registrations.at(key) == Target().registration);
 }
+void NativeHiddenImageSlotsDoNotBecomeCatalogRows() {
+    ResetFixture();
+    for (uint32_t slot = 0; slot < 12; ++slot) {
+        auto& bank = bridge.shared->icons[bridge.shared->count++]; bank = Target();
+        bank.identity.uid = UINT32_MAX - slot;
+        bank.sourceHidden = true; bank.placement = 2;
+        bank.managed = bank.custom = false;
+    }
+    bridge.shared->snapshotSequence += 2; Refresh();
+    CHECK(bridge.shared->count == 14); // Preserve the application's native image bank.
+    CHECK(CatalogJson()["icons"].size() == 2);
+}
+void AssistantHiddenActiveIconRemainsControllable() {
+    ResetFixture(); auto key = TargetKey();
+    CHECK(Call("icon.visibility", {{"key", key}, {"visibility", 1}}).value("success", false));
+    Refresh(); CHECK(Target().placement == 2); CHECK(!Target().sourceHidden);
+    auto icons = CatalogJson()["icons"]; CHECK(icons.size() == 2);
+    CHECK(icons[0]["key"] == key);
+    CHECK(Call("icon.visibility", {{"key", key}, {"visibility", 0}}).value("success", false));
+}
+void SourceHiddenSlotBecomesListedWhenApplicationShowsIt() {
+    ResetFixture(); auto& bank = bridge.shared->icons[bridge.shared->count++]; bank = Target();
+    bank.identity.uid = UINT32_MAX; bank.sourceHidden = true;
+    bank.managed = bank.custom = false; bank.placement = 2;
+    bridge.shared->snapshotSequence += 2; Refresh();
+    CHECK(CatalogJson()["icons"].size() == 2);
+    bank.sourceHidden = false; bank.placement = 1;
+    bridge.shared->snapshotSequence += 2; Refresh();
+    CHECK(CatalogJson()["icons"].size() == 3);
+}
 int wmain(int argc, wchar_t** argv) {
     if (argc != 2) return 2;
     fixtureRoot = std::filesystem::path(argv[1]); std::filesystem::create_directories(fixtureRoot);
     int failed{};
     for (const auto& test : {std::pair{"generic blink preview retains visible image", BlinkPresentationKeepsVisibleFrameForAnyApplication},
+                            std::pair{"hidden native image bank does not create public rows", NativeHiddenImageSlotsDoNotBecomeCatalogRows},
+                            std::pair{"assistant-hidden active icon stays controllable", AssistantHiddenActiveIconRemainsControllable},
+                            std::pair{"source hidden registration appears on activation", SourceHiddenSlotBecomesListedWhenApplicationShowsIt},
                             std::pair{"silent exit pruned without notifications", SilentExitIsRemovedWithoutAnotherNotification},
                             std::pair{"reopen pruned while simultaneous instances remain", ReopenDoesNotAccumulateAndKeepsLiveInstances},
                             std::pair{"stale visibility rejected before saving", StaleVisibilityIsRejectedBeforeSaving},

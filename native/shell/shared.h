@@ -2,10 +2,10 @@
 #include "../platform/native_snapshot.h"
 namespace tray {
 constexpr uint32_t BridgeMagic = 0x54494131;
-constexpr uint32_t BridgeSchema = 4;
+constexpr uint32_t BridgeSchema = 5;
 constexpr size_t MaxBridgeIcons = 256, MaxFramePixels = 4096;
-constexpr wchar_t InstallMessage[] = L"TrayAssistant.Bridge.Install.4";
-constexpr wchar_t CommandMessage[] = L"TrayAssistant.Bridge.Command.4";
+constexpr wchar_t InstallMessage[] = L"TrayAssistant.Bridge.Install.5";
+constexpr wchar_t CommandMessage[] = L"TrayAssistant.Bridge.Command.5";
 enum class BridgeOperation : uint32_t {
     Refresh = 1,
     Apply = 2,
@@ -46,7 +46,7 @@ struct BridgeIcon {
     uint32_t pixels[MaxFramePixels]{};
     uint32_t originalPixels[MaxFramePixels]{};
     uint32_t originalWidth{}, originalHeight{}, sourceWidth{}, sourceHeight{}, decision{};
-    bool live{}, transparent{}, custom{}, dynamic{}, managed{};
+    bool live{}, transparent{}, custom{}, dynamic{}, managed{}, sourceHidden{};
     wchar_t executable[512]{}, tip[128]{}, originalTip[128]{}, windowClass[128]{};
 };
 struct BridgeCommand {
@@ -76,7 +76,7 @@ struct BridgeState {
     BridgeIcon icons[MaxBridgeIcons];
 };
 inline std::wstring MappingName(uint32_t session) {
-    return L"Local\\TrayAssistant.Bridge.4." + std::to_wstring(session);
+    return L"Local\\TrayAssistant.Bridge.5." + std::to_wstring(session);
 }
 inline std::wstring EndingEventName(uint32_t pid, uint64_t created) {
     return L"Local\\TrayAssistant.Ending." + std::to_wstring(pid) + L"." + std::to_wstring(created);

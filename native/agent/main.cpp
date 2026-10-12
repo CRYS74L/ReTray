@@ -657,6 +657,10 @@ std::string Bytes64(const uint32_t* pixels, size_t count) {
 Json CatalogJson() {
     Json icons = Json::array();
     for (auto& row : rows) {
+        // Applications may register hidden image banks alongside their real icon.
+        // Preserve them internally; list icons the source exposes or the user manages.
+        if (row.sourceHidden && !row.managed)
+            continue;
         if (row.identity.ownerPid == GetCurrentProcessId() &&
             !settings["ownIcon"].value("showInList", true))
             continue;
@@ -677,6 +681,7 @@ Json CatalogJson() {
         }
         j["key"] = key;
         j["registration"] = row.registration;
+        j["sourceHidden"] = row.sourceHidden;
         j["pid"] = row.identity.ownerPid;
         j["tipCurrent"] = Utf8(row.tip);
         j["placement"] = row.placement;

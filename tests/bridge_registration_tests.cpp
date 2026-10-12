@@ -66,9 +66,19 @@ void UnchangedRegistrationPreservesPreviewAndSerial() {
     CHECK(entries.at(key)->originalPreview.pixels[0] == 0xff1955e9);
     CHECK(oldBitmap.released == 0); entries.clear(); CHECK(oldBitmap.released == 1);
 }
+void SourceVisibilityIsIndependentOfAssistantVisibility() {
+    auto key = ResetRegistrationFixture(false);
+    auto& entry = *entries.at(key); entry.originalHidden = true;
+    nativeFixture.records[0].placement = Placement::Hidden; Publish(false);
+    CHECK(state->icons[0].sourceHidden); CHECK(!state->icons[0].managed);
+    entry.originalHidden = false; entry.visibility = 1; Publish(false);
+    CHECK(!state->icons[0].sourceHidden); CHECK(state->icons[0].managed);
+    CHECK(state->icons[0].placement == 2);
+}
 int wmain() {
     int failed{};
     for (const auto& test : {std::pair{"record replacement found by command renews registration", ReplacementFoundDuringCommandRenewsRegistration},
+                            std::pair{"source-hidden metadata differs from assistant hide", SourceVisibilityIsIndependentOfAssistantVisibility},
                             std::pair{"unreadable replacement cannot keep previous bitmap", ReplacementCannotRetainAnUnreadableOldBitmap},
                             std::pair{"unchanged registration keeps preview and serial", UnchangedRegistrationPreservesPreviewAndSerial}}) {
         try { test.second(); std::printf("PASS %s\n", test.first); }

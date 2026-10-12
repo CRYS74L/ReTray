@@ -308,6 +308,7 @@ void FillRow(BridgeIcon& row, Entry& entry) {
     row.placement = static_cast<uint32_t>(record.placement);
     row.index = record.nativeIndex;
     row.custom = entry.custom;
+    row.sourceHidden = entry.originalHidden;
     wcsncpy_s(row.executable, std::size(row.executable), record.executable.c_str(), _TRUNCATE);
     wcsncpy_s(row.tip, std::size(row.tip),
               (entry.tipChanged ? entry.customTip : entry.originalTip).c_str(), _TRUNCATE);

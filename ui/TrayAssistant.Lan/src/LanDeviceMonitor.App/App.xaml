@@ -393,12 +393,12 @@
                         </ControlTemplate></ToggleButton.Template>
                     </ToggleButton>
                     <controls:AnimatedSelectPopup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Custom" PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}" AllowsTransparency="True" Focusable="False" PopupAnimation="None">
-                        <controls:RoundedCardBorder MaxHeight="{TemplateBinding MaxDropDownHeight}" BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}" Padding="8" Margin="12,6,12,22">
+                        <controls:RoundedCardBorder MaxHeight="{TemplateBinding MaxDropDownHeight}" BorderThickness="1" CornerRadius="20" Padding="6" Margin="12,6,12,22">
                             <Grid>
-                                <controls:RoundedCardBorder Margin="-9" Background="{DynamicResource StudioSurfaceBrush}" CornerRadius="{StaticResource CardCornerRadius}" IsHitTestVisible="False">
+                                <controls:RoundedCardBorder Margin="-7" Background="{DynamicResource StudioSurfaceBrush}" CornerRadius="20" IsHitTestVisible="False">
                                     <Border.Effect><DropShadowEffect BlurRadius="22" ShadowDepth="6" Direction="270" Opacity="0.07" Color="Black"/></Border.Effect>
                                 </controls:RoundedCardBorder>
-                                <controls:RoundedCardBorder Margin="-9" Background="{DynamicResource StudioSurfaceBrush}" BorderBrush="{DynamicResource InputBorderBrush}" BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}" IsHitTestVisible="False" />
+                                <controls:RoundedCardBorder Margin="-7" Background="{DynamicResource StudioSurfaceBrush}" BorderBrush="{DynamicResource InputBorderBrush}" BorderThickness="1" CornerRadius="20" IsHitTestVisible="False" />
                                 <ScrollViewer Style="{DynamicResource WindowsSettingsScrollViewerStyle}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" PreviewMouseWheel="ComboBoxDropDown_PreviewMouseWheel" CanContentScroll="False"><ItemsPresenter/></ScrollViewer>
                             </Grid>
                         </controls:RoundedCardBorder>
@@ -407,7 +407,7 @@
                 <!-- The popup already paints StudioSurfaceBrush behind its items. -->
                 <Setter Property="ItemContainerStyle"><Setter.Value><Style TargetType="ComboBoxItem"><Style.Resources><Style TargetType="TextBlock" BasedOn="{StaticResource BodyTextStyle}"><Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ComboBoxItem}}"/><Setter Property="FontFamily" Value="{Binding FontFamily, RelativeSource={RelativeSource AncestorType=ComboBoxItem}}"/><Setter Property="FontSize" Value="{Binding FontSize, RelativeSource={RelativeSource AncestorType=ComboBoxItem}}"/></Style></Style.Resources>
                     <Setter Property="controls:StudioControlMotion.Enabled" Value="True"/><Setter Property="FontFamily" Value="{StaticResource AppTextFont}"/><Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="Normal"/>
-                    <Setter Property="Padding" Value="9,0"/><Setter Property="Margin" Value="0,1"/><Setter Property="MinHeight" Value="44"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                    <Setter Property="Padding" Value="9,0"/><Setter Property="Margin" Value="0,1"/><Setter Property="MinHeight" Value="0"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                     <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem">
                         <Grid x:Name="StudioRoot"><controls:RoundedCardBorder x:Name="StudioSurface" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}"/>
                             <Grid Margin="{TemplateBinding Padding}"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="8"/><ColumnDefinition Width="15"/></Grid.ColumnDefinitions>

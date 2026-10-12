@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <memory>
 #include <stdexcept>
+#include <unordered_set>
 BOOL WINAPI AgentTestNotifyIcon(DWORD operation, PNOTIFYICONDATAW data);
 BOOL WINAPI AgentTestTrackPopupMenu(HMENU, UINT, int, int, int, HWND, const RECT*);
 BOOL WINAPI AgentTestCreateProcessW(LPCWSTR, LPWSTR, LPSECURITY_ATTRIBUTES, LPSECURITY_ATTRIBUTES,
@@ -20,12 +21,27 @@ struct AgentTestBridgeClient {
     std::vector<BridgeCommand> commands;
     DWORD nextError{};
     DWORD failPid{};
+    DWORD refreshError{};
+    bool snapshotComplete{true};
+    std::unordered_set<std::string> absentNativeIcons;
     bool Alive() const { return shared && shared->status == 1; }
     bool Attach(const SymbolAdapter&, const std::filesystem::path&) { return Alive(); }
     void Reset() {}
     bool Command(BridgeCommand command, DWORD = 2000) {
         commands.push_back(command);
         InterlockedIncrement(&shared->requestSequence);
+        if (command.operation == BridgeOperation::Refresh) {
+            shared->lastError = std::exchange(refreshError, 0);
+            if (shared->lastError) return false;
+            uint32_t kept{};
+            for (uint32_t i = 0; i < shared->count; ++i)
+                if (!absentNativeIcons.contains(IdentityKey(shared->icons[i].identity)))
+                    shared->icons[kept++] = shared->icons[i];
+            shared->count = kept;
+            shared->snapshotSequence += 2;
+            shared->replySequence = shared->requestSequence;
+            return true;
+        }
         shared->lastError = (!failPid || failPid == command.identity.ownerPid)
                                 ? std::exchange(nextError, 0) : 0;
         if (shared->lastError) return false;
@@ -47,7 +63,9 @@ struct AgentTestBridgeClient {
         shared->replySequence = shared->requestSequence;
         return true;
     }
-    std::vector<BridgeIcon> Snapshot() const {
+    std::vector<BridgeIcon> Snapshot(bool* complete = nullptr) const {
+        if (complete) *complete = snapshotComplete;
+        if (!snapshotComplete) return {};
         return {shared->icons, shared->icons + shared->count};
     }
 };
@@ -144,12 +162,14 @@ Json Call(const std::string& method, Json data) {
 void ResetFixture() {
     bridge.state = std::make_unique<BridgeState>(); bridge.shared = bridge.state.get();
     bridge.shared->status = 1; bridge.shared->epoch = 1; bridge.shared->count = 2;
-    bridge.commands.clear(); bridge.nextError = bridge.failPid = 0;
+    bridge.commands.clear(); bridge.nextError = bridge.failPid = bridge.refreshError = 0;
+    bridge.absentNativeIcons.clear(); bridge.snapshotComplete = true;
     for (uint32_t i = 0; i < 2; ++i) {
         auto& row = bridge.shared->icons[i];
         row.identity.shellEpoch = 1; row.identity.ownerHwnd = 100 + i;
         row.identity.ownerPid = 1000 + i; row.identity.ownerCreatedAt = 10 + i;
         row.identity.uid = 11; row.placement = 1; row.live = true;
+        row.registration = i + 1;
         wcscpy_s(row.executable, i ? L"C:\\Fixture\\Peer.exe" : L"C:\\Fixture\\Target.exe");
     }
     lifecycle.state = SessionState::Ready; stopping = false; window = nullptr;
@@ -158,6 +178,8 @@ void ResetFixture() {
     settings = DefaultSettings(); configRevision = 0; settingsPath = fixtureRoot / L"settings.json";
     dataRoot = fixtureRoot; rows.clear(); presentationFrames.clear(); catalog = {}; applied.clear(); failedStamp.clear();
     retryAfter.clear(); outcomes.clear(); seenSequence = -1;
+    lastCatalogRefresh = 0;
+    registrations.clear();
     environmentStamp.clear(); environmentEpoch = lastEnvironmentCheck = 0;
     activityHistory = Json::object(); activityDirty = false; ownAdded = false;
     wchar_t systemPath[MAX_PATH]{}; GetSystemDirectoryW(systemPath, MAX_PATH);
@@ -420,11 +442,139 @@ void RemovedImportCannotChangeSettings() {
     CHECK(!response.value("saved", true));
     CHECK(settings == before);
 }
+void SilentExitIsRemovedWithoutAnotherNotification() {
+    ResetFixture(); auto key = TargetKey(); auto before = settings;
+    CHECK(catalog.items.contains(key)); CHECK(presentationFrames.contains(key));
+    CHECK(outcomes.contains(key));
+    bridge.absentNativeIcons.insert(key); auto unchanged = bridge.shared->snapshotSequence;
+    Sleep(2100); CHECK(bridge.shared->snapshotSequence == unchanged); Refresh();
+    CHECK(rows.size() == 1); CHECK(catalog.items.size() == 1);
+    CHECK(!catalog.items.contains(key)); CHECK(!presentationFrames.contains(key));
+    CHECK(!applied.contains(key)); CHECK(!outcomes.contains(key));
+    CHECK(settings == before);
+}
+void ReopenDoesNotAccumulateAndKeepsLiveInstances() {
+    ResetFixture(); auto original = Target(); auto before = settings;
+    for (uint32_t generation = 0; generation < 4; ++generation) {
+        bridge.absentNativeIcons.insert(TargetKey());
+        auto& replacement = bridge.shared->icons[bridge.shared->count++]; replacement = original;
+        replacement.identity.ownerPid = 3000 + generation;
+        replacement.identity.ownerHwnd = 6000 + generation;
+        replacement.identity.ownerCreatedAt = 30 + generation;
+        bridge.shared->snapshotSequence += 2;
+        Sleep(2100); Refresh();
+        CHECK(rows.size() == 2); CHECK(catalog.items.size() == 2);
+        // Keep slot zero as the current registration for the next cycle.
+        std::swap(bridge.shared->icons[0], bridge.shared->icons[1]);
+        bridge.shared->snapshotSequence += 2;
+    }
+    auto& simultaneous = bridge.shared->icons[bridge.shared->count++]; simultaneous = original;
+    simultaneous.identity.ownerPid = 4444; simultaneous.identity.ownerHwnd = 8888;
+    simultaneous.identity.ownerCreatedAt = 44;
+    bridge.shared->snapshotSequence += 2; Refresh();
+    CHECK(rows.size() == 3); CHECK(catalog.items.size() == 3);
+    CHECK(CatalogJson()["icons"].size() == 3); CHECK(settings == before);
+}
+void StaleVisibilityIsRejectedBeforeSaving() {
+    ResetFixture(); auto key = TargetKey(); auto before = settings;
+    bridge.absentNativeIcons.insert(key);
+    auto result = Call("icon.visibility", {{"key", key}, {"visibility", 1}});
+    CHECK(!result.value("success", true)); CHECK(result["errorCode"] == ERROR_NOT_FOUND);
+    CHECK(result["detail"] == "图标已退出"); CHECK(settings == before);
+    CHECK(IconCommands().empty());
+    bool recovered{}; CHECK(LoadSettings(settingsPath, recovered) == before);
+}
+void StaleSiblingCannotBlockLiveVisibility() {
+    ResetFixture(); auto key = TargetKey();
+    auto& sibling = bridge.shared->icons[bridge.shared->count++]; sibling = Target();
+    sibling.identity.ownerHwnd = 4444; sibling.identity.ownerPid = 2222;
+    sibling.identity.ownerCreatedAt = 22;
+    bridge.absentNativeIcons.insert(IdentityKey(sibling.identity));
+    bridge.failPid = 2222; bridge.nextError = ERROR_NOT_FOUND;
+    auto result = Call("icon.visibility", {{"key", key}, {"visibility", 1}});
+    CHECK(result.value("success", false)); CHECK(Target().placement == 2);
+    CHECK(IconCommands().size() == 1); CHECK(bridge.shared->count == 2);
+}
+void FailedNativeReadKeepsCatalogAndCannotSaveVisibility() {
+    ResetFixture(); auto before = settings; auto count = rows.size();
+    auto key = TargetKey(); bridge.refreshError = ERROR_RETRY;
+    Sleep(2100); Refresh(); CHECK(rows.size() == count); CHECK(catalog.items.size() == count);
+    bridge.refreshError = ERROR_RETRY;
+    auto result = Call("icon.visibility", {{"key", key}, {"visibility", 1}});
+    CHECK(!result.value("success", true)); CHECK(settings == before);
+    CHECK(IconCommands().empty()); CHECK(rows.size() == count);
+}
+void IncompleteSharedReadCannotBecomeAnEmptyCatalog() {
+    ResetFixture(); auto before = settings; auto count = rows.size(); auto key = TargetKey();
+    auto registration = registrations.at(key); ++bridge.shared->icons[0].registration;
+    bridge.snapshotComplete = false; seenSequence = -1; Refresh();
+    CHECK(rows.size() == count); CHECK(catalog.items.size() == count);
+    CHECK(registrations.at(key) == registration);
+    auto result = Call("icon.visibility", {{"key", key}, {"visibility", 1}});
+    CHECK(!result.value("success", true)); CHECK(result["errorCode"] == ERROR_RETRY);
+    CHECK(settings == before); CHECK(IconCommands().empty());
+}
+void DuplicateSnapshotCannotReplaceAcceptedCatalog() {
+    ResetFixture(); auto peerKey = IdentityKey(bridge.shared->icons[1].identity);
+    auto key = TargetKey(); auto registration = registrations.at(key);
+    ++bridge.shared->icons[0].registration;
+    bridge.shared->icons[1] = Target(); bridge.shared->snapshotSequence += 2; Refresh();
+    CHECK(rows.size() == 2); CHECK(IdentityKey(rows[1].identity) == peerKey);
+    CHECK(catalog.items.contains(peerKey));
+    CHECK(registrations.at(key) == registration);
+}
+void SameIdentityRecreationRestoresSavedPolicy() {
+    ResetFixture(); auto key = TargetKey();
+    CHECK(Call("icon.visibility", {{"key", key}, {"visibility", 1}}).value("success", false));
+    Refresh(); bridge.commands.clear();
+    // DELETE + ADD occurred between polls, so only the fresh unmanaged registration is seen.
+    auto& renewed = bridge.shared->icons[0];
+    ++renewed.registration;
+    renewed.custom = renewed.managed = false; renewed.placement = 1;
+    bridge.shared->snapshotSequence += 2; Refresh();
+    CHECK(Target().custom); CHECK(Target().placement == 2);
+    CHECK(IconCommands().size() == 4);
+}
+void SameIdentityRecreationCannotReuseOldBlinkPreview() {
+    ResetFixture(); rules.clear(); applied.clear();
+    auto& row = bridge.shared->icons[0]; row.managed = row.custom = false;
+    row.width = row.height = 2; row.pixels[0] = 0xff1955e9;
+    bridge.shared->snapshotSequence += 2; Refresh();
+    auto key = TargetKey(); CHECK(presentationFrames.at(key).pixels[0] == 0xff1955e9);
+    ++row.registration; row.width = row.height = 0;
+    row.originalWidth = row.originalHeight = 0;
+    bridge.shared->snapshotSequence += 2; Refresh();
+    CHECK(presentationFrames.at(key).pixels.empty());
+    CHECK(CatalogJson()["icons"][0]["displayPixels"] == "");
+}
+void ImmediateVisibilityAfterGuidRecreationRestoresOtherPolicy() {
+    ResetFixture(); auto& row = bridge.shared->icons[0];
+    row.identity.hasGuid = true; row.identity.guid.Data1 = 0x12345678;
+    auto rule = ParseRule(settings["rules"][0]); rule.selector = SelectorFor(Record(row));
+    settings["rules"][0] = RuleJson(rule); LoadRules();
+    bridge.shared->snapshotSequence += 2; Refresh(); auto key = TargetKey();
+    CHECK(Target().custom); ++row.registration;
+    row.managed = row.custom = false; row.placement = 1;
+    bridge.shared->snapshotSequence += 2;
+    CHECK(Call("icon.visibility", {{"key", key}, {"visibility", 1}}).value("success", false));
+    Refresh(); CHECK(Target().custom); CHECK(Target().placement == 2);
+    CHECK(registrations.at(key) == Target().registration);
+}
 int wmain(int argc, wchar_t** argv) {
     if (argc != 2) return 2;
     fixtureRoot = std::filesystem::path(argv[1]); std::filesystem::create_directories(fixtureRoot);
     int failed{};
     for (const auto& test : {std::pair{"generic blink preview retains visible image", BlinkPresentationKeepsVisibleFrameForAnyApplication},
+                            std::pair{"silent exit pruned without notifications", SilentExitIsRemovedWithoutAnotherNotification},
+                            std::pair{"reopen pruned while simultaneous instances remain", ReopenDoesNotAccumulateAndKeepsLiveInstances},
+                            std::pair{"stale visibility rejected before saving", StaleVisibilityIsRejectedBeforeSaving},
+                            std::pair{"stale sibling does not block live visibility", StaleSiblingCannotBlockLiveVisibility},
+                            std::pair{"native read failure retains catalog and settings", FailedNativeReadKeepsCatalogAndCannotSaveVisibility},
+                            std::pair{"incomplete shared read cannot empty catalog", IncompleteSharedReadCannotBecomeAnEmptyCatalog},
+                            std::pair{"duplicate snapshot keeps accepted catalog", DuplicateSnapshotCannotReplaceAcceptedCatalog},
+                            std::pair{"same identity recreation restores saved policy", SameIdentityRecreationRestoresSavedPolicy},
+                            std::pair{"same identity recreation drops old blink preview", SameIdentityRecreationCannotReuseOldBlinkPreview},
+                            std::pair{"immediate visibility after GUID recreation restores image", ImmediateVisibilityAfterGuidRecreationRestoresOtherPolicy},
                             std::pair{"blank first snapshot uses original without changing live pixels", BlinkPresentationUsesOriginalWhenFirstSeenBlank},
                             std::pair{"custom blink image available before first visible snapshot", BlinkPresentationHasCustomImageBeforeFirstVisibleSnapshot},
                             std::pair{"removed import cannot change settings", RemovedImportCannotChangeSettings},

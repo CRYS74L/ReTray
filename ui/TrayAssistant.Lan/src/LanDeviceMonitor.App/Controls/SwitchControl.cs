@@ -1,4 +1,7 @@
 using System.Windows;
+using System.Windows.Automation;
+using System.Windows.Automation.Peers;
+using System.Windows.Automation.Provider;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -8,6 +11,27 @@ namespace LanDeviceMonitor.Controls;
 public class SwitchControl : System.Windows.Controls.CheckBox
 {
     private readonly TranslateTransform _translation = new();
+    protected override AutomationPeer OnCreateAutomationPeer() => new SwitchAutomationPeer(this);
+
+    private sealed class SwitchAutomationPeer(SwitchControl owner) : CheckBoxAutomationPeer(owner), IToggleProvider
+    {
+        public override object GetPattern(PatternInterface pattern) =>
+            pattern == PatternInterface.Toggle ? this : base.GetPattern(pattern);
+
+        ToggleState IToggleProvider.ToggleState => owner.IsChecked switch
+        {
+            true => ToggleState.On,
+            false => ToggleState.Off,
+            null => ToggleState.Indeterminate
+        };
+
+        void IToggleProvider.Toggle()
+        {
+            if (!IsEnabled()) throw new ElementNotEnabledException();
+            owner.OnClick();
+        }
+    }
+
     public override void OnApplyTemplate()
     {
         base.OnApplyTemplate();

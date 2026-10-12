@@ -30,6 +30,7 @@ bool ownOperation{};
 UINT commandMessage{};
 UINT reconcileMessage{};
 bool reconcileQueued{};
+uint64_t nextRegistration{};
 bool interactionsLocked{};
 bool opacityChanged{}, wasLayered{}, hadAlpha{};
 BYTE savedAlpha{};
@@ -72,6 +73,7 @@ void RestoreOpacity() {
     opacityChanged = false;
 }
 struct Entry {
+    uint64_t registration{};
     NativeIconRecord record;
     IUnknown* original{};
     Frame source;
@@ -201,6 +203,21 @@ void SaveOriginal(Entry& entry) {
         entry.source.pixels.size() >= static_cast<size_t>(entry.source.width) * entry.source.height)
         entry.originalPreview = entry.source;
 }
+void BeginRegistration(Entry& entry, const NativeIconRecord& record) {
+    entry.registration = ++nextRegistration;
+    if (entry.original)
+        entry.original->Release();
+    entry.original = nullptr;
+    entry.source = {};
+    entry.originalPreview = {};
+    entry.customPainted = false;
+    entry.moved = false;
+    entry.lastAccessAt = 0;
+    entry.record = record;
+    entry.originalHidden = record.placement == Placement::Hidden;
+    entry.originalPlacement = entry.originalHidden ? Placement::Overflow : record.placement;
+    entry.originalTip = record.tip;
+}
 void DrawPolicy(Entry& entry) {
     if (entry.source.origin != FrameOrigin::SourceLive)
         return;
@@ -284,6 +301,7 @@ void FillRow(BridgeIcon& row, Entry& entry) {
     auto& record = entry.record;
     row = {};
     row.identity = record.identity;
+    row.registration = entry.registration;
     row.record = record.recordAddress;
     row.callback = record.callbackMessage;
     row.version = record.notifyVersion;
@@ -342,10 +360,7 @@ void Publish(bool refreshOriginal, const WireEvent* event = nullptr) {
         auto found = entries.find(key);
         if (found == entries.end()) {
             auto item = std::make_unique<Entry>();
-            item->record = record;
-            item->originalHidden = record.placement == Placement::Hidden;
-            item->originalPlacement = item->originalHidden ? Placement::Overflow : record.placement;
-            item->originalTip = record.tip;
+            BeginRegistration(*item, record);
             SaveOriginal(*item);
             found = entries.emplace(key, std::move(item)).first;
         }
@@ -356,9 +371,10 @@ void Publish(bool refreshOriginal, const WireEvent* event = nullptr) {
                                       (!event->identity.hasGuid && !record.identity.hasGuid &&
                                        event->identity.ownerHwnd == record.identity.ownerHwnd &&
                                        event->identity.uid == record.identity.uid));
-        if (changedObject || (sourceUpdate && event->patch.operation == NIM_ADD))
-            entry.originalPreview = {};
-        entry.record = record;
+        if (changedObject || (sourceUpdate && event->patch.operation == NIM_ADD)) {
+            BeginRegistration(entry, record);
+        } else
+            entry.record = record;
         if (changedObject ||
             (sourceUpdate &&
              (event->patch.operation == NIM_ADD || (event->patch.suppliedFlags & NIF_ICON)))) {
@@ -533,16 +549,12 @@ bool MembershipDelta(const WireEvent& event) {
         if (state->count >= MaxBridgeIcons)
             return false;
         auto entry = std::make_unique<Entry>();
-        entry->record = record;
-        entry->originalHidden = record.placement == Placement::Hidden;
-        entry->originalPlacement = entry->originalHidden ? Placement::Overflow : record.placement;
-        entry->originalTip = record.tip;
+        BeginRegistration(*entry, record);
         SaveOriginal(*entry);
         current = entries.emplace(key, std::move(entry)).first;
     } else {
         // A successful NIM_ADD starts a new registration, even when Explorer reuses the address.
-        current->second->originalPreview = {};
-        current->second->record = record;
+        BeginRegistration(*current->second, record);
         SaveOriginal(*current->second);
         DrawPolicy(*current->second);
         if (event.patch.suppliedFlags & NIF_TIP)
@@ -631,7 +643,7 @@ void ExecuteCommand() {
             return;
         }
         if (cmd.operation == BridgeOperation::Refresh) {
-            Publish(true);
+            Publish(cmd.index != 0);
             InterlockedExchange(&state->replySequence, state->requestSequence);
             return;
         }
@@ -667,15 +679,23 @@ void ExecuteCommand() {
         auto match =
             std::find_if(snapshot.records.begin(), snapshot.records.end(),
                          [&](const auto& r) { return SameIcon(r.identity, cmd.identity); });
-        if (!snapshot.complete || match == snapshot.records.end())
+        if (!snapshot.complete)
+            error = ERROR_RETRY;
+        else if (match == snapshot.records.end()) {
+            Publish(false);
             error = ERROR_NOT_FOUND;
-        else {
+        } else {
             auto it = entries.find(IdentityKey(match->identity));
             if (it == entries.end())
                 error = ERROR_NOT_FOUND;
             else {
                 auto& entry = *it->second;
-                entry.record = *match;
+                if (entry.record.recordAddress != match->recordAddress) {
+                    BeginRegistration(entry, *match);
+                    SaveOriginal(entry);
+                    DrawPolicy(entry);
+                } else
+                    entry.record = *match;
                 ownOperation = true;
                 if (cmd.operation == BridgeOperation::Apply) {
                     if (entry.replacement)

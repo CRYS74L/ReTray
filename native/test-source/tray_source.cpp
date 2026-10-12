@@ -15,8 +15,9 @@ SourceStatus* status{};
 HANDLE map{};
 HICON current{};
 HWND window{};
+bool silentOwnerExit{};
 std::unordered_set<uint32_t> extras;
-const GUID GuidIcon = {
+GUID GuidIcon = {
     0x31415926, 0x1011, 0x2022, {0x93, 0x24, 0x45, 0x66, 0x87, 0xa8, 0xc9, 0xea}};
 HICON CreateColor(uint32_t color) {
     BITMAPV5HEADER header{};
@@ -77,6 +78,35 @@ void Update(uint32_t color) {
         DestroyIcon(old);
 }
 LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
+    if (message == WM_APP + 30) {
+        for (bool guid : {false, true}) {
+            auto data = Data(guid, 0);
+            if (!Shell_NotifyIconW(NIM_DELETE, &data)) return 0;
+            data = Data(guid, NIF_ICON | NIF_TIP | NIF_MESSAGE);
+            if (!Shell_NotifyIconW(NIM_ADD, &data)) return 0;
+            if (guid) {
+                data.uVersion = NOTIFYICON_VERSION_4;
+                Shell_NotifyIconW(NIM_SETVERSION, &data);
+            }
+        }
+        return 1;
+    }
+    if (message == WM_APP + 28) {
+        // Model apps that destroy their tray owner without sending NIM_DELETE,
+        // while their process continues running.
+        silentOwnerExit = true;
+        DestroyWindow(hwnd);
+        silentOwnerExit = false;
+        window = CreateWindowExW(0, L"TrayAssistant.TestSource", L"TrayAssistant controlled source",
+                                 0, 0, 0, 0, 0, nullptr, nullptr,
+                                 GetModuleHandleW(nullptr), nullptr);
+        status->hwnd = reinterpret_cast<uint64_t>(window);
+        return window != nullptr;
+    }
+    if (message == WM_APP + 29) {
+        auto data = Data(false, NIF_ICON | NIF_TIP | NIF_MESSAGE);
+        return Shell_NotifyIconW(NIM_ADD, &data);
+    }
     if (message == WM_APP + 26) {
         auto data = Data(false, NIF_ICON | NIF_TIP | NIF_MESSAGE | NIF_STATE);
         data.uVersion = NOTIFYICON_VERSION_4;
@@ -179,6 +209,10 @@ LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         return 0;
     }
     if (message == WM_DESTROY) {
+        if (silentOwnerExit) {
+            extras.clear();
+            return 0;
+        }
         for (auto id : extras) {
             auto data = Data(false, 0);
             data.uID = id;
@@ -194,7 +228,9 @@ LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
     }
     return DefWindowProcW(hwnd, message, w, l);
 }
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR, int) {
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR options, int) {
+    if (wcsstr(options, L"--unique-guid"))
+        GuidIcon.Data1 ^= GetCurrentProcessId();
     std::wstring name =
         L"Local\\TrayAssistant.TestSource." + std::to_wstring(GetCurrentProcessId());
     map = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(SourceStatus),

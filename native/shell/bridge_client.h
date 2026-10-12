@@ -12,7 +12,7 @@ class BridgeClient {
     ~BridgeClient();
     bool Attach(const SymbolAdapter&, const std::filesystem::path& dll);
     bool Command(BridgeCommand command, DWORD timeout = 2000);
-    std::vector<BridgeIcon> Snapshot() const;
+    std::vector<BridgeIcon> Snapshot(bool* complete = nullptr) const;
     void Detach();
     void Reset();
     bool Alive() const;

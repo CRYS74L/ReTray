@@ -124,7 +124,9 @@ bool BridgeClient::Command(BridgeCommand command, DWORD timeout) {
         Sleep(5);
     return shared->replySequence == sequence && shared->lastError == 0;
 }
-std::vector<BridgeIcon> BridgeClient::Snapshot() const {
+std::vector<BridgeIcon> BridgeClient::Snapshot(bool* complete) const {
+    if (complete)
+        *complete = false;
     if (!shared)
         return {};
     for (int attempt = 0; attempt < 4; ++attempt) {
@@ -133,11 +135,16 @@ std::vector<BridgeIcon> BridgeClient::Snapshot() const {
             Sleep(1);
             continue;
         }
-        uint32_t count = std::min<uint32_t>(MaxBridgeIcons, shared->count);
+        uint32_t count = shared->count;
+        if (count > MaxBridgeIcons)
+            return {};
         std::vector<BridgeIcon> rows(shared->icons, shared->icons + count);
         MemoryBarrier();
-        if (before == shared->snapshotSequence)
+        if (before == shared->snapshotSequence) {
+            if (complete)
+                *complete = true;
             return rows;
+        }
     }
     return {};
 }

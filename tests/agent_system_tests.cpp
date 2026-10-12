@@ -53,7 +53,8 @@ struct SystemTestBridgeClient {
         }
         return shared->lastError == 0;
     }
-    std::vector<BridgeIcon> Snapshot() const {
+    std::vector<BridgeIcon> Snapshot(bool* complete = nullptr) const {
+        if (complete) *complete = true;
         return {shared->icons, shared->icons + shared->count};
     }
 };
@@ -97,6 +98,7 @@ void ResetFixture() {
     environmentEpoch = lastEnvironmentCheck = 0; environmentOutcome = Result(true);
     requestedHotkeys = registeredHotkeys = hotkeyErrors = Json::array(); hotkeyRegistrations = 0;
     activityHistory = Json::object(); activityDirty = false; ownAdded = false;
+    registrations.clear(); lastCatalogRefresh = 0;
     CHECK(SaveSettings(settingsPath, settings));
 }
 std::vector<BridgeCommand> SystemChanges() {

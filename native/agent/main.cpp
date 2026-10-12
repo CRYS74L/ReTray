@@ -49,6 +49,7 @@ std::unordered_map<std::string, uint64_t> retryAfter;
 std::unordered_map<std::string, Json> outcomes;
 std::vector<BridgeIcon> rows;
 std::unordered_map<std::string, Frame> presentationFrames;
+std::unordered_map<std::string, uint64_t> registrations;
 bool HasVisiblePixels(const uint32_t* pixels, uint32_t width, uint32_t height) {
     return width && height && std::any_of(pixels, pixels + width * height,
                                          [](uint32_t pixel) { return (pixel >> 24) != 0; });
@@ -68,6 +69,7 @@ void RememberPresentationFrame(const BridgeIcon& row) {
 }
 IconCatalog catalog;
 LONG seenSequence{-1};
+uint64_t lastCatalogRefresh{};
 uint64_t configRevision{};
 uint64_t environmentEpoch{}, lastEnvironmentCheck{};
 std::string environmentStamp;
@@ -510,6 +512,18 @@ std::string StableIconKey(const BridgeIcon& row) {
     instanceOrderKeys.emplace(owner, key);
     return key;
 }
+bool ReconcileNativeCatalog(bool force = false) {
+    const auto now = GetTickCount64();
+    if (!force && lastCatalogRefresh && now - lastCatalogRefresh < 2000)
+        return true;
+    // Exit/window destruction can remove a native registration without NIM_DELETE.
+    // Bound the read frequency independently of source icon updates and failed reads.
+    lastCatalogRefresh = now;
+    BridgeCommand command;
+    command.operation = BridgeOperation::Refresh;
+    command.index = 0; // Membership only: retain source and blink presentation frames.
+    return bridge.Command(command);
+}
 void Refresh() {
     if (!ShouldRecover(lifecycle) || stopping)
         return;
@@ -521,12 +535,18 @@ void Refresh() {
         if (!bridge.Attach(adapter, root / L"TrayAssistant.ShellBridge.dll"))
             return;
         seenSequence = -1;
+        lastCatalogRefresh = 0;
+        registrations.clear();
+        presentationFrames.clear();
+        outcomes.clear();
         applied.clear();
         failedStamp.clear();
         retryAfter.clear();
         SetOperationalState(lifecycle, SessionState::Ready);
     }
     ApplyEnvironment();
+    if (!ReconcileNativeCatalog())
+        return;
     if (activityDirty && GetTickCount64() - lastActivitySave >= 30000) {
         if (SaveDataJson(dataRoot / L"activity.json", activityHistory))
             activityDirty = false;
@@ -535,27 +555,42 @@ void Refresh() {
     LONG sequence = bridge.shared->snapshotSequence;
     if ((sequence & 1) || sequence == seenSequence)
         return;
-    auto current = bridge.Snapshot();
-    if (sequence != bridge.shared->snapshotSequence)
+    bool complete{};
+    auto current = bridge.Snapshot(&complete);
+    if (!complete || sequence != bridge.shared->snapshotSequence)
+        return;
+    SnapshotResult snapshot;
+    snapshot.complete = true;
+    for (const auto& row : current)
+        snapshot.records.push_back(Record(row));
+    auto delta = MergeSnapshot(catalog, snapshot, Now());
+    if (!delta.accepted)
         return;
     seenSequence = sequence;
     rows = std::move(current);
     std::unordered_set<std::string> present;
     for (const auto& row : rows) {
-        present.insert(IdentityKey(row.identity));
+        auto key = IdentityKey(row.identity);
+        present.insert(key);
+        auto [known, inserted] = registrations.try_emplace(key, row.registration);
+        if (!inserted && known->second != row.registration) {
+            // DELETE/ADD can complete between polls with the same HWND/UID or GUID.
+            // The new registration must inherit saved policy and its own source image.
+            known->second = row.registration;
+            applied.erase(key);
+            failedStamp.erase(key);
+            retryAfter.erase(key);
+            outcomes.erase(key);
+            presentationFrames.erase(key);
+        }
         RememberPresentationFrame(row);
     }
+    for (auto it = registrations.begin(); it != registrations.end();)
+        if (!present.contains(it->first)) it = registrations.erase(it); else ++it;
     for (auto it = presentationFrames.begin(); it != presentationFrames.end();)
         if (!present.contains(it->first)) it = presentationFrames.erase(it); else ++it;
     for (const auto& row : rows)
         RememberOwnIcon(row);
-    SnapshotResult snapshot;
-    snapshot.complete = true;
-    for (auto& row : rows)
-        snapshot.records.push_back(Record(row));
-    auto delta = MergeSnapshot(catalog, snapshot, Now());
-    if (!delta.accepted)
-        return;
     for (const auto& row : rows) {
         auto record = Record(row);
         auto stable = PersistentKey(SelectorFor(record));
@@ -582,6 +617,11 @@ void Refresh() {
             retryAfter.erase(it->first);
             it = failedStamp.erase(it);
         } else
+            ++it;
+    for (auto it = outcomes.begin(); it != outcomes.end();)
+        if (!catalog.items.contains(it->first))
+            it = outcomes.erase(it);
+        else
             ++it;
     for (auto& row : rows) {
         if (row.identity.ownerPid == GetCurrentProcessId())
@@ -636,6 +676,7 @@ Json CatalogJson() {
             j["tip"] = settings["ownIcon"].value("tip", std::string("托盘图标助手"));
         }
         j["key"] = key;
+        j["registration"] = row.registration;
         j["pid"] = row.identity.ownerPid;
         j["tipCurrent"] = Utf8(row.tip);
         j["placement"] = row.placement;
@@ -823,7 +864,13 @@ Json SetIconVisibility(const Json& data) {
     int visibility = requested.get<int>();
     if (!ShouldRecover(lifecycle) || stopping || !bridge.Alive())
         return Result(false, "原生托盘尚未就绪", ERROR_NOT_READY);
-    auto current = bridge.Snapshot();
+    if (!ReconcileNativeCatalog(true))
+        return Result(false, "原生图标目录读取失败，请重试",
+                      bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT);
+    bool complete{};
+    auto current = bridge.Snapshot(&complete);
+    if (!complete)
+        return Result(false, "图标状态更新中，请重试", ERROR_RETRY);
     auto target = std::find_if(current.begin(), current.end(),
                                [&](const auto& row) { return IdentityKey(row.identity) == key; });
     if (target != current.end() && target->identity.shellEpoch != bridge.shared->epoch)

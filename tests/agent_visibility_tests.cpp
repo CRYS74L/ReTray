@@ -156,7 +156,7 @@ void ResetFixture() {
     ownOpenQueued = false; ownIdentityKey.clear(); ownIdentityEpoch = 0;
     if (ownImage) { DestroyIcon(ownImage); ownImage = nullptr; }
     settings = DefaultSettings(); configRevision = 0; settingsPath = fixtureRoot / L"settings.json";
-    dataRoot = fixtureRoot; rows.clear(); catalog = {}; applied.clear(); failedStamp.clear();
+    dataRoot = fixtureRoot; rows.clear(); presentationFrames.clear(); catalog = {}; applied.clear(); failedStamp.clear();
     retryAfter.clear(); outcomes.clear(); seenSequence = -1;
     environmentStamp.clear(); environmentEpoch = lastEnvironmentCheck = 0;
     activityHistory = Json::object(); activityDirty = false; ownAdded = false;
@@ -362,11 +362,73 @@ void RestartWaitRequiresBothExitsAndHonorsCancellation() {
     SetEvent(signals[2]); CHECK(!WaitForRestartExit(signals[0], signals[1], signals[2], 1));
     for (auto handle : signals) CloseHandle(handle);
 }
+void BlinkPresentationKeepsVisibleFrameForAnyApplication() {
+    ResetFixture();
+    for (int index = 0; index < 2; ++index) {
+        auto row = bridge.shared->icons[index];
+        row.width = row.height = 2;
+        std::fill_n(row.pixels, 4, index ? 0xFF112233u : 0xFF445566u);
+        RememberPresentationFrame(row);
+        auto key = IdentityKey(row.identity);
+        auto expected = presentationFrames.at(key).pixels;
+        row.width = row.height = 0;
+        RememberPresentationFrame(row);
+        CHECK(presentationFrames.at(key).pixels == expected);
+        row.width = row.height = 2;
+        std::fill_n(row.pixels, 4, 0u);
+        RememberPresentationFrame(row);
+        CHECK(presentationFrames.at(key).pixels == expected);
+        std::fill_n(row.pixels, 4, 0xFF778899u);
+        RememberPresentationFrame(row);
+        CHECK(presentationFrames.at(key).pixels[0] == 0xFF778899u);
+    }
+}
+void BlinkPresentationUsesOriginalWhenFirstSeenBlank() {
+    ResetFixture();
+    presentationFrames.clear();
+    auto row = bridge.shared->icons[0];
+    row.width = row.height = 0;
+    row.originalWidth = row.originalHeight = 2;
+    std::fill_n(row.originalPixels, 4, 0xFFABCDEFu);
+    RememberPresentationFrame(row);
+    auto& preview = presentationFrames.at(IdentityKey(row.identity));
+    CHECK(preview.width == 2 && preview.height == 2);
+    CHECK(preview.pixels[0] == 0xFFABCDEFu);
+    rows = {row};
+    auto result = CatalogJson();
+    CHECK(result["icons"][0]["width"] == 0);
+    CHECK(result["icons"][0]["pixels"] == "");
+    CHECK(result["icons"][0]["displayWidth"] == 2);
+    CHECK(!result["icons"][0]["displayPixels"].get<std::string>().empty());
+}
+void BlinkPresentationHasCustomImageBeforeFirstVisibleSnapshot() {
+    ResetFixture();
+    auto row = bridge.shared->icons[0];
+    auto key = IdentityKey(row.identity);
+    auto expected = presentationFrames.at(key).pixels;
+    CHECK(!expected.empty());
+    row.width = row.height = 0;
+    row.decision = static_cast<uint32_t>(FrameDecision::NativeOff);
+    RememberPresentationFrame(row);
+    CHECK(presentationFrames.at(key).pixels == expected);
+}
+void RemovedImportCannotChangeSettings() {
+    ResetFixture(); auto before = settings;
+    auto response = Call("settings.import", {{"settings", DefaultSettings()}});
+    CHECK(!response.value("success", true));
+    CHECK(response["errorCode"] == ERROR_NOT_SUPPORTED);
+    CHECK(!response.value("saved", true));
+    CHECK(settings == before);
+}
 int wmain(int argc, wchar_t** argv) {
     if (argc != 2) return 2;
     fixtureRoot = std::filesystem::path(argv[1]); std::filesystem::create_directories(fixtureRoot);
     int failed{};
-    for (const auto& test : {std::pair{"immediate visibility and no replay", ImmediateVisibility},
+    for (const auto& test : {std::pair{"generic blink preview retains visible image", BlinkPresentationKeepsVisibleFrameForAnyApplication},
+                            std::pair{"blank first snapshot uses original without changing live pixels", BlinkPresentationUsesOriginalWhenFirstSeenBlank},
+                            std::pair{"custom blink image available before first visible snapshot", BlinkPresentationHasCustomImageBeforeFirstVisibleSnapshot},
+                            std::pair{"removed import cannot change settings", RemovedImportCannotChangeSettings},
+                            std::pair{"immediate visibility and no replay", ImmediateVisibility},
                             std::pair{"unrelated saves do not replay", UnrelatedSavesKeepRulesApplied},
                             std::pair{"explicit rule reapply retries selected icon", ExplicitRuleReapplyRetriesOnlySelectedIcon},
                             std::pair{"saved replies carry current revision", SavedRepliesHaveCurrentRevision},

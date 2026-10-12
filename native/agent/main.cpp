@@ -48,6 +48,24 @@ std::unordered_map<std::string, std::string> failedStamp;
 std::unordered_map<std::string, uint64_t> retryAfter;
 std::unordered_map<std::string, Json> outcomes;
 std::vector<BridgeIcon> rows;
+std::unordered_map<std::string, Frame> presentationFrames;
+bool HasVisiblePixels(const uint32_t* pixels, uint32_t width, uint32_t height) {
+    return width && height && std::any_of(pixels, pixels + width * height,
+                                         [](uint32_t pixel) { return (pixel >> 24) != 0; });
+}
+void RememberPresentationFrame(const BridgeIcon& row) {
+    auto key = IdentityKey(row.identity);
+    auto& preview = presentationFrames[key];
+    if (HasVisiblePixels(row.pixels, row.width, row.height)) {
+        preview.width = row.width; preview.height = row.height;
+        preview.pixels.assign(row.pixels, row.pixels + row.width * row.height);
+    } else if (preview.pixels.empty() &&
+               HasVisiblePixels(row.originalPixels, row.originalWidth, row.originalHeight)) {
+        preview.width = row.originalWidth; preview.height = row.originalHeight;
+        preview.pixels.assign(row.originalPixels,
+                              row.originalPixels + row.originalWidth * row.originalHeight);
+    }
+}
 IconCatalog catalog;
 LONG seenSequence{-1};
 uint64_t configRevision{};
@@ -336,7 +354,11 @@ void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
             cmd.baselineFingerprint = rule->baselineFingerprint;
             cmd.baselineWidth = rule->baselineWidth;
             cmd.baselineHeight = rule->baselineHeight;
-            send(cmd);
+            if (send(cmd)) {
+                auto preview = RasterizeIcon(image, FrameOrigin::Custom);
+                if (preview.outcome.success && !preview.frame.transparent)
+                    presentationFrames[key] = std::move(preview.frame);
+            }
             DestroyIcon(image);
         } else {
             success = false;
@@ -539,6 +561,13 @@ void Refresh() {
         return;
     seenSequence = sequence;
     rows = std::move(current);
+    std::unordered_set<std::string> present;
+    for (const auto& row : rows) {
+        present.insert(IdentityKey(row.identity));
+        RememberPresentationFrame(row);
+    }
+    for (auto it = presentationFrames.begin(); it != presentationFrames.end();)
+        if (!present.contains(it->first)) it = presentationFrames.erase(it); else ++it;
     for (const auto& row : rows)
         RememberOwnIcon(row);
     SnapshotResult snapshot;
@@ -638,6 +667,11 @@ Json CatalogJson() {
         j["width"] = row.width;
         j["height"] = row.height;
         j["pixels"] = Bytes64(row.pixels, row.width * row.height);
+        RememberPresentationFrame(row);
+        const auto& preview = presentationFrames.at(key);
+        j["displayWidth"] = preview.width;
+        j["displayHeight"] = preview.height;
+        j["displayPixels"] = Bytes64(preview.pixels.data(), preview.pixels.size());
         j["sourceFingerprint"] = row.sourceFingerprint;
         j["sourceWidth"] = row.sourceWidth;
         j["sourceHeight"] = row.sourceHeight;
@@ -1163,27 +1197,8 @@ Json Handle(const Json& req) {
         result = Result(false, "任务栏高级功能已取消", ERROR_NOT_SUPPORTED);
         result["saved"] = false;
     } else if (method == "settings.import") {
-        auto imported = d.at("settings");
-        if (!ValidateSettings(imported))
-            return Result(false, "配置内容无效", ERROR_INVALID_DATA);
-        auto old = settings;
-        settings = imported;
-        if (!Persist()) {
-            settings = old;
-            return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
-        }
-        bridge.Reset();
-        settings.erase("safeMode");
-        if (settings.contains("hotkeys"))
-            settings["hotkeys"].erase("restoreIcons");
-        for (auto& entry : settings["rules"])
-            entry["enabled"] = true;
-        LoadRules();
-        SetOwnIcon();
-        SetStartup(settings.value("startup", false));
-        seenSequence = -1;
-        Refresh();
-        result["saved"] = true;
+        result = Result(false, "配置导入功能已取消", ERROR_NOT_SUPPORTED);
+        result["saved"] = false;
     } else if (method == "rules.apply") {
         auto list = d.at("rules");
         if (!list.is_array() || list.size() > 256)

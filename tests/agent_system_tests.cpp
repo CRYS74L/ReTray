@@ -254,7 +254,7 @@ void CanceledAdvancedSettingsCannotApplyNativeBehavior() {
     CHECK(!response.value("success", true)); CHECK(!response.value("saved", true));
     CHECK(settings == before); CHECK(!bridge.hidden.at(0));
 }
-void ImportedLegacyPoliciesKeepCustomAppearanceAndManualVisibility() {
+void LoadedLegacyPoliciesKeepCustomAppearanceAndManualVisibility() {
     ResetFixture(); auto imported = settings;
     NativeIconRecord record; record.executable = L"C:\\Fixture\\Custom.exe"; record.identity.uid = 12;
     IconRule rule; rule.selector = SelectorFor(record); rule.visibility = 1;
@@ -266,14 +266,19 @@ void ImportedLegacyPoliciesKeepCustomAppearanceAndManualVisibility() {
     imported["rules"] = {legacy}; imported["iconOrder"] = {"custom", "@assistant"};
     imported["hotkeys"] = {{"open", (MOD_ALT << 16) | 'Q'}}; imported["uiTopmost"] = true;
     imported["taskbar"] = {{"opacity", 77}, {"hideStart", true}};
-    auto response = Call("settings.import", {{"settings", imported}});
-    CHECK(response.value("success", false)); CHECK(response.value("saved", false));
+    {
+        std::ofstream file(settingsPath, std::ios::binary | std::ios::trunc);
+        file << imported.dump(2);
+    }
+    bool recovered{};
+    settings = LoadSettings(settingsPath, recovered);
+    CHECK(!recovered);
     auto parsed = ParseRule(settings["rules"][0]);
     CHECK(parsed.visibility == 1); CHECK(parsed.asset == L"custom.dll"); CHECK(parsed.assetIndex == 7);
     CHECK(parsed.tip == L"custom tip"); CHECK(!parsed.swapButtons && !parsed.alwaysShow);
     CHECK(parsed.inactiveSeconds == 0 && parsed.unusedDays == 0 && parsed.hotkey == 0);
     CHECK(parsed.menuVisible); CHECK(settings["iconOrder"] == Json::array({"custom", "@assistant"}));
-    bool recovered{}; CHECK(LoadSettings(settingsPath, recovered) == settings);
+    CHECK(LoadSettings(settingsPath, recovered) == settings);
 }
 int wmain(int argc, wchar_t** argv) {
     if (argc != 2) return 2;
@@ -292,7 +297,7 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"system rows expose absent saved preference", SystemRowsExposeAbsentSavedPreferenceWithoutApplyingAnything},
                             std::pair{"system success does not replay failed peer", SuccessfulSystemTransactionDoesNotReplayFailedPeer},
                             std::pair{"canceled advanced native behavior", CanceledAdvancedSettingsCannotApplyNativeBehavior},
-                            std::pair{"import legacy keeps appearance and manual visibility", ImportedLegacyPoliciesKeepCustomAppearanceAndManualVisibility}}) {
+                            std::pair{"legacy settings keep appearance and manual visibility", LoadedLegacyPoliciesKeepCustomAppearanceAndManualVisibility}}) {
         try { test.second(); std::printf("PASS %s\n", test.first); }
         catch (const std::exception& error) { ++failed; std::fprintf(stderr, "FAIL %s: %s\n", test.first, error.what()); }
     }

@@ -190,10 +190,6 @@
                   </StackPanel>
                   <ComboBox x:Name="LanguageChoice" Grid.Column="1" Width="132" SelectedIndex="{Binding LanguageIndex,Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.AutomationId="LanguageChoice" Height="28" MinHeight="28" />
                 </Grid>
-                <WrapPanel Margin="4,8,4,0">
-                  <Button Content="导出配置" Click="ExportClick" Margin="0,0,8,0" MinHeight="28" Height="28" Padding="12,2" />
-                  <Button Content="导入配置" Click="ImportClick" MinHeight="28" Height="28" Padding="12,2" />
-                </WrapPanel>
               </StackPanel>
               <TextBlock x:Name="VersionText" Grid.Row="2" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" Margin="0,8,0,16" AutomationProperties.AutomationId="SoftwareVersion" />
             </Grid>

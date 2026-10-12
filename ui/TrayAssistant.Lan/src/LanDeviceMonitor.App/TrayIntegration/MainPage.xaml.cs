@@ -1,7 +1,5 @@
-using Microsoft.Win32;
 using System.ComponentModel;
 using System.IO;
-using System.Security.Cryptography;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
@@ -35,7 +33,6 @@ public partial class MainPage : UserControl
     private bool loaded, systemLoading, systemLoaded, systemRefreshPending, editorOpen;
     private bool closingFloating;
     private readonly BlurEffect floatingBlur = new() { Radius = 0, RenderingBias = RenderingBias.Performance };
-    private TaskCompletionSource<bool>? importConfirmation;
     private IconRow? dragRow;
     private Point dragStart;
     private Point dragHotspot;
@@ -300,15 +297,10 @@ public partial class MainPage : UserControl
     }
     private async Task CloseFloatingAsync()
     {
-        if (closingFloating || (!editorOpen && importConfirmation == null)) return;
+        if (closingFloating || !editorOpen) return;
         closingFloating = true;
         try
         {
-            if (importConfirmation is { } confirmation)
-            {
-                await HideFloatingAsync(); importConfirmation = null;
-                confirmation.TrySetResult(false); return;
-            }
             if (!await Vm.FlushChangesAsync()) return;
             await HideFloatingAsync(); editorOpen = false; Vm.Selected = null;
         }
@@ -317,23 +309,6 @@ public partial class MainPage : UserControl
     private async void FloatingBackgroundDown(object sender, MouseButtonEventArgs args)
     {
         if (ReferenceEquals(args.OriginalSource, sender)) await CloseFloatingAsync();
-    }
-    private Task<bool> ConfirmImportAsync()
-    {
-        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        importConfirmation = completion;
-        ShowFloating(new ImportConfirmationPanel(async accepted =>
-        {
-            if (closingFloating) return;
-            closingFloating = true;
-            try
-            {
-                await HideFloatingAsync(); importConfirmation = null;
-                completion.TrySetResult(accepted);
-            }
-            finally { closingFloating = false; }
-        }));
-        return completion.Task;
     }
     public void Suspend() { timer.Stop(); finishPageTransition?.Invoke(); }
     public void Resume() { timer.Start(); _ = Vm.RefreshAsync(); }
@@ -463,43 +438,6 @@ public partial class MainPage : UserControl
         catch (Exception exception) { toggle.IsChecked = !visible; Vm.ReportError(exception); }
         finally { systemSaveGate.Release(); systemSaving[id] = false; toggle.IsEnabled = systemAvailable[id]; }
         await LoadSystemAsync(true);
-    }
-    private async void ExportClick(object sender, RoutedEventArgs args)
-    {
-        try
-        {
-            var picker = new SaveFileDialog { FileName = "托盘助手配置", DefaultExt = ".json", Filter = "助手配置|*.json" };
-            if (picker.ShowDialog(App.Window) != true) return;
-            var reply = await Vm.Pipe.RequestAsync("settings.read"); Check(reply);
-            var settings = (JsonObject)reply["data"]!.DeepClone(); var assets = new JsonObject();
-            foreach (var rule in settings["rules"]!.AsArray()) await Embed(rule!.AsObject(), assets);
-            await Embed(settings["ownIcon"]!.AsObject(), assets); settings["assets"] = assets;
-            await File.WriteAllTextAsync(picker.FileName, settings.ToJsonString(new() { WriteIndented = true }));
-            Vm.Status = "配置与图标已导出";
-        }
-        catch (Exception exception) { Vm.ReportError(exception); }
-    }
-    private static async Task Embed(JsonObject node, JsonObject assets)
-    {
-        var path = node["asset"]?.GetValue<string>() ?? ""; if (path.Length == 0) return;
-        var bytes = await File.ReadAllBytesAsync(path); var name = Convert.ToHexString(SHA256.HashData(bytes)) + Path.GetExtension(path);
-        assets[name] = Convert.ToBase64String(bytes); node["asset"] = name;
-    }
-    private async void ImportClick(object sender, RoutedEventArgs args)
-    {
-        try
-        {
-            var picker = new OpenFileDialog { Filter = "助手配置|*.json", CheckFileExists = true };
-            if (picker.ShowDialog(App.Window) != true) return;
-            if (new FileInfo(picker.FileName).Length > 96 * 1024 * 1024) throw new IOException("配置文件过大");
-            var bundle = JsonNode.Parse(await File.ReadAllTextAsync(picker.FileName))!.AsObject();
-            if (bundle["schema"]?.GetValue<int>() != 1) throw new IOException("配置版本不兼容");
-            if (!await ConfirmImportAsync()) return;
-            var settings = await BackupService.PrepareImportAsync(bundle);
-            Check(await Vm.Pipe.RequestAsync("settings.import", new() { ["settings"] = settings }));
-            await Vm.InitializeAsync(); systemLoaded = false; await LoadSystemAsync(true);
-        }
-        catch (Exception exception) { Vm.ReportError(exception); }
     }
     private static void Check(JsonObject reply) { if (reply["success"]?.GetValue<bool>() != true) throw new IOException(reply["detail"]?.GetValue<string>() ?? "操作失败"); }
     private async void ExitClick(object sender, RoutedEventArgs args) => await App.QuitAsync();

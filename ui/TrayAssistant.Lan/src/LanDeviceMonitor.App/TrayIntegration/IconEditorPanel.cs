@@ -73,21 +73,3 @@ public sealed class IconEditorPanel : UserControl
         Loaded += (_, _) => { Localization.Apply(this); tip.Focus(); };
     }
 }
-
-internal sealed class ImportConfirmationPanel : UserControl
-{
-    public ImportConfirmationPanel(Action<bool> complete)
-    {
-        var content = new StackPanel();
-        content.Children.Add(new TextBlock { Text = "导入配置？", FontWeight = FontWeights.Medium, Margin = new Thickness(0, 0, 0, 14) });
-        content.Children.Add(new TextBlock { Text = "将替换当前规则与偏好。原配置会自动保留为备份。", TextWrapping = TextWrapping.Wrap });
-        var buttons = new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 18, 0, 0) };
-        var accept = new Button { Content = "导入", Margin = new Thickness(0, 0, 8, 0) };
-        accept.SetResourceReference(StyleProperty, "PrimaryButtonStyle");
-        var cancel = new Button { Content = "取消" };
-        accept.Click += (_, _) => complete(true); cancel.Click += (_, _) => complete(false);
-        buttons.Children.Add(accept); buttons.Children.Add(cancel); content.Children.Add(buttons); Content = content;
-        Loaded += (_, _) => Localization.Apply(this);
-    }
-}

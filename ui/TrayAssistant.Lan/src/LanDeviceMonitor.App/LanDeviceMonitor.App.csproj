@@ -36,7 +36,6 @@
     <Compile Include="$(TraySharedSourceDirectory)\ViewModels\TrayViewModel.cs" Link="ViewModels\TrayViewModel.cs" />
     <Compile Include="$(TraySharedSourceDirectory)\ViewModels\TrayViewModel.Autosave.cs" Link="ViewModels\TrayViewModel.Autosave.cs" />
     <Compile Include="$(TraySharedSourceDirectory)\Services\PipeClient.cs" Link="Services\PipeClient.cs" />
-    <Compile Include="$(TraySharedSourceDirectory)\Services\BackupService.cs" Link="Services\BackupService.cs" />
     <Compile Include="$(TraySharedSourceDirectory)\Services\Localization.cs" Link="Services\Localization.cs" />
     <Content Include="$(TrayProductDirectory)\build\TrayAssistant.Agent.exe" Link="TrayAssistant.Agent.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(TrayProductDirectory)\build\TrayAssistant.ShellBridge.dll" Link="TrayAssistant.ShellBridge.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

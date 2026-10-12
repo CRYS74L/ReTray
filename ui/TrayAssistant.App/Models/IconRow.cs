@@ -51,8 +51,10 @@ public sealed class IconRow : ObservableObject
         Identity = (json["selector"]!["hasGuid"]!.GetValue<bool>() ? "GUID" : $"UID {json["selector"]!["uid"]}") + $" · PID {json["pid"]}";
         State = json["decision"]?.GetValue<int>()==4?"待确认静态图像":json["decision"]?.GetValue<int>()==2?"原应用闪烁空帧":json["dynamic"]?.GetValue<bool>() == true ? "原应用动态帧" : json["placement"]!.GetValue<int>() == 2 ? "已隐藏" : json["custom"]?.GetValue<bool>() == true ? "自定义图标" : json["placement"]!.GetValue<int>() == 0 ? "任务栏" : "折叠区";
         State=Services.Localization.Text(State);
-        var value = json["pixels"]!.GetValue<string>();
-        if (pixels != value) { pixels = value; Image = Decode(value, json["width"]!.GetValue<int>(), json["height"]!.GetValue<int>()); }
+        var value = (json["displayPixels"] ?? json["pixels"])!.GetValue<string>();
+        if (pixels != value) { pixels = value; Image = Decode(value,
+            (json["displayWidth"] ?? json["width"])!.GetValue<int>(),
+            (json["displayHeight"] ?? json["height"])!.GetValue<int>()); }
         value = json["originalPixels"]!.GetValue<string>();
         if (originalPixels != value) { originalPixels = value; Original = Decode(value, json["originalWidth"]!.GetValue<int>(), json["originalHeight"]!.GetValue<int>()); }
     }

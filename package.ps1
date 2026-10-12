@@ -54,3 +54,4 @@ Copy-Item -LiteralPath (Join-Path $productRoot 'packaging\README.txt') -Destinat
 $hash=Get-FileHash -LiteralPath $package -Algorithm SHA256
 Set-Content -LiteralPath (Join-Path $distribution 'SHA256.txt') -Value ($hash.Hash+'  '+(Split-Path $package -Leaf)) -Encoding utf8
 Write-Host ('Build complete: '+$package)
+& (Join-Path $productRoot 'packaging\CleanBuildCopies.ps1') -KeepPublish (Split-Path $layout -Parent)

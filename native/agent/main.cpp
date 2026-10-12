@@ -3,6 +3,7 @@
 #include "../platform/user_security.h"
 #include "../shell/bridge_client.h"
 #include "settings.h"
+#include "tray_menu_typography.h"
 
 #include <algorithm>
 #include <chrono>
@@ -21,6 +22,8 @@
 using namespace tray;
 namespace {
 constexpr UINT OwnCallback = WM_APP + 101, OpenMessage = WM_APP + 102, UpdateHotkeys = WM_APP + 103;
+const UINT ExitInterfaceMessage = RegisterWindowMessageW(L"TrayAssistant.ExitInterface.v1");
+const UINT ShowTrayMenuMessage = RegisterWindowMessageW(L"TrayAssistant.ShowMenu.v1");
 HWND window{};
 std::atomic<HWND> uiWindow{};
 
@@ -50,6 +53,8 @@ LONG seenSequence{-1};
 uint64_t configRevision{};
 uint64_t environmentEpoch{}, lastEnvironmentCheck{};
 std::string environmentStamp;
+std::unordered_map<int, bool> environmentPolicies;
+std::array<bool, 9> environmentAvailable{};
 Json environmentOutcome = {{"success", true}};
 struct Request {
     Json input, output;
@@ -66,7 +71,7 @@ Json requestedHotkeys = Json::array(), registeredHotkeys = Json::array(),
      hotkeyErrors = Json::array();
 Json activityHistory = Json::object();
 bool activityDirty{};
-uint64_t lastActivitySave{}, lastReview{};
+uint64_t lastActivitySave{};
 
 void ScheduleHotkeys();
 void Enqueue(const std::shared_ptr<Request>& request) {
@@ -128,6 +133,7 @@ Json Result(bool ok, const std::string& detail = {}, DWORD error = 0) {
         {"success", ok}, {"detail", detail}, {"errorCode", error}, {"revision", configRevision}};
 }
 bool Persist() {
+    settings = NormalizeSettings(settings);
     settings["revision"] = ++configRevision;
     if (!SaveSettings(settingsPath, settings)) {
         --configRevision;
@@ -159,55 +165,19 @@ void InvalidateRule(const RuleSelector& selector, const std::string& previousKey
 void ScheduleHotkeys() {
     if (!window || stopping)
         return;
-    Json requested = Json::array();
-    auto defaults = DefaultSettings()["hotkeys"];
-    auto keys = settings.value("hotkeys", defaults);
-    int id = 1;
-    for (const char* name : {"open", "menu"})
-        requested.push_back({{"id", id++},
-                             {"code", keys.value(name, defaults.at(name).get<uint32_t>())},
-                             {"action", name}});
-    for (const auto& row : rows) {
-        auto found = ResolveRule(rules, Record(row));
-        if (!found.rule || !found.rule->enabled || !found.rule->hotkey)
-            continue;
-        static const char* actions[] = {"click", "menu", "double", "rightDouble"};
-        requested.push_back({{"id", id++},
-                             {"code", found.rule->hotkey},
-                             {"action", "icon"},
-                             {"iconAction", actions[found.rule->hotkeyAction]},
-                             {"key", IdentityKey(row.identity)}});
-    }
     std::lock_guard lock(hotkeyMutex);
-    if (requested == requestedHotkeys)
+    if (requestedHotkeys.empty() && registeredHotkeys.empty())
         return;
-    requestedHotkeys = std::move(requested);
+    requestedHotkeys = Json::array();
     PostMessageW(window, UpdateHotkeys, 0, 0);
 }
 void RegisterRequestedHotkeys() {
-    Json requested;
-    {
-        std::lock_guard lock(hotkeyMutex);
-        requested = requestedHotkeys;
-    }
+    std::lock_guard lock(hotkeyMutex);
     for (const auto& old : registeredHotkeys)
         UnregisterHotKey(window, old.at("id"));
+    requestedHotkeys = Json::array();
     registeredHotkeys = Json::array();
-    Json errors = Json::array();
-    for (const auto& item : requested) {
-        uint32_t code = item.at("code");
-        if (!code)
-            continue;
-        if (!RegisterHotKey(window, item.at("id"), (code >> 16) | MOD_NOREPEAT, code & 0xffff))
-            errors.push_back(
-                {{"action", item.at("action")}, {"code", code}, {"error", GetLastError()}});
-        else
-            registeredHotkeys.push_back(item);
-    }
-    {
-        std::lock_guard lock(hotkeyMutex);
-        hotkeyErrors = errors;
-    }
+    hotkeyErrors = Json::array();
 }
 void OpenUI() {
     auto name = Wide(settings.value("uiActivation", std::string{}));
@@ -321,10 +291,8 @@ bool SetStartup(bool enabled) {
     return code == ERROR_SUCCESS || (!enabled && code == ERROR_FILE_NOT_FOUND);
 }
 int EffectiveVisibility(const BridgeIcon& row, const IconRule* rule) {
-    int visibility = rule && rule->enabled ? rule->visibility : -1;
-    if (rule && IsInactive(*rule, catalog.items[IdentityKey(row.identity)].activity, Now()))
-        visibility = 1;
-    return visibility;
+    (void)row;
+    return rule && rule->enabled ? rule->visibility : -1;
 }
 std::string RuleStamp(const IconRule* rule, int visibility) {
     return (rule ? RuleJson(*rule).dump() : std::string("native")) + ":" +
@@ -387,7 +355,7 @@ void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
     if (rule && rule->enabled) {
         BridgeCommand cmd;
         cmd.operation = BridgeOperation::Behavior;
-        cmd.index = rule->swapButtons ? 1 : 0;
+        cmd.index = 0;
         send(cmd);
         cmd = {};
         cmd.operation = BridgeOperation::Tip;
@@ -415,61 +383,99 @@ void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
             retryAfter.erase(key);
     }
 }
+bool NativeSystemControlPresent(int id) {
+    if (!bridge.shared)
+        return false;
+    for (uint32_t index = 0; index < std::min<uint32_t>(32, bridge.shared->systemCount); ++index) {
+        const auto& row = bridge.shared->systemControls[index];
+        if (row.id == static_cast<uint32_t>(id) && row.instances)
+            return true;
+    }
+    return false;
+}
+bool RefreshSystemControls() {
+    if (!bridge.Alive() || !ShouldRecover(lifecycle) || stopping)
+        return false;
+    if (environmentEpoch != bridge.shared->epoch) {
+        environmentPolicies.clear();
+        environmentAvailable.fill(false);
+        environmentStamp.clear();
+        environmentEpoch = bridge.shared->epoch;
+    }
+    lastEnvironmentCheck = GetTickCount64();
+    BridgeCommand command;
+    command.operation = BridgeOperation::SystemRead;
+    if (!bridge.Command(command))
+        return false;
+    bool appliedNewTarget = false;
+    DWORD error{};
+    for (const auto& policy : settings.value("systemControls", Json::array())) {
+        int id = policy.at("id");
+        bool exists = NativeSystemControlPresent(id);
+        if (policy.value("hidden", false) && exists && !environmentAvailable[id]) {
+            command.operation = BridgeOperation::SystemSet;
+            command.location = id;
+            command.visibility = 1;
+            if (!bridge.Command(command))
+                error = bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT;
+            environmentPolicies[id] = true;
+            appliedNewTarget = true;
+        }
+        environmentAvailable[id] = exists;
+    }
+    if (error)
+        environmentOutcome = Result(false, "已保存的系统图标策略无法应用到新对象", error);
+    if (appliedNewTarget) {
+        command = {};
+        command.operation = BridgeOperation::SystemRead;
+        return bridge.Command(command);
+    }
+    return true;
+}
 bool ApplyEnvironment(bool force = false) {
     if (!bridge.Alive() || !ShouldRecover(lifecycle))
         return false;
-    auto now = GetTickCount64();
-    auto stamp = Json::array({settings.value("taskbar", Json::object()),
-                             settings.value("systemControls", Json::array())}).dump();
-    if (!force && environmentEpoch == bridge.shared->epoch &&
-        environmentStamp == stamp && now - lastEnvironmentCheck < 3000)
+    auto stamp = settings.value("systemControls", Json::array()).dump();
+    bool shellChanged = environmentEpoch != bridge.shared->epoch;
+    if (!force && !shellChanged && environmentStamp == stamp) {
+        bool hasHiddenPolicy = std::any_of(environmentPolicies.begin(), environmentPolicies.end(),
+                                           [](const auto& policy) { return policy.second; });
+        if (hasHiddenPolicy && GetTickCount64() - lastEnvironmentCheck >= 3000 &&
+            !RefreshSystemControls())
+            environmentOutcome = Result(false, "当前系统图标对象无法刷新",
+                                         bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT);
         return environmentOutcome.value("success", true);
-    bool changed =
-        environmentEpoch != bridge.shared->epoch || environmentStamp != stamp;
+    }
+    auto previous = shellChanged ? std::unordered_map<int, bool>{} : environmentPolicies;
+    if (shellChanged)
+        environmentAvailable.fill(false);
     environmentEpoch = bridge.shared->epoch;
     environmentStamp = std::move(stamp);
-    lastEnvironmentCheck = now;
+    lastEnvironmentCheck = GetTickCount64();
+    environmentPolicies.clear();
+    for (const auto& policy : settings.value("systemControls", Json::array()))
+        environmentPolicies[policy.at("id").get<int>()] = policy.value("hidden", false);
     bool ok = true;
     DWORD error{};
-    auto taskbar = settings.value("taskbar", Json::object());
-    if (taskbar.value("opacity", 255) != 255 || taskbar.value("hideStart", false) || force ||
-        changed) {
+    auto apply = [&](int id, bool hidden) {
         BridgeCommand command;
-        command.operation = BridgeOperation::Taskbar;
-        command.index = taskbar.value("opacity", 255);
-        command.visibility = taskbar.value("hideStart", false) ? 1 : 0;
-        ok = bridge.Command(command);
-        if (!ok)
-            error = bridge.shared->lastError;
-    }
-    if (changed || force) {
-        static std::vector<int> prior;
-        std::vector<int> current;
-        for (const auto& policy : settings.value("systemControls", Json::array()))
-            current.push_back(policy.at("id"));
-        for (int id : prior)
-            if (std::find(current.begin(), current.end(), id) == current.end()) {
-                BridgeCommand command;
-                command.operation = BridgeOperation::SystemSet;
-                command.location = id;
-                command.visibility = 0;
-                bridge.Command(command);
-            }
-        prior = current;
-    }
-    if (settings.contains("systemControls"))
-        for (const auto& policy : settings["systemControls"]) {
-            BridgeCommand command;
-            command.operation = BridgeOperation::SystemSet;
-            command.location = policy.at("id");
-            command.visibility = policy.value("hidden", false) ? 1 : 0;
-            if (!bridge.Command(command)) {
-                ok = false;
-                error = bridge.shared->lastError;
-            }
+        command.operation = BridgeOperation::SystemSet;
+        command.location = id;
+        command.visibility = hidden ? 1 : 0;
+        if (!bridge.Command(command)) {
+            ok = false;
+            error = bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT;
         }
+        environmentAvailable[id] = NativeSystemControlPresent(id);
+    };
+    for (const auto& [id, hidden] : previous)
+        if (!environmentPolicies.contains(id))
+            apply(id, false);
+    for (const auto& [id, hidden] : environmentPolicies)
+        if (force || !previous.contains(id) || previous.at(id) != hidden)
+            apply(id, hidden);
     environmentOutcome =
-        Result(ok, ok ? "任务栏设置已生效" : "设置已保存，等待原有系统控件或适配失败", error);
+        Result(ok, ok ? "系统图标设置已生效" : "已保存的系统图标策略当前无法应用", error);
     return ok;
 }
 std::string StableIconKey(const BridgeIcon& row) {
@@ -520,27 +526,14 @@ void Refresh() {
         SetOperationalState(lifecycle, SessionState::Ready);
     }
     ApplyEnvironment();
-    auto interval = settings.value("reviewIntervalSeconds", 0u);
-    if (interval && GetTickCount64() - lastReview >= uint64_t(interval) * 1000) {
-        lastReview = GetTickCount64();
-        BridgeCommand command;
-        command.operation = BridgeOperation::Refresh;
-        bridge.Command(command);
-    }
     if (activityDirty && GetTickCount64() - lastActivitySave >= 30000) {
         if (SaveDataJson(dataRoot / L"activity.json", activityHistory))
             activityDirty = false;
         lastActivitySave = GetTickCount64();
     }
     LONG sequence = bridge.shared->snapshotSequence;
-    if ((sequence & 1) || sequence == seenSequence) {
-        for (auto& row : rows) {
-            auto found = ResolveRule(rules, Record(row));
-            if (found.rule && (found.rule->inactiveSeconds || found.rule->unusedDays))
-                ApplyRule(row, found.rule);
-        }
+    if ((sequence & 1) || sequence == seenSequence)
         return;
-    }
     auto current = bridge.Snapshot();
     if (sequence != bridge.shared->snapshotSequence)
         return;
@@ -784,7 +777,7 @@ DWORD RestartAssistant() {
         // QuitAsync flushes pending UI edits before stopping the Agent. The replacement
         // waits on the exact processes, so it cannot race the old single-instance locks.
         if ((ui && !IsAssistantUi(ui)) ||
-            !PostMessageW(ui ? ui : window, WM_CLOSE, 0, 0)) {
+            !PostMessageW(ui ? ui : window, ui ? ExitInterfaceMessage : WM_CLOSE, 0, 0)) {
             error = ERROR_INVALID_WINDOW_HANDLE;
             SetEvent(handles[2]);
         }
@@ -953,6 +946,102 @@ Json SetIconVisibility(const Json& data) {
         }
     return result;
 }
+Json SetSystemVisibility(const Json& data) {
+    if (!data.contains("id") || !data.at("id").is_number_integer() ||
+        !data.contains("visible") || !data.at("visible").is_boolean()) {
+        auto result = Result(false, "系统图标开关参数无效", ERROR_INVALID_DATA);
+        result["saved"] = false;
+        return result;
+    }
+    const auto& requested = data.at("id");
+    if (requested.is_number_unsigned() ? requested.get<uint64_t>() >= 9
+                                      : requested.get<int64_t>() < 0 || requested.get<int64_t>() >= 9) {
+        auto result = Result(false, "系统图标编号无效", ERROR_INVALID_DATA);
+        result["saved"] = false;
+        return result;
+    }
+    int id = requested.get<int>();
+    bool visible = data.at("visible");
+    auto reply = [&](bool success, const std::string& detail, DWORD error = 0,
+                     bool saved = false) {
+        auto result = Result(success, detail, error);
+        result["saved"] = saved;
+        result["data"] = {{"id", id}, {"visible", visible}};
+        return result;
+    };
+    if (!ShouldRecover(lifecycle) || stopping || !bridge.Alive())
+        return reply(false, "原生系统图标尚未就绪", ERROR_NOT_READY);
+    auto nativeError = [&]() -> DWORD {
+        return bridge.shared && bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT;
+    };
+    BridgeCommand command;
+    command.operation = BridgeOperation::SystemRead;
+    if (!bridge.Command(command))
+        return reply(false, "无法读取当前系统图标，配置未改变", nativeError());
+    bool exists = NativeSystemControlPresent(id);
+    if (environmentEpoch == bridge.shared->epoch)
+        environmentAvailable[id] = exists;
+    if (!exists && !visible)
+        return reply(false, "所选系统图标当前不存在，无法隐藏，配置未改变", ERROR_NOT_FOUND);
+    auto previous = settings;
+    bool priorHidden = false;
+    for (const auto& policy : previous.value("systemControls", Json::array()))
+        if (policy.at("id") == id)
+            priorHidden = policy.value("hidden", false);
+    command.operation = BridgeOperation::SystemSet;
+    command.location = id;
+    command.visibility = visible ? 0 : 1;
+    auto restorePolicy = [&]() {
+        command.visibility = priorHidden ? 1 : 0;
+        return bridge.Command(command);
+    };
+    // Restoring an absent target also forgets its native session intent, so it cannot
+    // hide a future object after the persisted preference has been cleared.
+    if (!bridge.Command(command)) {
+        auto error = nativeError();
+        bool restored = error == ERROR_NOT_FOUND || restorePolicy();
+        auto result = reply(false, restored ? "所选系统图标更新失败，配置未改变"
+                                            : "所选系统图标更新失败，原策略恢复失败，配置未改变",
+                            error);
+        result["restored"] = restored;
+        return result;
+    }
+    auto& policies = settings["systemControls"];
+    for (auto entry = policies.begin(); entry != policies.end();)
+        if (entry->at("id") == id)
+            entry = policies.erase(entry);
+        else
+            ++entry;
+    if (!visible)
+        policies.push_back({{"id", id}, {"hidden", true}});
+    if (!Persist()) {
+        settings = previous;
+        bool restored = !exists || restorePolicy();
+        auto result = reply(false, restored ? "配置保存失败，已恢复原系统图标策略"
+                                            : "配置保存失败，原系统图标策略恢复失败",
+                            ERROR_WRITE_FAULT);
+        result["restored"] = restored;
+        return result;
+    }
+    // This target has already been applied. Keep the background policy diff in sync so
+    // the successful transaction cannot replay another target's unchanged failure.
+    bool synchronized = environmentEpoch == bridge.shared->epoch &&
+                        environmentStamp == previous.value("systemControls", Json::array()).dump();
+    if (environmentEpoch != bridge.shared->epoch) {
+        environmentPolicies.clear();
+        environmentAvailable.fill(false);
+        environmentEpoch = bridge.shared->epoch;
+    }
+    environmentAvailable[id] = exists;
+    if (visible)
+        environmentPolicies.erase(id);
+    else
+        environmentPolicies[id] = true;
+    environmentStamp = synchronized ? settings["systemControls"].dump() : std::string{};
+    return reply(true, exists ? (visible ? "已恢复系统图标" : "已隐藏系统图标")
+                              : "已清除此系统图标的隐藏偏好，当前未创建系统图标",
+                 0, true);
+}
 Json Handle(const Json& req) {
     if (!req.is_object())
         return Result(false, "请求必须是对象", ERROR_INVALID_DATA);
@@ -967,6 +1056,9 @@ Json Handle(const Json& req) {
         auto hwnd = reinterpret_cast<HWND>(d.at("hwnd").get<uintptr_t>());
         if (!IsAssistantUi(hwnd)) return Result(false, "界面窗口身份不匹配", ERROR_INVALID_WINDOW_HANDLE);
         uiWindow = hwnd;
+    } else if (method == "assistant.menu") {
+        bool ok = PostMessageW(window, ShowTrayMenuMessage, 0, 0) != FALSE;
+        return Result(ok, "助手菜单", ok ? ERROR_SUCCESS : GetLastError());
     } else if (method == "icons.reorder") {
         auto keys = d.at("keys");
         if (!keys.is_array() || keys.size() > MaxBridgeIcons)
@@ -1041,37 +1133,35 @@ Json Handle(const Json& req) {
     } else if (method == "settings.read")
         result["data"] = settings;
     else if (method == "system.read") {
-        BridgeCommand command;
-        command.operation = BridgeOperation::SystemRead;
-        if (!bridge.Command(command))
+        if (!RefreshSystemControls())
             return Result(false, "系统控件读取不可用",
-                          bridge.shared ? bridge.shared->lastError : ERROR_NOT_READY);
+                          bridge.shared ? (bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT)
+                                        : ERROR_NOT_READY);
         result["data"] = Json::array();
+        std::array<bool, 9> savedHidden{}, present{};
+        for (const auto& policy : settings.value("systemControls", Json::array()))
+            savedHidden[policy.at("id").get<int>()] = policy.value("hidden", false);
         for (uint32_t i = 0; i < bridge.shared->systemCount; ++i) {
             auto row = bridge.shared->systemControls[i];
+            bool saved = row.id < savedHidden.size() && savedHidden[row.id];
+            if (row.id < present.size())
+                present[row.id] = true;
             result["data"].push_back(
-                {{"id", row.id}, {"visible", row.visible}, {"instances", row.instances}});
+                {{"id", row.id}, {"visible", row.visible}, {"instances", row.instances},
+                 {"savedHidden", saved}});
         }
+        for (size_t id = 0; id < savedHidden.size(); ++id)
+            if (savedHidden[id] && !present[id])
+                result["data"].push_back({{"id", id}, {"instances", 0}, {"visible", false},
+                                           {"savedHidden", true}});
+    } else if (method == "system.set") {
+        result = SetSystemVisibility(d);
     } else if (method == "system.apply") {
-        auto saved = settings;
-        settings["systemControls"] = d.at("controls");
-        if (!Persist()) {
-            settings = saved;
-            return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
-        }
-        ApplyEnvironment(true);
-        result = environmentOutcome;
-        result["saved"] = true;
+        result = Result(false, "请使用单个系统图标开关", ERROR_NOT_SUPPORTED);
+        result["saved"] = false;
     } else if (method == "taskbar.apply") {
-        auto saved = settings;
-        settings["taskbar"] = d;
-        if (!Persist()) {
-            settings = saved;
-            return Result(false, "任务栏设置无效或保存失败", ERROR_INVALID_DATA);
-        }
-        ApplyEnvironment(true);
-        result = environmentOutcome;
-        result["saved"] = true;
+        result = Result(false, "任务栏高级功能已取消", ERROR_NOT_SUPPORTED);
+        result["saved"] = false;
     } else if (method == "settings.import") {
         auto imported = d.at("settings");
         if (!ValidateSettings(imported))
@@ -1186,7 +1276,7 @@ Json Handle(const Json& req) {
         auto saved = settings;
         for (auto& [key, value] : d.items())
             if (key != "schema" && key != "rules" && key != "ownIcon" && key != "revision" &&
-                key != "newIconLocation")
+                key != "newIconLocation" && key != "systemControls")
                 settings[key] = value;
         if (!Persist()) {
             settings = saved;
@@ -1345,18 +1435,19 @@ DWORD WINAPI Worker(void*) {
     return 0;
 }
 void TrayMenu() {
-    // Win32 PMv2 menus use the system's menu font at the monitor's actual DPI.
+    // Keep native menu routing while using the bundled Noto font at the cursor's DPI.
     auto previousDpi = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     HMENU menu = CreatePopupMenu();
     if (!menu) {
         if (previousDpi) SetThreadDpiAwarenessContext(previousDpi);
         return;
     }
-    AppendMenuW(menu, MF_STRING, 1, L"打开助手");
-    AppendMenuW(menu, MF_STRING, 2, L"重新启动");
-    AppendMenuW(menu, MF_STRING, 3, L"退出");
     POINT point{};
     GetCursorPos(&point);
+    tray_menu_typography::Prepare(root, point);
+    AppendMenuW(menu, MF_OWNERDRAW, 1, tray_menu_typography::Data(1));
+    AppendMenuW(menu, MF_OWNERDRAW, 2, tray_menu_typography::Data(2));
+    AppendMenuW(menu, MF_OWNERDRAW, 3, tray_menu_typography::Data(3));
     SetForegroundWindow(window);
     auto selected =
         TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | TPM_LEFTALIGN | TPM_BOTTOMALIGN,
@@ -1372,11 +1463,14 @@ void TrayMenu() {
                         L"托盘图标助手", MB_OK | MB_ICONERROR);
     } else if (selected == 3) {
         auto ui = uiWindow.load();
-        if (!IsAssistantUi(ui) || !PostMessageW(ui, WM_CLOSE, 0, 0))
+        if (!IsAssistantUi(ui) || !PostMessageW(ui, ExitInterfaceMessage, 0, 0))
             PostMessageW(window, WM_CLOSE, 0, 0);
     }
 }
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == ShowTrayMenuMessage) { TrayMenu(); return 0; }
+    if (msg == WM_MEASUREITEM && tray_menu_typography::Measure(lp)) return TRUE;
+    if (msg == WM_DRAWITEM && tray_menu_typography::Draw(lp)) return TRUE;
     static UINT taskbarCreated = RegisterWindowMessageW(L"TaskbarCreated");
     if (msg == taskbarCreated) {
         PostJob("internal.shellCreated");
@@ -1410,21 +1504,8 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         PostJob("internal.openUi");
         return 0;
     }
-    if (msg == WM_HOTKEY) {
-        for (const auto& item : registeredHotkeys)
-            if (item.at("id").get<int>() == int(wp)) {
-                auto action = item.at("action").get<std::string>();
-                if (action == "open")
-                    PostJob("internal.openUi");
-                else if (action == "menu")
-                    TrayMenu();
-                else if (action == "icon")
-                    PostJob("icon.invoke",
-                            {{"key", item.at("key")}, {"action", item.at("iconAction")}});
-                break;
-            }
+    if (msg == WM_HOTKEY)
         return 0;
-    }
     if (msg == OwnCallback) {
         auto event = LOWORD(lp);
         if (event == WM_CONTEXTMENU)

@@ -87,6 +87,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private const int WindowMessageSystemCommand = 0x0112;
     private const int SystemCommandMinimize = 0xF020;
+    private static readonly int ExitInterfaceMessage = unchecked((int)RegisterWindowMessage("TrayAssistant.ExitInterface.v1"));
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessage(string name);
 
     private readonly bool trayEditor;
     public TrayAssistant_App.MainPage TrayPage { get; private set; } = null!;
@@ -2580,12 +2583,25 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             });
     }
 
+    private async void TrayTitleMenu(object sender, MouseButtonEventArgs e)
+    {
+        if (trayEditor) return;
+        e.Handled = true;
+        try { await TrayPage.Vm.Pipe.RequestAsync("assistant.menu"); }
+        catch (Exception error) { TrayPage.Vm.ReportError(error); }
+    }
+    private void TrayTitleDrag(object sender, MouseButtonEventArgs e)
+    {
+        if (e.LeftButton == MouseButtonState.Pressed) { e.Handled = true; DragMove(); }
+    }
     private async void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (trayEditor || TrayAssistant_App.App.CanCloseInterface) return;
         e.Cancel = true;
         await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Normal);
-        await TrayAssistant_App.App.QuitAsync();
+        await TrayPage.FlushChangesAsync();
+        TrayPage.Suspend();
+        RequestHideToTrayPreservingVisual();
     }
 
     private void MainWindow_SourceInitialized(object? sender, EventArgs e)
@@ -2602,6 +2618,12 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         IntPtr longParameter,
         ref bool handled)
     {
+        if (message == ExitInterfaceMessage)
+        {
+            handled = true;
+            _ = Dispatcher.BeginInvoke(new Action(() => _ = TrayAssistant_App.App.QuitAsync()));
+            return IntPtr.Zero;
+        }
         if (message == 0x0231)
         {
             // This HWND has a custom client-drawn frame. Keep live sizing on

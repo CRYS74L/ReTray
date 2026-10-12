@@ -17,3 +17,4 @@ dist/
 *.pfx
 *.key
 *.cer
+**/__pycache__/

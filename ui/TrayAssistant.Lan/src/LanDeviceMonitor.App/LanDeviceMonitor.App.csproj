@@ -80,8 +80,13 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
-    <None Remove="Assets\Fonts\*.ttc;Assets\Fonts\*.ttf" />
-    <Resource Include="Assets\Fonts\*.ttc;Assets\Fonts\*.ttf" />
+    <None Remove="Assets\Fonts\*.ttc;Assets\Fonts\*.ttf;Assets\Fonts\Static\*.ttf;Assets\Fonts\Variable\*.ttf" />
+    <Resource Include="Assets\Fonts\SegoeIcons.ttf;Assets\Fonts\Variable\NotoSansSC-VF.ttf" />
+    <Resource Include="Assets\Fonts\Static\*.ttf">
+      <Link>Assets\Fonts\WpfStatic\%(Filename)%(Extension)</Link>
+    </Resource>
+    <Content Include="Assets\Fonts\Static\NotoSansSC-Regular.ttf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\OFL.txt;Assets\Fonts\noto-font-manifest.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup><Content Include="ThirdParty\react-desktop\LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
 

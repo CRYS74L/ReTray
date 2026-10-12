@@ -10,6 +10,7 @@ using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
+using System.Windows.Media.Effects;
 using System.Windows.Threading;
 using TrayAssistant_App.Controls;
 using LanDeviceMonitor.Controls;
@@ -28,9 +29,14 @@ public partial class MainPage : UserControl
     private static readonly string[] SystemNames = ["网络", "音量", "电源", "输入法 / 语言", "时钟", "通知", "隐私指示器", "开始", "快速设置"];
     private readonly ToggleButton[] systemToggles = new ToggleButton[SystemNames.Length];
     private readonly bool[] systemAvailable = new bool[SystemNames.Length];
+    private readonly bool[] systemSaving = new bool[SystemNames.Length];
     private string tab = "icons";
     private Action? finishPageTransition;
     private bool loaded, systemLoading, systemLoaded, systemRefreshPending, editorOpen;
+    private bool closingFloating;
+    private readonly BlurEffect floatingBlur = new() { Radius = 0, RenderingBias = RenderingBias.Quality };
+    private Storyboard? floatingMotion;
+    private TaskCompletionSource<bool>? importConfirmation;
     private IconRow? dragRow;
     private Point dragStart;
     private Point dragHotspot;
@@ -44,9 +50,18 @@ public partial class MainPage : UserControl
         Vm.PropertyChanged += PresentationChanged;
         Vm.ThemeChanged += index => App.Window.ApplyTrayTheme(index);
         Vm.LanguageChanged += () => Localization.Apply(this);
-        Vm.WindowStyleChanged += (topmost, _) => App.Window.Topmost = topmost;
-        timer.Tick += async (_, _) => await Vm.RefreshAsync();
+        timer.Tick += async (_, _) =>
+        {
+            await Vm.RefreshAsync();
+            if (tab == "system" && Vm.IsReady && !systemLoading) await LoadSystemAsync(true);
+        };
         Loaded += PageLoaded; Unloaded += (_, _) => { timer.Stop(); finishPageTransition?.Invoke(); };
+        SizeChanged += (_, _) => FloatingCard.MaxHeight = Math.Max(0, ActualHeight - 32);
+        PreviewKeyDown += async (_, args) =>
+        {
+            if (args.Key != Key.Escape || FloatingLayer.Visibility != Visibility.Visible) return;
+            args.Handled = true; await CloseFloatingAsync();
+        };
 
         UpdatePresentation();
     }
@@ -55,8 +70,7 @@ public partial class MainPage : UserControl
         if (!loaded)
         {
             loaded = true; await Vm.InitializeAsync();
-            OpenHotkey.Text = TrayViewModel.DescribeHotkey(Vm.Hotkeys["open"]?.GetValue<int>() ?? 0);
-            App.Window.Topmost = Vm.UiTopmost;
+            App.Window.Topmost = false;
         }
         Localization.Apply(this); timer.Start();
     }
@@ -72,7 +86,7 @@ public partial class MainPage : UserControl
         IconList.Visibility = tab == "icons" && Vm.IsReady ? Visibility.Visible : Visibility.Collapsed;
         LoadingList.Visibility = tab == "icons" && Vm.IsLoading ? Visibility.Visible : Visibility.Collapsed;
         SettingsView.Visibility = tab == "settings" ? Visibility.Visible : Visibility.Collapsed;
-        DiagnosticsView.Visibility = tab == "diagnostics" ? Visibility.Visible : Visibility.Collapsed;
+        SystemView.Visibility = tab == "system" ? Visibility.Visible : Visibility.Collapsed;
         ErrorNotice.Visibility = Vm.Error.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
     private void Navigate(object sender, SelectionChangedEventArgs args)
@@ -89,15 +103,15 @@ public partial class MainPage : UserControl
             UpdatePresentation();
         else
             SlidePage(outgoing, incoming, PageIndex(next) > PageIndex(previous) ? 1 : -1);
-        if (tab == "settings") _ = LoadSystemAsync(true);
+        if (tab == "system") _ = LoadSystemAsync(true);
     }
     private FrameworkElement PanelFor(string page) => page switch
     {
+        "system" => SystemView,
         "settings" => SettingsView,
-        "diagnostics" => DiagnosticsView,
         _ => Vm.IsReady ? IconList : LoadingList
     };
-    private static int PageIndex(string page) => page switch { "settings" => 1, "diagnostics" => 2, _ => 0 };
+    private static int PageIndex(string page) => page switch { "system" => 1, "settings" => 2, _ => 0 };
     private static ScrollViewer? ViewerFor(FrameworkElement panel)
     {
         if (panel is ScrollViewer viewer) return viewer;
@@ -186,13 +200,128 @@ public partial class MainPage : UserControl
         await Vm.SetRowVisibilityAsync(row, toggle.IsChecked == true);
         if (ReferenceEquals(toggle.Tag, row)) toggle.SetCurrentValue(ToggleButton.IsCheckedProperty, row.Visible);
     }
-    private async void IconSettingsClick(object sender, RoutedEventArgs args)
+    private void IconSettingsClick(object sender, RoutedEventArgs args)
     {
         if (editorOpen || ((Button)sender).Tag is not IconRow row) return;
         editorOpen = true; Vm.Selected = row;
-        try { new IconEditorWindow(Vm, row) { Owner = App.Window }.ShowDialog(); }
-        finally { await Vm.FlushChangesAsync(); Vm.Selected = null; editorOpen = false; }
+        ShowFloating(new IconEditorPanel(Vm, row, CloseFloatingAsync));
     }
+    private void ShowFloating(UIElement content)
+    {
+        finishPageTransition?.Invoke();
+        FloatingCard.MaxHeight = Math.Max(0, ActualHeight - 32);
+        FloatingContent.Content = content; FloatingLayer.Visibility = Visibility.Visible;
+        PageContent.IsHitTestVisible = false;
+        PageContent.Effect = floatingBlur;
+        FloatingLayer.Opacity = 0;
+        FloatingScale.ScaleX = FloatingScale.ScaleY = .975;
+        FloatingTranslate.Y = 18;
+        AnimateFloating(true);
+    }
+    private void AnimateFloating(bool opening, Action? completed = null)
+    {
+        var duration = TimeSpan.FromMilliseconds(opening ? 420 : 260);
+        IEasingFunction ease = opening
+            ? new QuinticEase { EasingMode = EasingMode.EaseOut }
+            : new CubicEase { EasingMode = EasingMode.EaseInOut };
+        var motion = new Storyboard();
+        void Add(DependencyObject target, DependencyProperty property, double to)
+        {
+            var animation = new DoubleAnimation((double)target.GetValue(property), to, duration) { EasingFunction = ease };
+            Storyboard.SetTarget(animation, target);
+            Storyboard.SetTargetProperty(animation, new PropertyPath(property));
+            motion.Children.Add(animation);
+        }
+        Add(FloatingLayer, OpacityProperty, opening ? 1 : 0);
+        Add(PageContent, OpacityProperty, opening ? .4 : 1);
+        var blurAnimation = new DoubleAnimation(
+            ((BlurEffect)PageContent.Effect).Radius, opening ? 12 : 0, duration) { EasingFunction = ease };
+        Storyboard.SetTarget(blurAnimation, PageContent);
+        Storyboard.SetTargetProperty(blurAnimation,
+            new PropertyPath("(0).(1)", UIElement.EffectProperty, BlurEffect.RadiusProperty));
+        motion.Children.Add(blurAnimation);
+        Add(FloatingScale, ScaleTransform.ScaleXProperty, opening ? 1 : .985);
+        Add(FloatingScale, ScaleTransform.ScaleYProperty, opening ? 1 : .985);
+        Add(FloatingTranslate, TranslateTransform.YProperty, opening ? 0 : 8);
+        floatingMotion?.Remove(this);
+        floatingMotion = motion;
+        if (!SystemParameters.ClientAreaAnimation)
+        {
+            FloatingLayer.Opacity = opening ? 1 : 0;
+            PageContent.Opacity = opening ? .4 : 1;
+            floatingBlur.Radius = opening ? 12 : 0;
+            FloatingScale.ScaleX = FloatingScale.ScaleY = opening ? 1 : .985;
+            FloatingTranslate.Y = opening ? 0 : 8;
+            completed?.Invoke(); return;
+        }
+        motion.Completed += (_, _) =>
+        {
+            if (opening)
+            {
+                motion.Remove(this); floatingMotion = null;
+                FloatingLayer.Opacity = 1;
+                FloatingScale.ScaleX = FloatingScale.ScaleY = 1; FloatingTranslate.Y = 0;
+                floatingBlur.Radius = 12; PageContent.Effect = floatingBlur; PageContent.Opacity = .4;
+            }
+            completed?.Invoke();
+        };
+        motion.Begin(this, true);
+    }
+    private Task HideFloatingAsync()
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        AnimateFloating(false, () => { ClearFloating(); completion.TrySetResult(); });
+        return completion.Task;
+    }
+    private void ClearFloating()
+    {
+        floatingMotion?.Remove(this); floatingMotion = null;
+        FloatingLayer.Visibility = Visibility.Collapsed; FloatingContent.Content = null;
+        FloatingLayer.Opacity = 1;
+        FloatingScale.ScaleX = FloatingScale.ScaleY = 1; FloatingTranslate.Y = 0;
+        floatingBlur.Radius = 0;
+        PageContent.IsHitTestVisible = true;
+        PageContent.Effect = null; PageContent.Opacity = 1;
+    }
+    private async Task CloseFloatingAsync()
+    {
+        if (closingFloating || (!editorOpen && importConfirmation == null)) return;
+        closingFloating = true;
+        try
+        {
+            if (importConfirmation is { } confirmation)
+            {
+                await HideFloatingAsync(); importConfirmation = null;
+                confirmation.TrySetResult(false); return;
+            }
+            if (!await Vm.FlushChangesAsync()) return;
+            await HideFloatingAsync(); editorOpen = false; Vm.Selected = null;
+        }
+        finally { closingFloating = false; }
+    }
+    private async void FloatingBackgroundDown(object sender, MouseButtonEventArgs args)
+    {
+        if (ReferenceEquals(args.OriginalSource, sender)) await CloseFloatingAsync();
+    }
+    private Task<bool> ConfirmImportAsync()
+    {
+        var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        importConfirmation = completion;
+        ShowFloating(new ImportConfirmationPanel(async accepted =>
+        {
+            if (closingFloating) return;
+            closingFloating = true;
+            try
+            {
+                await HideFloatingAsync(); importConfirmation = null;
+                completion.TrySetResult(accepted);
+            }
+            finally { closingFloating = false; }
+        }));
+        return completion.Task;
+    }
+    public void Suspend() { timer.Stop(); finishPageTransition?.Invoke(); }
+    public void Resume() { timer.Start(); _ = Vm.RefreshAsync(); }
     private void DragStarting(object sender, MouseButtonEventArgs args)
     {
         dragRow = null;
@@ -274,53 +403,50 @@ public partial class MainPage : UserControl
         if (!Vm.IsReady) return;
         if (systemLoading) { systemRefreshPending |= refresh; return; }
         if (systemLoaded && !refresh) return;
-        systemLoading = true; foreach (var toggle in systemToggles) toggle.IsEnabled = false;
+        systemLoading = true;
+        if (!systemLoaded) foreach (var toggle in systemToggles) toggle.IsEnabled = false;
         await systemSaveGate.WaitAsync();
         try
         {
             var reply = await Vm.Pipe.RequestAsync("system.read"); Check(reply);
+            Array.Clear(systemAvailable);
             foreach (var item in reply["data"]!.AsArray())
             {
                 var id = item!["id"]!.GetValue<int>(); if (id < 0 || id >= SystemNames.Length) continue;
-                systemToggles[id].IsChecked = item["visible"]!.GetValue<bool>(); systemAvailable[id] = (item["instances"]?.GetValue<int>() ?? 0) > 0;
+                var exists = (item["instances"]?.GetValue<int>() ?? 0) > 0;
+                var savedHidden = item["savedHidden"]?.GetValue<bool>() ?? false;
+                if (!systemSaving[id]) systemToggles[id].IsChecked = exists ? item["visible"]!.GetValue<bool>() : !savedHidden;
+                systemAvailable[id] = exists || savedHidden;
             }
+            for (var id = 0; id < systemToggles.Length; id++)
+                if (!systemAvailable[id] && !systemSaving[id]) systemToggles[id].IsChecked = false;
             systemLoaded = true;
         }
         catch (Exception exception) { Vm.ReportError(exception); }
         finally
         {
             systemSaveGate.Release(); systemLoading = false;
-            for (var id = 0; id < systemToggles.Length; id++) systemToggles[id].IsEnabled = systemAvailable[id];
+            for (var id = 0; id < systemToggles.Length; id++)
+            {
+                systemToggles[id].IsEnabled = systemAvailable[id] && !systemSaving[id];
+                systemToggles[id].ToolTip = systemAvailable[id] ? null : "当前系统没有可单独控制的图标";
+            }
             if (systemRefreshPending) { systemRefreshPending = false; _ = LoadSystemAsync(true); }
         }
     }
     private async void SystemVisibilityClick(object sender, RoutedEventArgs args)
     {
-        if (sender is not ToggleButton { Tag: int id, IsEnabled: true } toggle || systemLoading) return;
-        var visible = toggle.IsChecked == true; toggle.IsEnabled = false; await systemSaveGate.WaitAsync();
+        if (sender is not ToggleButton { Tag: int id, IsEnabled: true } toggle) return;
+        var visible = toggle.IsChecked == true;
+        systemSaving[id] = true; toggle.IsEnabled = false; await systemSaveGate.WaitAsync();
         try
         {
-            var read = await Vm.Pipe.RequestAsync("settings.read"); Check(read);
-            var policies = (JsonArray?)read["data"]?["systemControls"]?.DeepClone() ?? new();
-            for (var index = policies.Count - 1; index >= 0; index--) if (policies[index]!["id"]!.GetValue<int>() == id) policies.RemoveAt(index);
-            policies.Add(new JsonObject { ["id"] = id, ["hidden"] = !visible });
-            Check(await Vm.Pipe.RequestAsync("system.apply", new() { ["controls"] = policies }));
+            Check(await Vm.Pipe.RequestAsync("system.set", new() { ["id"] = id, ["visible"] = visible }));
+            Vm.Error = "";
         }
         catch (Exception exception) { toggle.IsChecked = !visible; Vm.ReportError(exception); }
-        finally { systemSaveGate.Release(); toggle.IsEnabled = systemAvailable[id] && !systemLoading; }
-    }
-    private void OpenHotkeyKeyDown(object sender, KeyEventArgs args)
-    {
-        var code = HotkeyCode(args); if (code < 0) return;
-        args.Handled = true; Vm.Hotkeys["open"] = code; OpenHotkey.Text = TrayViewModel.DescribeHotkey(code); Vm.QueueMenuPreferences();
-    }
-    internal static int HotkeyCode(KeyEventArgs args)
-    {
-        var key = args.Key == Key.System ? args.SystemKey : args.Key;
-        if (key is Key.LeftCtrl or Key.RightCtrl or Key.LeftAlt or Key.RightAlt or Key.LeftShift or Key.RightShift or Key.LWin or Key.RWin) return -1;
-        if (key is Key.Back or Key.Delete) return 0;
-        var modifiers = (Keyboard.Modifiers.HasFlag(ModifierKeys.Control) ? 2 : 0) | (Keyboard.Modifiers.HasFlag(ModifierKeys.Alt) ? 1 : 0) | (Keyboard.Modifiers.HasFlag(ModifierKeys.Shift) ? 4 : 0) | (Keyboard.IsKeyDown(Key.LWin) || Keyboard.IsKeyDown(Key.RWin) ? 8 : 0);
-        return modifiers == 0 ? 0 : (modifiers << 16) | KeyInterop.VirtualKeyFromKey(key);
+        finally { systemSaveGate.Release(); systemSaving[id] = false; toggle.IsEnabled = systemAvailable[id]; }
+        await LoadSystemAsync(true);
     }
     private async void ExportClick(object sender, RoutedEventArgs args)
     {
@@ -352,11 +478,10 @@ public partial class MainPage : UserControl
             if (new FileInfo(picker.FileName).Length > 96 * 1024 * 1024) throw new IOException("配置文件过大");
             var bundle = JsonNode.Parse(await File.ReadAllTextAsync(picker.FileName))!.AsObject();
             if (bundle["schema"]?.GetValue<int>() != 1) throw new IOException("配置版本不兼容");
-            if (!DesktopDialog.Confirm("导入配置？", "将替换当前规则与偏好。原配置会自动保留为备份。", "导入")) return;
+            if (!await ConfirmImportAsync()) return;
             var settings = await BackupService.PrepareImportAsync(bundle);
             Check(await Vm.Pipe.RequestAsync("settings.import", new() { ["settings"] = settings }));
             await Vm.InitializeAsync(); systemLoaded = false; await LoadSystemAsync(true);
-            OpenHotkey.Text = TrayViewModel.DescribeHotkey(Vm.Hotkeys["open"]?.GetValue<int>() ?? 0);
         }
         catch (Exception exception) { Vm.ReportError(exception); }
     }

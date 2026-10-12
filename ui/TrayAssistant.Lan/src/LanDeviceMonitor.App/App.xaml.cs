@@ -183,6 +183,7 @@ public partial class App : System.Windows.Application
             }
 
             _mainWindow.RestoreFromTray();
+            _mainWindow.TrayPage.Resume();
 
             var wasTopmost = _mainWindow.Topmost;
             _mainWindow.Topmost = true;

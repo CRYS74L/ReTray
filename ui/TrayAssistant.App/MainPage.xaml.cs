@@ -32,7 +32,7 @@ public sealed partial class MainPage : Page
   }
   ClearSidePane(Nav);
  }
- private void Nav_SelectionChanged(NavigationView sender,NavigationViewSelectionChangedEventArgs e){if(IconList==null)return;var tag=(e.SelectedItem as NavigationViewItem)?.Tag?.ToString();UpdatePresentation();SettingsView.Visibility=tag=="settings"?Visibility.Visible:Visibility.Collapsed;DiagnosticsView.Visibility=tag=="diagnostics"?Visibility.Visible:Visibility.Collapsed;if(tag=="settings")_=LoadSystemAsync(true);}
+ private void Nav_SelectionChanged(NavigationView sender,NavigationViewSelectionChangedEventArgs e){if(IconList==null)return;var tag=(e.SelectedItem as NavigationViewItem)?.Tag?.ToString();UpdatePresentation();SettingsView.Visibility=tag=="settings"?Visibility.Visible:Visibility.Collapsed;if(tag=="settings")_=LoadSystemAsync(true);}
  private void UpdatePresentation(){if(IconList==null||LoadingList==null)return;bool icons=(Nav.SelectedItem as NavigationViewItem)?.Tag?.ToString()=="icons";IconList.Visibility=icons&&Vm.IsReady?Visibility.Visible:Visibility.Collapsed;LoadingList.Visibility=icons&&Vm.IsLoading?Visibility.Visible:Visibility.Collapsed;ErrorNotice.IsOpen=Vm.Error.Length>0;}
  private void IconList_DragItemsStarting(object sender,DragItemsStartingEventArgs e){Vm.IsDragging=true;}
  private async void IconList_DragItemsCompleted(ListViewBase sender,DragItemsCompletedEventArgs e){try{await Vm.PersistOrderAsync();}finally{Vm.IsDragging=false;await Vm.RefreshAsync();}}

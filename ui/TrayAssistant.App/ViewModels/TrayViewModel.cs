@@ -106,7 +106,6 @@ public partial class TrayViewModel : ObservableObject
 
 
     public JsonObject Hotkeys { get; private set; } = new();
-    [ObservableProperty] public partial string Diagnostics { get; set; } = "正在读取后台状态";
 
     public JsonObject Settings { get; private set; } = new();
     public event Action<int>? ThemeChanged;
@@ -171,8 +170,6 @@ public partial class TrayViewModel : ObservableObject
                 var matches=all.Values.Where(r=>r.Executable.Equals(Selected.Executable,StringComparison.OrdinalIgnoreCase)&&r.Rule["selector"]?["uid"]?.ToJsonString()==prior["selector"]?["uid"]?.ToJsonString()&&r.Rule["selector"]?["guid"]?.ToJsonString()==prior["selector"]?["guid"]?.ToJsonString()&&r.Rule["pid"]?.ToJsonString()==prior["pid"]?.ToJsonString()&&r.Rule["created"]?.ToJsonString()==prior["created"]?.ToJsonString()).ToList();
                 Selected=matches.Count==1?matches[0]:null;
             }
-                        Diagnostics = $"后台版本  {h["version"]}\n连接状态  {(h["connected"]!.GetValue<bool>() ? "原生桥接已连接" : "等待 Explorer / 安全模式")}\n累计源事件  {h["events"]}\n回调 p95  {h["callbackP95Micros"]} µs\n后台 PID  {h["pid"]}\n配置恢复  {h["recovered"]}";
-            Diagnostics += $"\n快捷键冲突  {h["hotkeyErrors"]}\n任务栏设置  {h["environment"]?["detail"]}";
             IsReady=true;IsLoading=false;if(connectionError){Error="";connectionError=false;}
         }
         catch (Exception ex) { IsReady=false;IsLoading=false;ReportError(ex,true); }
@@ -216,7 +213,7 @@ public partial class TrayViewModel : ObservableObject
         var info = new FileInfo(path); if (info.Length > 32 * 1024 * 1024) throw new IOException("图标资源不能超过 32 MB。");
         var bytes = await File.ReadAllBytesAsync(path); var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TrayIconAssistant", "Assets"); Directory.CreateDirectory(directory); var target = Path.Combine(directory, Convert.ToHexString(SHA256.HashData(bytes)) + Path.GetExtension(path).ToLowerInvariant()); if (!File.Exists(target)) await File.WriteAllBytesAsync(target, bytes); return target;
     }
-    [RelayCommand] private Task ChooseIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) Asset = path; });
+    [RelayCommand] private Task ChooseIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) { AssetIndex = 0; Asset = path; } });
     [RelayCommand] private void UseOriginalAsset() { Asset=""; AssetIndex=0; }
     [RelayCommand] private Task ChooseOwnIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) OwnAsset = path; });
 

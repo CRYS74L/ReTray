@@ -35,11 +35,16 @@
         <Style.Resources>
             <Style TargetType="TextBlock">
                 <Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
+                <Setter Property="FontFamily" Value="{Binding FontFamily, RelativeSource={RelativeSource AncestorType=controls:SegmentedControl}}"/>
+                <Setter Property="TextOptions.TextFormattingMode" Value="{Binding Path=(TextOptions.TextFormattingMode), RelativeSource={RelativeSource AncestorType=controls:SegmentedControl}}"/>
+                <Setter Property="TextOptions.TextRenderingMode" Value="{Binding Path=(TextOptions.TextRenderingMode), RelativeSource={RelativeSource AncestorType=controls:SegmentedControl}}"/>
+                <Setter Property="TextOptions.TextHintingMode" Value="{Binding Path=(TextOptions.TextHintingMode), RelativeSource={RelativeSource AncestorType=controls:SegmentedControl}}"/>
                 <Setter Property="FontSize" Value="{Binding FontSize, RelativeSource={RelativeSource AncestorType=controls:SegmentedControl}}"/>
                 <Setter Property="FontWeight" Value="{Binding FontWeight, RelativeSource={RelativeSource AncestorType=ListBoxItem}}"/>
             </Style>
         </Style.Resources>
         <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
+        <Setter Property="FontFamily" Value="{DynamicResource AppTextFont}"/>
         <Setter Property="FontSize" Value="13"/>
         <Setter Property="FontWeight" Value="Normal"/>
         <Setter Property="SelectionMode" Value="Single"/>
@@ -50,6 +55,8 @@
         <Setter Property="ItemContainerStyle">
             <Setter.Value>
                 <Style TargetType="controls:SegmentItem">
+                    <Setter Property="FontFamily" Value="{Binding FontFamily, RelativeSource={RelativeSource AncestorType=controls:SegmentedControl}}"/>
+                    <Setter Property="FontWeight" Value="Normal"/>
                     <Setter Property="HorizontalContentAlignment" Value="Center"/>
                     <Setter Property="VerticalContentAlignment" Value="Center"/>
                     <Setter Property="ActiveBrush" Value="{DynamicResource TextBrush}"/>

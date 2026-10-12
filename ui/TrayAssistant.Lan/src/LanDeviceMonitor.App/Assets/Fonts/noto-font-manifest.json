@@ -1,0 +1,164 @@
+{
+  "source": "C:\\Windows\\Fonts\\NotoSansSC-VF.ttf",
+  "sourceSha256": "763146584CF0710223441356B4395E279021B0806C196614377A7A0174AE074A",
+  "sourceFontVersion": "Version 2.04;241114210130;non-release",
+  "sourceAxes": {
+    "wght": {
+      "min": 100.0,
+      "default": 100.0,
+      "max": 900.0
+    }
+  },
+  "fontToolsVersion": "4.66.1",
+  "variablePath": "Variable/NotoSansSC-VF.ttf",
+  "variableCopiedWithoutChanges": true,
+  "noSubsetting": true,
+  "noSyntheticEmboldening": true,
+  "sample": "托盘图标助手永中设置显示隐藏恢复保存登录退出Aa0%",
+  "faces": [
+    {
+      "weight": 100,
+      "style": "Thin",
+      "family": "Noto Sans SC",
+      "path": "Static/NotoSansSC-Thin.ttf",
+      "sha256": "F42F64C550C69EB02F2CE16045BA9E0ABBB0A2D609C4DDFA9AC1E8C9103B75C4",
+      "bytes": 10594548,
+      "codePoints": 30890,
+      "glyphs": 31036,
+      "sampleMaximumOutlineDeltaFontUnits": 0.0,
+      "sourceAxisLocation": {
+        "wght": 100
+      },
+      "static": true,
+      "obsoleteVariationStatTableRemoved": true
+    },
+    {
+      "weight": 200,
+      "style": "ExtraLight",
+      "family": "Noto Sans SC",
+      "path": "Static/NotoSansSC-ExtraLight.ttf",
+      "sha256": "8765F424A7B4E2D32F97CEF8CA1E728102E04FB24E3C7BE39ED16BC716531650",
+      "bytes": 10599916,
+      "codePoints": 30890,
+      "glyphs": 31036,
+      "sampleMaximumOutlineDeltaFontUnits": 0.48126220703125,
+      "sourceAxisLocation": {
+        "wght": 200
+      },
+      "static": true,
+      "obsoleteVariationStatTableRemoved": true
+    },
+    {
+      "weight": 300,
+      "style": "Light",
+      "family": "Noto Sans SC",
+      "path": "Static/NotoSansSC-Light.ttf",
+      "sha256": "2296501DE7DA6419D0513BD4F863089D089A6313BD3C907A932C5E50AAA5674E",
+      "bytes": 10601416,
+      "codePoints": 30890,
+      "glyphs": 31036,
+      "sampleMaximumOutlineDeltaFontUnits": 0.4832763671875,
+      "sourceAxisLocation": {
+        "wght": 300
+      },
+      "static": true,
+      "obsoleteVariationStatTableRemoved": true
+    },
+    {
+      "weight": 400,
+      "style": "Regular",
+      "family": "Noto Sans SC",
+      "path": "Static/NotoSansSC-Regular.ttf",
+      "sha256": "CEA88F9DC607ABA4B2D3552D477F0C8591043B3AE231213FA96D2475B4E258C4",
+      "bytes": 10596412,
+      "codePoints": 30890,
+      "glyphs": 31036,
+      "sampleMaximumOutlineDeltaFontUnits": 0.499267578125,
+      "sourceAxisLocation": {
+        "wght": 400
+      },
+      "static": true,
+      "obsoleteVariationStatTableRemoved": true
+    },
+    {
+      "weight": 500,
+      "style": "Medium",
+      "family": "Noto Sans SC",
+      "path": "Static/NotoSansSC-Medium.ttf",
+      "sha256": "3F2AF85D4666AFE854A074CC891EBC20857158D80FAB70653FBF541A434486D6",
+      "bytes": 10589564,
+      "codePoints": 30890,
+      "glyphs": 31036,
+      "sampleMaximumOutlineDeltaFontUnits": 0.49517657305744933,
+      "sourceAxisLocation": {
+        "wght": 500
+      },
+      "static": true,
+      "obsoleteVariationStatTableRemoved": true
+    },
+    {
+      "weight": 600,
+      "style": "SemiBold",
+      "family": "Noto Sans SC",
+      "path": "Static/NotoSansSC-SemiBold.ttf",
+      "sha256": "F504DF32C353F0FAE5386FEF18329AF9EAF18B9B1FA4C258DFD8654E53015D05",
+      "bytes": 10586036,
+      "codePoints": 30890,
+      "glyphs": 31036,
+      "sampleMaximumOutlineDeltaFontUnits": 0.49932861328125,
+      "sourceAxisLocation": {
+        "wght": 600
+      },
+      "static": true,
+      "obsoleteVariationStatTableRemoved": true
+    },
+    {
+      "weight": 700,
+      "style": "Bold",
+      "family": "Noto Sans SC",
+      "path": "Static/NotoSansSC-Bold.ttf",
+      "sha256": "1F23B36E285D8A40721619126C7D6ACDDEBDADC2BECA6F002F4C01F6DD2E68C0",
+      "bytes": 10585924,
+      "codePoints": 30890,
+      "glyphs": 31036,
+      "sampleMaximumOutlineDeltaFontUnits": 0.499267578125,
+      "sourceAxisLocation": {
+        "wght": 700
+      },
+      "static": true,
+      "obsoleteVariationStatTableRemoved": true
+    },
+    {
+      "weight": 800,
+      "style": "ExtraBold",
+      "family": "Noto Sans SC",
+      "path": "Static/NotoSansSC-ExtraBold.ttf",
+      "sha256": "35266D1D1D3591F2BDF6E3155B4F2F12C4D080E37B70D28196A07B729FA85AE1",
+      "bytes": 10580896,
+      "codePoints": 30890,
+      "glyphs": 31036,
+      "sampleMaximumOutlineDeltaFontUnits": 0.499267578125,
+      "sourceAxisLocation": {
+        "wght": 800
+      },
+      "static": true,
+      "obsoleteVariationStatTableRemoved": true
+    },
+    {
+      "weight": 900,
+      "style": "Black",
+      "family": "Noto Sans SC",
+      "path": "Static/NotoSansSC-Black.ttf",
+      "sha256": "BB898163EBDE8D9A55E76E54C91D7258A3EEC27967C6B808F09F273786D3D467",
+      "bytes": 10577140,
+      "codePoints": 30890,
+      "glyphs": 31036,
+      "sampleMaximumOutlineDeltaFontUnits": 0.4285714285714448,
+      "sourceAxisLocation": {
+        "wght": 900
+      },
+      "static": true,
+      "obsoleteVariationStatTableRemoved": true
+    }
+  ]
+}

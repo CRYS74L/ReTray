@@ -2,7 +2,7 @@
 #include <objbase.h>
 #undef GetCurrentTime
 #include <algorithm>
-#include <unordered_map>
+#include <unordered_set>
 #include <winrt/windows.foundation.h>
 #include <winrt/windows.ui.xaml.data.h>
 #include <winrt/windows.ui.xaml.h>
@@ -18,6 +18,12 @@ struct Control {
     bool changed{};
 };
 std::vector<Control> controls;
+std::unordered_set<uint32_t> hiddenIds;
+void Hide(Control& c) {
+    c.changed = true;
+    if (c.element.Visibility() != Visibility::Collapsed)
+        c.element.Visibility(Visibility::Collapsed);
+}
 template <class T> bool Read(uint64_t p, T& v) {
     SIZE_T n{};
     return ValidReadRange(p, sizeof(T)) &&
@@ -160,6 +166,13 @@ bool ReadSystemControls(uint64_t base, const SymbolAdapter& adapter, BridgeState
         controls = std::move(discovered);
         state.systemCount = 0;
         for (auto& c : controls) {
+            if (hiddenIds.contains(c.id) && !c.changed)
+                try {
+                    Hide(c);
+                } catch (...) {
+                    // Discovery of another target must remain usable. This new object
+                    // has been attempted once; only an explicit Set retries its setter.
+                }
             auto row = std::find_if(state.systemControls, state.systemControls + state.systemCount,
                                     [&](const auto& r) { return r.id == c.id; });
             if (row == state.systemControls + state.systemCount) {
@@ -188,13 +201,14 @@ bool SetSystemControl(uint32_t id, int visibility) {
                 found = true;
                 if (visibility != 1)
                     Restore(c);
-                else {
-                    c.element.Visibility(visibility == 1 ? Visibility::Collapsed
-                                                         : Visibility::Visible);
-                    c.changed = true;
-                }
+                else
+                    Hide(c);
             }
-        return found;
+        if (visibility != 1)
+            hiddenIds.erase(id);
+        else if (found)
+            hiddenIds.insert(id);
+        return found || visibility != 1;
     } catch (...) {
         return false;
     }
@@ -207,5 +221,6 @@ void RestoreSystemControls(bool restore) {
             } catch (...) {
             }
     controls.clear();
+    hiddenIds.clear();
 }
 } // namespace tray

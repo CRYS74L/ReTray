@@ -78,6 +78,13 @@ BOOL WINAPI AgentTestTrackPopupMenu(HMENU menu, UINT flags, int, int, int, HWND,
     menuFlags = flags; menuDpi = GetThreadDpiAwarenessContext(); menuLabels.clear();
     for (int index = 0; index < GetMenuItemCount(menu); ++index) {
         wchar_t label[128]{}; GetMenuStringW(menu, index, label, std::size(label), MF_BYPOSITION);
+        if (!label[0]) {
+            MENUITEMINFOW item{}; item.cbSize = sizeof(item); item.fMask = MIIM_DATA;
+            GetMenuItemInfoW(menu, index, TRUE, &item);
+            auto name = reinterpret_cast<const MSAAMENUINFO*>(item.dwItemData);
+            if (name && name->dwMSAASignature == MSAA_MENU_SIG)
+                wcsncpy_s(label, std::size(label), name->pszWText, _TRUNCATE);
+        }
         menuLabels.emplace_back(label);
     }
     return menuSelection;
@@ -186,7 +193,12 @@ void ImmediateVisibility() {
 void UnrelatedSavesKeepRulesApplied() {
     ResetFixture(); CHECK(Call("settings.apply", {{"uiOpacity", 244}}).value("success", false));
     Refresh(); CHECK(IconCommands().empty());
-    CHECK(Call("system.apply", {{"controls", Json::array({{{"id", 0}, {"hidden", true}}})}}).value("success", false));
+    bridge.shared->systemCount = 1;
+    bridge.shared->systemControls[0] = {};
+    bridge.shared->systemControls[0].id = 0;
+    bridge.shared->systemControls[0].instances = 1;
+    bridge.shared->systemControls[0].visible = true;
+    CHECK(Call("system.set", {{"id", 0}, {"visible", false}}).value("success", false));
     Refresh(); CHECK(IconCommands().empty());
     auto own = settings["ownIcon"]; own["visible"] = false;
     CHECK(Call("ownIcon.apply", own).value("success", false)); Refresh(); CHECK(IconCommands().empty());
@@ -249,7 +261,7 @@ void SaveFailureCannotChangeNativeIcon() {
     CHECK(Target().placement == 1); CHECK(Target().custom); CHECK(IconCommands().empty());
 }
 void FullRuleValidationStillRuns() {
-    ResetFixture(); settings["autoSort"] = "invalid"; auto before = settings;
+    ResetFixture(); settings["startup"] = "invalid"; auto before = settings;
     auto result = Call("icon.visibility", {{"key", TargetKey()}, {"visibility", 1}});
     CHECK(!result.value("success", true)); CHECK(settings == before); CHECK(IconCommands().empty());
 }

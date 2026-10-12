@@ -19,19 +19,19 @@ Json RuleJson(const IconRule& r) {
               {"ownerPid", r.selector.ownerPid},
               {"ownerCreatedAt", r.selector.ownerCreatedAt}}},
             {"visibility", r.visibility},
-            {"location", r.location},
-            {"order", r.order},
+            {"location", -1},
+            {"order", -1},
             {"asset", Utf8(r.asset)},
             {"tip", Utf8(r.tip)},
             {"enabled", r.enabled},
-            {"menuVisible", r.menuVisible},
-            {"alwaysShow", r.alwaysShow},
-            {"inactiveSeconds", r.inactiveSeconds},
-            {"unusedDays", r.unusedDays},
-            {"hotkey", r.hotkey},
-            {"hotkeyAction", r.hotkeyAction},
-            {"newState", r.newState},
-            {"swapButtons", r.swapButtons},
+            {"menuVisible", true},
+            {"alwaysShow", false},
+            {"inactiveSeconds", 0},
+            {"unusedDays", 0},
+            {"hotkey", 0},
+            {"hotkeyAction", 0},
+            {"newState", -1},
+            {"swapButtons", false},
             {"baselineFingerprint", r.baselineFingerprint},
             {"baselineWidth", r.baselineWidth},
             {"baselineHeight", r.baselineHeight},
@@ -53,31 +53,22 @@ IconRule ParseRule(const Json& j) {
             &r.selector.guid)))
         throw std::runtime_error("Invalid rule GUID");
     r.visibility = j.value("visibility", -1);
-    r.order = j.value("order", -1);
     r.asset = Wide(j.value("asset", std::string{}));
     r.tip = Wide(j.value("tip", std::string{}));
     r.enabled = j.value("enabled", true);
-    r.menuVisible = j.value("menuVisible", true);
-    r.alwaysShow = j.value("alwaysShow", false);
-    r.inactiveSeconds = j.value("inactiveSeconds", 0u);
-    r.unusedDays = j.value("unusedDays", 0u);
-    r.hotkey = j.value("hotkey", 0u);
-    r.hotkeyAction = j.value("hotkeyAction", 1u);
-    r.newState = j.value("newState", -1);
-    r.swapButtons = j.value("swapButtons", false);
+    // The removed advanced controls remain readable in schema 1, but cannot activate
+    // behavior through an older settings file or an imported rule.
+    r.hotkeyAction = 0;
     r.baselineFingerprint = j.value("baselineFingerprint", uint64_t{});
     r.baselineWidth = j.value("baselineWidth", 0u);
     r.baselineHeight = j.value("baselineHeight", 0u);
     r.assetIndex = j.value("assetIndex", 0u);
     if (r.selector.executable.empty() || r.selector.executable.size() > 32767 ||
         r.tip.size() > 127 || r.visibility < -1 || r.visibility > 1 ||
-        r.order < -1 || r.order >= 256 || r.inactiveSeconds > 86400 ||
-        r.unusedDays > 3650 || r.selector.tipMode > 3 || r.selector.tipPattern.size() > 127 ||
+        r.selector.tipMode > 3 || r.selector.tipPattern.size() > 127 ||
         r.selector.windowClass.size() > 255 ||
         (bool(r.selector.ownerPid) != bool(r.selector.ownerCreatedAt)) || r.assetIndex > 10000 ||
-        r.baselineWidth > 2048 || r.baselineHeight > 2048 || r.hotkeyAction > 3 ||
-        r.newState < -1 || r.newState > 1 ||
-        (r.hotkey && (!(r.hotkey >> 16) || (r.hotkey >> 16) > 15 || (r.hotkey & 0xffff) > 255)))
+        r.baselineWidth > 2048 || r.baselineHeight > 2048)
         throw std::runtime_error("Rule values out of bounds");
     return r;
 }
@@ -100,8 +91,8 @@ Json DefaultSettings() {
               {"action", "menu"}}},
             {"hotkeys",
              {
-                 {"open", (MOD_CONTROL | MOD_ALT) << 16 | 'T'},
-                 {"menu", (MOD_WIN | MOD_ALT) << 16 | 'T'},
+                 {"open", 0},
+                 {"menu", 0},
              }},
             {"autoSort", false},
             {"reviewIntervalSeconds", 0},
@@ -273,31 +264,42 @@ bool SaveSettings(const std::filesystem::path& path, const Json& settings) {
         return false;
     }
 }
-static Json UpgradeSettings(Json value) {
+Json NormalizeSettings(Json value) {
     value.erase("protection");
     value.erase("windowRules");
     value.erase("newIconLocation");
     auto result = DefaultSettings();
     result.update(value);
-    for (const char* key : {"ownIcon", "hotkeys", "taskbar"}) {
+    for (const char* key : {"ownIcon"}) {
         auto merged = DefaultSettings().at(key);
         if (value.contains(key))
             merged.update(value.at(key));
         result[key] = merged;
     }
+    result["hotkeys"] = {{"open", 0}, {"menu", 0}};
+    result["taskbar"] = {{"opacity", 255}, {"hideStart", false}};
+    result["autoSort"] = result["uiTopmost"] = false;
+    result["uiOpacity"] = 255;
+    result["reviewIntervalSeconds"] = 0;
+    for (auto& rule : result["rules"])
+        if (rule.is_object())
+            rule.update({{"location", -1}, {"order", -1}, {"menuVisible", true},
+                         {"alwaysShow", false}, {"inactiveSeconds", 0}, {"unusedDays", 0},
+                         {"hotkey", 0}, {"hotkeyAction", 0}, {"newState", -1},
+                         {"swapButtons", false}});
     return result;
 }
 Json LoadSettings(const std::filesystem::path& path, bool& recovered) {
     recovered = false;
     try {
-        return UpgradeSettings(ReadFile(path));
+        return NormalizeSettings(ReadFile(path));
     } catch (...) {
         auto backup = path;
         backup += L".bak";
         try {
             auto j = ReadFile(backup);
             recovered = true;
-            return UpgradeSettings(j);
+            return NormalizeSettings(j);
         } catch (...) {
             recovered = std::filesystem::exists(path);
             return DefaultSettings();

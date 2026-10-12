@@ -8,7 +8,7 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Controls/AppleControls.xaml"/>
             </ResourceDictionary.MergedDictionaries>
-            <FontFamily x:Key="AppTextFont">pack://application:,,,/TrayAssistant.App;component/Assets/Fonts/#Microsoft YaHei UI</FontFamily>
+            <FontFamily x:Key="AppTextFont">pack://application:,,,/TrayAssistant.App;component/Assets/Fonts/WpfStatic/#Noto Sans SC</FontFamily>
             <FontFamily x:Key="AppIconFont">pack://application:,,,/TrayAssistant.App;component/Assets/Fonts/#Segoe Fluent Icons</FontFamily>
             <Color x:Key="SegmentInactiveTextColor">#71717A</Color>
             <SolidColorBrush x:Key="SegmentInactiveTextBrush" Color="{DynamicResource SegmentInactiveTextColor}"/>
@@ -28,6 +28,7 @@
             <Color x:Key="MicaPanelColor">#0CFFFFFF</Color>
             <Color x:Key="MicaCardColor">#70FFFFFF</Color>
             <Color x:Key="MicaStrongColor">#88FFFFFF</Color>
+            <Color x:Key="FloatingSurfaceColor">#E8FFFFFF</Color>
             <Color x:Key="MeshGatewayColor">#88FFFFFF</Color>
             <SolidColorBrush x:Key="MeshGatewayBrush" Color="{DynamicResource MeshGatewayColor}"/>
             <Color x:Key="SurfaceColor">#70FFFFFF</Color>
@@ -110,6 +111,7 @@
             <SolidColorBrush x:Key="MicaPanelBrush" Color="{StaticResource MicaPanelColor}"/>
             <SolidColorBrush x:Key="MicaCardBrush" Color="{StaticResource MicaCardColor}"/>
             <SolidColorBrush x:Key="MicaStrongBrush" Color="{StaticResource MicaStrongColor}"/>
+            <SolidColorBrush x:Key="FloatingSurfaceBrush" Color="{DynamicResource FloatingSurfaceColor}"/>
             <SolidColorBrush x:Key="SurfaceBrush" Color="{StaticResource SurfaceColor}"/>
             <SolidColorBrush x:Key="SurfaceStrongBrush" Color="{StaticResource SurfaceStrongColor}"/>
             <SolidColorBrush x:Key="WindowBrush" Color="{StaticResource WindowColor}"/>
@@ -174,8 +176,8 @@
                 <Setter Property="Foreground" Value="{DynamicResource TextBrush}"/>
                 <Setter Property="Background" Value="Transparent"/>
                 <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
-                <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-                <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+                <Setter Property="TextOptions.TextRenderingMode" Value="Auto"/>
+                <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
             </Style>
 
             <Style x:Key="BodyTextStyle" TargetType="TextBlock">
@@ -184,8 +186,8 @@
                 <Setter Property="FontSize" Value="14"/>
                 <Setter Property="FontWeight" Value="Normal"/>
                 <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
-                <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-                <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+                <Setter Property="TextOptions.TextRenderingMode" Value="Auto"/>
+                <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
             </Style>
             <Style TargetType="TextBlock" BasedOn="{StaticResource BodyTextStyle}"/>
 
@@ -332,14 +334,15 @@
                      live inside opacity masks and fractional-DPI animations, where
                      Display/Fixed grid fitting makes the outline visibly uneven. -->
                 <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
-                <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-                <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+                <Setter Property="TextOptions.TextRenderingMode" Value="Auto"/>
+                <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
             </Style>
             <CornerRadius x:Key="CardCornerRadius">24</CornerRadius>
             <Style TargetType="TextBox">
+                <Setter Property="CaretBrush" Value="{DynamicResource TextBrush}"/>
                 <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
-                <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-                <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+                <Setter Property="TextOptions.TextRenderingMode" Value="Auto"/>
+                <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
 
                 <Setter Property="controls:StudioControlMotion.Enabled" Value="True"/>
                 <Setter Property="FontFamily" Value="{StaticResource AppTextFont}"/><Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="Normal"/>
@@ -355,8 +358,8 @@
             </Style>
             <Style TargetType="PasswordBox">
                 <Setter Property="TextOptions.TextFormattingMode" Value="Ideal"/>
-                <Setter Property="TextOptions.TextRenderingMode" Value="Grayscale"/>
-                <Setter Property="TextOptions.TextHintingMode" Value="Animated"/>
+                <Setter Property="TextOptions.TextRenderingMode" Value="Auto"/>
+                <Setter Property="TextOptions.TextHintingMode" Value="Auto"/>
 
                 <Setter Property="controls:StudioControlMotion.Enabled" Value="True"/>
                 <Setter Property="FontFamily" Value="{StaticResource AppTextFont}"/><Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="Normal"/>
@@ -390,9 +393,14 @@
                         </ControlTemplate></ToggleButton.Template>
                     </ToggleButton>
                     <controls:AnimatedSelectPopup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Custom" PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}" AllowsTransparency="True" Focusable="False" PopupAnimation="None">
-                        <controls:RoundedCardBorder MaxHeight="{TemplateBinding MaxDropDownHeight}" Background="{DynamicResource StudioSurfaceBrush}" BorderBrush="{DynamicResource InputBorderBrush}" BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}" Padding="8" Margin="12,6,12,22">
-                            <Border.Effect><DropShadowEffect BlurRadius="22" ShadowDepth="6" Direction="270" Opacity="0.07" Color="Black"/></Border.Effect>
-                            <ScrollViewer Style="{DynamicResource WindowsSettingsScrollViewerStyle}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" PreviewMouseWheel="ComboBoxDropDown_PreviewMouseWheel" CanContentScroll="False"><ItemsPresenter/></ScrollViewer>
+                        <controls:RoundedCardBorder MaxHeight="{TemplateBinding MaxDropDownHeight}" BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}" Padding="8" Margin="12,6,12,22">
+                            <Grid>
+                                <controls:RoundedCardBorder Margin="-9" Background="{DynamicResource StudioSurfaceBrush}" CornerRadius="{StaticResource CardCornerRadius}" IsHitTestVisible="False">
+                                    <Border.Effect><DropShadowEffect BlurRadius="22" ShadowDepth="6" Direction="270" Opacity="0.07" Color="Black"/></Border.Effect>
+                                </controls:RoundedCardBorder>
+                                <controls:RoundedCardBorder Margin="-9" Background="{DynamicResource StudioSurfaceBrush}" BorderBrush="{DynamicResource InputBorderBrush}" BorderThickness="1" CornerRadius="{StaticResource CardCornerRadius}" IsHitTestVisible="False" />
+                                <ScrollViewer Style="{DynamicResource WindowsSettingsScrollViewerStyle}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" PreviewMouseWheel="ComboBoxDropDown_PreviewMouseWheel" CanContentScroll="False"><ItemsPresenter/></ScrollViewer>
+                            </Grid>
                         </controls:RoundedCardBorder>
                     </controls:AnimatedSelectPopup>
                 </Grid></ControlTemplate></Setter.Value></Setter>
@@ -690,7 +698,7 @@
                             <Grid Background="{TemplateBinding Background}">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="14"/>
                                 </Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="*"/>
@@ -709,8 +717,11 @@
                                 <ScrollBar x:Name="PART_VerticalScrollBar"
                                            Grid.Row="0"
                                            Grid.Column="1"
+                                           Width="10"
+                                           MinWidth="0"
+                                           HorizontalAlignment="Center"
                                            Orientation="Vertical"
-                                           Margin="0,14,4,14"
+                                           Margin="0,14,0,14"
                                            Style="{StaticResource WindowsSettingsScrollBarStyle}"
                                            Maximum="{TemplateBinding ScrollableHeight}"
                                            ViewportSize="{TemplateBinding ViewportHeight}"

@@ -39,8 +39,9 @@ internal sealed class RowDragPreview : Adorner
     protected override void OnRender(DrawingContext drawing)
     {
         var bounds = new Rect(position, rowSize);
-        drawing.DrawRectangle((Brush)FindResource("StudioSurfaceBrush"), null, bounds);
+        drawing.PushOpacity(.82);
         drawing.DrawImage(image, bounds);
+        drawing.Pop();
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -56,8 +56,27 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(PersistentKey(parsed.selector) == PersistentKey(rule.selector));
         CHECK(parsed.visibility == 1);
         CHECK(parsed.asset == rule.asset);
+        auto legacy = DefaultSettings();
+        legacy["rules"] = {RuleJson(rule)};
+        legacy["rules"][0].update({{"swapButtons", true}, {"alwaysShow", true},
+                                    {"inactiveSeconds", 10}, {"unusedDays", 2},
+                                    {"hotkey", (MOD_ALT << 16) | 'A'}, {"assetIndex", 7}});
+        legacy["hotkeys"] = {{"open", (MOD_ALT << 16) | 'A'}, {"menu", (MOD_ALT << 16) | 'M'}};
+        legacy["taskbar"] = {{"opacity", 88}, {"hideStart", true}};
+        legacy["uiOpacity"] = 77; legacy["uiTopmost"] = true; legacy["autoSort"] = true;
+        legacy["iconOrder"] = {"custom", "@assistant"};
+        CHECK(SaveDataJson(path, legacy));
+        read = LoadSettings(path, recovered); CHECK(!recovered);
+        CHECK(read["hotkeys"]["open"] == 0 && read["hotkeys"]["menu"] == 0);
+        CHECK(read["taskbar"]["opacity"] == 255 && read["taskbar"]["hideStart"] == false);
+        CHECK(read["uiOpacity"] == 255 && read["uiTopmost"] == false && read["autoSort"] == false);
+        CHECK(read["iconOrder"] == Json::array({"custom", "@assistant"}));
+        parsed = ParseRule(read["rules"][0]);
+        CHECK(parsed.visibility == 1 && parsed.asset == L"example.ico" && parsed.assetIndex == 7);
+        CHECK(!parsed.swapButtons && !parsed.alwaysShow && parsed.hotkey == 0);
+        CHECK(parsed.inactiveSeconds == 0 && parsed.unusedDays == 0);
         printf("PASS defaults, atomic settings, corruption backup recovery, invalid schema "
-               "rejection, lossless rule identity roundtrip\n");
+               "rejection, lossless rule identity roundtrip, legacy policy neutralization\n");
         return 0;
     } catch (const std::exception& e) {
         fprintf(stderr, "FAIL settings: %s\n", e.what());

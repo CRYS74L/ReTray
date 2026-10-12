@@ -211,15 +211,32 @@ void RegisterRequestedHotkeys() {
 }
 void OpenUI() {
     auto name = Wide(settings.value("uiActivation", std::string{}));
-    if (name.empty())
-        return;
     IApplicationActivationManager* manager{};
-    if (SUCCEEDED(CoCreateInstance(CLSID_ApplicationActivationManager, nullptr, CLSCTX_LOCAL_SERVER,
+    if (!name.empty() && SUCCEEDED(CoCreateInstance(CLSID_ApplicationActivationManager, nullptr, CLSCTX_LOCAL_SERVER,
                                    IID_IApplicationActivationManager,
                                    reinterpret_cast<void**>(&manager)))) {
         DWORD pid{};
-        manager->ActivateApplication(name.c_str(), nullptr, AO_NONE, &pid);
+        auto result = manager->ActivateApplication(name.c_str(), nullptr, AO_NONE, &pid);
         manager->Release();
+        if (SUCCEEDED(result))
+            return;
+    }
+    // The UI is also usable without package registration. Derive its executable
+    // from this installation rather than accepting a command from configuration.
+    std::wstring module(32768, L'\0');
+    auto length = GetModuleFileNameW(nullptr, module.data(), static_cast<DWORD>(module.size()));
+    if (!length || length >= module.size())
+        return;
+    module.resize(length);
+    auto executable = std::filesystem::path(module).parent_path() / L"TrayAssistant.App.exe";
+    std::wstring command = L"\"" + executable.wstring() + L"\"";
+    STARTUPINFOW startup{};
+    startup.cb = sizeof(startup);
+    PROCESS_INFORMATION process{};
+    if (CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr,
+                       executable.parent_path().c_str(), &startup, &process)) {
+        CloseHandle(process.hThread);
+        CloseHandle(process.hProcess);
     }
 }
 bool SetOwnIcon(bool reloadImage = true) {

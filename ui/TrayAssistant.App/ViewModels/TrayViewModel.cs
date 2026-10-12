@@ -1,6 +1,13 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+#if TRAY_WPF
+using Microsoft.Win32;
+using System.Windows.Input;
+using WriteableBitmap = System.Windows.Media.Imaging.WriteableBitmap;
+#else
 using Microsoft.Windows.Storage.Pickers;
+using WriteableBitmap = Microsoft.UI.Xaml.Media.Imaging.WriteableBitmap;
+#endif
 using System.Collections.ObjectModel;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
@@ -50,7 +57,7 @@ public partial class TrayViewModel : ObservableObject
     [ObservableProperty] public partial bool IsReady { get; set; }
 
     [ObservableProperty] public partial string Asset { get; set; } = "";
-    [ObservableProperty] public partial Microsoft.UI.Xaml.Media.Imaging.WriteableBitmap? AssetPreview { get; set; }
+    [ObservableProperty] public partial WriteableBitmap? AssetPreview { get; set; }
     [ObservableProperty] public partial string AssetSummary { get; set; } = "";
     partial void OnAssetChanged(string value) => _ = PreviewAssetAsync();
     partial void OnAssetIndexChanged(double value) => _ = PreviewAssetAsync();
@@ -134,7 +141,11 @@ public partial class TrayViewModel : ObservableObject
             ThemeIndex = Settings["theme"]!.GetValue<string>() switch { "light" => 1, "dark" => 2, _ => 0 }; ThemeChanged?.Invoke(ThemeIndex);
             LanguageIndex=Settings["language"]?.GetValue<string>()=="en"?1:0;
             TaskbarOpacity=Settings["taskbar"]?["opacity"]?.GetValue<int>()??255;HideStart=Settings["taskbar"]?["hideStart"]?.GetValue<bool>()??false;UiTopmost=Settings["uiTopmost"]?.GetValue<bool>()??false;UiOpacity=Settings["uiOpacity"]?.GetValue<int>()??255;WindowStyleChanged?.Invoke(UiTopmost,(byte)UiOpacity);
+#if TRAY_WPF
+            var aumid = App.UiActivationId;
+#else
             var aumid = global::Windows.ApplicationModel.Package.Current.Id.FamilyName + "!App";
+#endif
             await Call("settings.apply", new() { ["uiActivation"] = aumid });
             await Call("ui.attach", new() { ["hwnd"] = (long)App.WindowHandle });
             await RefreshAsync();initialized=true;
@@ -186,9 +197,24 @@ public partial class TrayViewModel : ObservableObject
     [RelayCommand] private async Task ReconnectAsync(){Pipe.AllowStart();if(!await FlushChangesAsync())return;IsReady=false;IsLoading=true;Error="";await InitializeAsync();}
     private static async Task<string?> ChooseAssetAsync()
     {
+#if TRAY_WPF
+        var picker = new OpenFileDialog
+        {
+            Title = Localization.Text("选择图标…"),
+            Filter = Localization.English ? "Icon resources|*.ico;*.png;*.bmp;*.jpg;*.exe;*.dll" : "图标资源|*.ico;*.png;*.bmp;*.jpg;*.exe;*.dll",
+            CheckFileExists = true,
+            Multiselect = false
+        };
+        var owner = System.Windows.Application.Current?.MainWindow;
+        if ((owner == null ? picker.ShowDialog() : picker.ShowDialog(owner)) != true) return null;
+        var path = picker.FileName;
+#else
         var picker = new FileOpenPicker(App.Window.AppWindow.Id); foreach (var ext in new[] { ".ico", ".png", ".bmp", ".jpg", ".exe", ".dll" }) picker.FileTypeFilter.Add(ext);
-        var file = await picker.PickSingleFileAsync(); if (file == null) return null; var info = new FileInfo(file.Path); if (info.Length > 32 * 1024 * 1024) throw new IOException("图标资源不能超过 32 MB。");
-        var bytes = await File.ReadAllBytesAsync(file.Path); var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TrayIconAssistant", "Assets"); Directory.CreateDirectory(directory); var target = Path.Combine(directory, Convert.ToHexString(SHA256.HashData(bytes)) + Path.GetExtension(file.Path).ToLowerInvariant()); if (!File.Exists(target)) await File.WriteAllBytesAsync(target, bytes); return target;
+        var file = await picker.PickSingleFileAsync(); if (file == null) return null;
+        var path = file.Path;
+#endif
+        var info = new FileInfo(path); if (info.Length > 32 * 1024 * 1024) throw new IOException("图标资源不能超过 32 MB。");
+        var bytes = await File.ReadAllBytesAsync(path); var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TrayIconAssistant", "Assets"); Directory.CreateDirectory(directory); var target = Path.Combine(directory, Convert.ToHexString(SHA256.HashData(bytes)) + Path.GetExtension(path).ToLowerInvariant()); if (!File.Exists(target)) await File.WriteAllBytesAsync(target, bytes); return target;
     }
     [RelayCommand] private Task ChooseIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) Asset = path; });
     [RelayCommand] private void UseOriginalAsset() { Asset=""; AssetIndex=0; }
@@ -201,7 +227,17 @@ public partial class TrayViewModel : ObservableObject
 
 
     public async Task PersistOrderAsync(){var ordered=Icons.Select(row=>row.StableKey).ToList();if(ordered.SequenceEqual(iconOrder))return;try{var keys=new JsonArray();foreach(var key in ordered)keys.Add(key);await Call("icons.reorder",new(){["keys"]=keys});iconOrder=ordered;AutoSort=false;}catch(Exception ex){ReportError(ex);SynchronizeList();}}
-    public static string DescribeHotkey(int code){if(code==0)return "未设置";var modifiers=code>>16;return ((modifiers&2)!=0?"Ctrl + ":"")+((modifiers&1)!=0?"Alt + ":"")+((modifiers&4)!=0?"Shift + ":"")+((modifiers&8)!=0?"Win + ":"")+(global::Windows.System.VirtualKey)(code&65535);}
+    public static string DescribeHotkey(int code)
+    {
+        if(code==0)return "未设置";
+        var modifiers=code>>16;
+#if TRAY_WPF
+        var key = KeyInterop.KeyFromVirtualKey(code & 65535).ToString();
+#else
+        var key = ((global::Windows.System.VirtualKey)(code & 65535)).ToString();
+#endif
+        return ((modifiers&2)!=0?"Ctrl + ":"")+((modifiers&1)!=0?"Alt + ":"")+((modifiers&4)!=0?"Shift + ":"")+((modifiers&8)!=0?"Win + ":"")+key;
+    }
 
 
 

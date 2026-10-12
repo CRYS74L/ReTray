@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>TrayAssistant.App</AssemblyName>
+    <RootNamespace>TrayAssistant_App</RootNamespace>
+    <DefineConstants>$(DefineConstants);TRAY_WPF</DefineConstants>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>..\TrayAssistant.App\Assets\AppIcon.ico</ApplicationIcon>
+    <Platforms>x86;x64;ARM64</Platforms>
+    <RuntimeIdentifier Condition="'$(RuntimeIdentifier)' == ''">win-$([System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture.ToString().ToLowerInvariant())</RuntimeIdentifier>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\TrayAssistant.App\Models\IconRow.cs" Link="Models\IconRow.cs" />
+    <Compile Include="..\TrayAssistant.App\ViewModels\TrayViewModel.cs" Link="ViewModels\TrayViewModel.cs" />
+    <Compile Include="..\TrayAssistant.App\ViewModels\TrayViewModel.Autosave.cs" Link="ViewModels\TrayViewModel.Autosave.cs" />
+    <Compile Include="..\TrayAssistant.App\Services\PipeClient.cs" Link="Services\PipeClient.cs" />
+    <Compile Include="..\TrayAssistant.App\Services\BackupService.cs" Link="Services\BackupService.cs" />
+    <Compile Include="..\TrayAssistant.App\Services\Localization.cs" Link="Services\Localization.cs" />
+    <Content Include="..\TrayAssistant.App\Assets\**\*" Link="Assets\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\build\TrayAssistant.Agent.exe" Link="TrayAssistant.Agent.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\build\TrayAssistant.ShellBridge.dll" Link="TrayAssistant.ShellBridge.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="..\..\native\platform\supported-adapters.json" Link="supported-adapters.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

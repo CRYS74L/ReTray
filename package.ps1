@@ -10,15 +10,21 @@ if(!$SkipNative){foreach($target in @('Agent','Bridge')){& (Join-Path $productRo
 $layout=Join-Path $productRoot ('publish\'+$version+'\layout')
 $distribution=Join-Path $productRoot ('dist\'+$version)
 New-Item -ItemType Directory -Force -Path $distribution | Out-Null
-& $dotnet publish (Join-Path $productRoot 'ui\TrayAssistant.App\TrayAssistant.App.csproj') -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=false -p:PublishReadyToRun=false -p:AppxPackageSigningEnabled=false -p:GenerateAppxPackageOnBuild=false -o $layout -v:minimal
+& $dotnet publish (Join-Path $productRoot 'ui\TrayAssistant.Desktop\TrayAssistant.Desktop.csproj') -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:PublishTrimmed=false -p:PublishReadyToRun=false -o $layout -v:minimal
 if($LASTEXITCODE -ne 0){throw 'UI publish failed'}
 $manifest=Join-Path $layout 'AppxManifest.xml'
-if(!(Test-Path -LiteralPath $manifest)){
-    $generated=Join-Path $productRoot 'ui\TrayAssistant.App\bin\x64\Release\net10.0-windows10.0.26100.0\win-x64\AppxManifest.xml'
-    Copy-Item -LiteralPath $generated -Destination $manifest
-}
-$doc=[xml](Get-Content -LiteralPath $manifest -Raw)
-$doc.Package.Identity.Version=$version+'.0';$doc.Save($manifest)
+$doc=[xml](Get-Content -LiteralPath (Join-Path $productRoot 'ui\TrayAssistant.App\Package.appxmanifest') -Raw)
+$doc.Package.Identity.Version=$version+'.0'
+$doc.Package.Applications.Application.Executable='TrayAssistant.App.exe'
+$doc.Package.Applications.Application.EntryPoint='Windows.FullTrustApplication'
+$doc.Package.Resources.Resource.Language='zh-CN'
+# WPF has no generated PRI. Reference the real packaged artwork directly.
+$doc.Package.Properties.Logo='Assets\StoreLogo.png'
+$doc.Package.Applications.Application.VisualElements.Square150x150Logo='Assets\Square150x150Logo.scale-200.png'
+$doc.Package.Applications.Application.VisualElements.Square44x44Logo='Assets\Square44x44Logo.scale-200.png'
+$doc.Package.Applications.Application.VisualElements.DefaultTile.Wide310x150Logo='Assets\Wide310x150Logo.scale-200.png'
+$doc.Package.Applications.Application.VisualElements.SplashScreen.Image='Assets\SplashScreen.scale-200.png'
+$doc.Save($manifest)
 $signing=Join-Path $productRoot 'artifacts\signing'
 New-Item -ItemType Directory -Force -Path $signing | Out-Null
 $certificate=Join-Path $signing 'development.pfx'

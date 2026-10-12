@@ -1,6 +1,12 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+#if TRAY_WPF
+using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
+#else
 using Microsoft.UI.Xaml.Media.Imaging;
 using System.Runtime.InteropServices.WindowsRuntime;
+#endif
 using System.Text.Json.Nodes;
 
 namespace TrayAssistant_App.Models;
@@ -56,6 +62,13 @@ public sealed class IconRow : ObservableObject
         var bytes = Convert.FromBase64String(data); if (bytes.Length != width * height * 4) return null;
         // The native snapshot is straight BGRA; the XAML buffer uses premultiplied BGRA.
         for (var i = 0; i < bytes.Length; i += 4) { var a = bytes[i + 3]; for (var c = 0; c < 3; c++) bytes[i + c] = (byte)((bytes[i + c] * a + 127) / 255); }
+#if TRAY_WPF
+        var bitmap = new WriteableBitmap(width, height, 96, 96, PixelFormats.Pbgra32, null);
+        bitmap.WritePixels(new Int32Rect(0, 0, width, height), bytes, width * 4, 0);
+        bitmap.Freeze();
+        return bitmap;
+#else
         var bitmap = new WriteableBitmap(width, height); using var stream = bitmap.PixelBuffer.AsStream(); stream.Write(bytes); bitmap.Invalidate(); return bitmap;
+#endif
     }
 }

@@ -1,4 +1,8 @@
+#if TRAY_WPF
+using System.Windows.Threading;
+#else
 using Microsoft.UI.Xaml;
+#endif
 using System.ComponentModel;
 using System.Text.Json.Nodes;
 using TrayAssistant_App.Models;

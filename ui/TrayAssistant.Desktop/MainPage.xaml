@@ -1,0 +1,61 @@
+<UserControl x:Class="TrayAssistant_App.MainPage"
+ xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+ xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+ xmlns:controls="clr-namespace:TrayAssistant_App.Controls">
+ <UserControl.Resources>
+  <Style x:Key="Card" TargetType="Border"><Setter Property="Padding" Value="14"/><Setter Property="Margin" Value="0,0,0,12"/><Setter Property="CornerRadius" Value="10"/><Setter Property="BorderThickness" Value="1"/><Setter Property="BorderBrush" Value="{DynamicResource CardBorderBrush}"/><Setter Property="Background" Value="{DynamicResource CardBrush}"/></Style>
+  <Style x:Key="SettingToggle" TargetType="ToggleButton" BasedOn="{StaticResource TrayToggleSwitch}"><Setter Property="VerticalAlignment" Value="Center"/><Setter Property="HorizontalAlignment" Value="Right"/></Style>
+  <DataTemplate x:Key="IconRowTemplate">
+   <Grid Height="34" Background="Transparent">
+    <Grid.ColumnDefinitions><ColumnDefinition Width="26"/><ColumnDefinition/><ColumnDefinition Width="48"/><ColumnDefinition Width="28"/></Grid.ColumnDefinitions>
+    <controls:TrayIconButton Width="26" Height="28" Padding="3" BorderThickness="0" Background="Transparent" ImageSource="{Binding Image}" Tag="{Binding}" NativeAction="IconNativeAction" VerticalAlignment="Center" AutomationProperties.AutomationId="TrayNativeAction" AutomationProperties.Name="{Binding Name}"/>
+    <TextBlock Grid.Column="1" Margin="8,0,8,0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+    <ToggleButton Grid.Column="2" Margin="0,0,8,0" Style="{StaticResource SettingToggle}" IsChecked="{Binding Visible,Mode=OneWay}" IsEnabled="{Binding CanToggle}" Tag="{Binding}" Click="VisibilityClick" AutomationProperties.AutomationId="TrayVisibility" AutomationProperties.Name="{Binding Name}"/>
+    <Button Grid.Column="3" Width="28" Height="28" Padding="0" MinWidth="0" MinHeight="0" Tag="{Binding}" Click="IconSettingsClick" VerticalAlignment="Center" AutomationProperties.AutomationId="IconSettings" AutomationProperties.Name="图标设置"><TextBlock FontFamily="Segoe Fluent Icons" FontSize="12" Text="&#xE712;"/></Button>
+    <Border Grid.Column="1" Grid.ColumnSpan="3" Height="0.5" Margin="8,0,0,0" Background="{DynamicResource DividerBrush}" VerticalAlignment="Bottom" IsHitTestVisible="False"/>
+   </Grid>
+  </DataTemplate>
+ </UserControl.Resources>
+ <Grid>
+  <Grid.RowDefinitions><RowDefinition Height="48"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+  <StackPanel Orientation="Horizontal" Margin="8,0,0,0">
+   <ToggleButton x:Name="NavIcons" Content="托盘图标" Tag="icons" IsChecked="True" Style="{StaticResource TopTabButton}" Click="Navigate" AutomationProperties.AutomationId="NavIcons"/>
+   <ToggleButton x:Name="NavSettings" Content="设置" Tag="settings" Style="{StaticResource TopTabButton}" Click="Navigate" AutomationProperties.AutomationId="NavSettings"/>
+   <ToggleButton x:Name="NavDiagnostics" Content="状态" Tag="diagnostics" Style="{StaticResource TopTabButton}" Click="Navigate" AutomationProperties.AutomationId="NavDiagnostics"/>
+  </StackPanel>
+  <Grid Grid.Row="1" Margin="14,6,2,14">
+   <ListBox x:Name="IconList" ItemsSource="{Binding Icons}" ItemTemplate="{StaticResource IconRowTemplate}" Background="Transparent" BorderThickness="0" Padding="0" HorizontalContentAlignment="Stretch" AllowDrop="True" SelectionMode="Single" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel" PreviewMouseLeftButtonDown="DragStarting" PreviewMouseMove="DragMoving" DragOver="DragOverRow" Drop="DropRow" AutomationProperties.AutomationId="TrayIconList">
+    <ListBox.Template><ControlTemplate TargetType="ListBox"><ScrollViewer Focusable="False" Style="{StaticResource EdgeScrollViewerStyle}" CanContentScroll="True"><ItemsPresenter/></ScrollViewer></ControlTemplate></ListBox.Template>
+    <ListBox.ItemContainerStyle><Style TargetType="ListBoxItem"><Setter Property="Padding" Value="0"/><Setter Property="Margin" Value="0"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/><Setter Property="Focusable" Value="False"/><Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter HorizontalAlignment="Stretch"/></ControlTemplate></Setter.Value></Setter></Style></ListBox.ItemContainerStyle>
+   </ListBox>
+   <ScrollViewer x:Name="LoadingList" Style="{StaticResource EdgeScrollViewerStyle}" IsHitTestVisible="False" AutomationProperties.AutomationId="TrayLoadingPlaceholders"><StackPanel x:Name="LoadingRows"/></ScrollViewer>
+   <ScrollViewer x:Name="SettingsView" Visibility="Collapsed" Style="{StaticResource EdgeScrollViewerStyle}" AutomationProperties.AutomationId="SettingsScroll">
+    <StackPanel>
+     <Border Style="{StaticResource Card}"><StackPanel>
+      <Grid MinHeight="32" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="开机启动" VerticalAlignment="Center"/><ToggleButton Grid.Column="1" Style="{StaticResource SettingToggle}" IsChecked="{Binding Startup,Mode=TwoWay}" AutomationProperties.AutomationId="StartupToggle"/></Grid>
+      <controls:BelowComboBox x:Name="ThemeChoice" Header="主题" SelectedIndex="{Binding ThemeIndex,Mode=TwoWay}" Margin="0,0,0,14" AutomationProperties.AutomationId="ThemeChoice"/>
+      <controls:BelowComboBox x:Name="LanguageChoice" Header="语言" SelectedIndex="{Binding LanguageIndex,Mode=TwoWay}" AutomationProperties.AutomationId="LanguageChoice"/>
+     </StackPanel></Border>
+     <Border Style="{StaticResource Card}"><StackPanel>
+      <TextBlock Text="助手图标" FontWeight="SemiBold" Margin="0,0,0,14"/>
+      <Grid MinHeight="32" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="显示助手托盘图标" VerticalAlignment="Center"/><ToggleButton Grid.Column="1" Style="{StaticResource SettingToggle}" IsChecked="{Binding OwnVisible,Mode=TwoWay}" AutomationProperties.AutomationId="OwnIconToggle"/></Grid>
+      <TextBlock Text="图标提示" Margin="0,0,0,6"/><TextBox Text="{Binding OwnTip,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" MaxLength="127" AutomationProperties.AutomationId="OwnIconTip" Margin="0,0,0,14"/>
+      <Button Content="选择助手图标…" Command="{Binding ChooseOwnIconCommand}" HorizontalAlignment="Left" Margin="0,0,0,8"/><TextBlock Text="{Binding OwnAsset}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/>
+     </StackPanel></Border>
+     <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="系统图标" FontWeight="SemiBold" Margin="0,0,0,12"/><StackPanel x:Name="SystemList"/></StackPanel></Border>
+     <Border Style="{StaticResource Card}"><StackPanel>
+      <TextBlock Text="高级设置" FontWeight="SemiBold" Margin="0,0,0,14"/>
+      <Grid MinHeight="32" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="助手窗口置顶" VerticalAlignment="Center"/><ToggleButton Grid.Column="1" Style="{StaticResource SettingToggle}" IsChecked="{Binding UiTopmost,Mode=TwoWay}" AutomationProperties.AutomationId="TopmostToggle"/></Grid>
+      <Grid MinHeight="32" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="隐藏开始按钮" VerticalAlignment="Center"/><ToggleButton Grid.Column="1" Style="{StaticResource SettingToggle}" IsChecked="{Binding HideStart,Mode=TwoWay}" AutomationProperties.AutomationId="HideStartToggle"/></Grid>
+      <TextBlock Text="任务栏不透明度" Margin="0,0,0,6"/><Slider Minimum="40" Maximum="255" Value="{Binding TaskbarOpacity,Mode=TwoWay}" Margin="0,0,0,14" AutomationProperties.AutomationId="TaskbarOpacity"/>
+      <Grid MinHeight="32" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="自动按名称排序" VerticalAlignment="Center"/><ToggleButton Grid.Column="1" Style="{StaticResource SettingToggle}" IsChecked="{Binding AutoSort,Mode=TwoWay}" AutomationProperties.AutomationId="AutoSortToggle"/></Grid>
+      <TextBlock Text="打开助手快捷键" Margin="0,0,0,6"/><TextBox x:Name="OpenHotkey" IsReadOnly="True" PreviewKeyDown="OpenHotkeyKeyDown" Margin="0,0,0,14" AutomationProperties.AutomationId="OpenHotkey"/>
+      <WrapPanel><Button Content="导出配置…" Click="ExportClick" Margin="0,0,8,0"/><Button Content="导入配置…" Click="ImportClick"/></WrapPanel>
+     </StackPanel></Border>
+    </StackPanel>
+   </ScrollViewer>
+   <ScrollViewer x:Name="DiagnosticsView" Visibility="Collapsed" Style="{StaticResource EdgeScrollViewerStyle}"><StackPanel><TextBlock Text="{Binding Diagnostics}" FontSize="12" TextWrapping="Wrap" Margin="0,0,0,14"/><Button Content="退出软件" Click="ExitClick" HorizontalAlignment="Left" Margin="0,0,0,14" AutomationProperties.AutomationId="ExitAssistant"/><TextBlock Text="v0.1.13 · 开发中" FontSize="12" Foreground="{DynamicResource SecondaryTextBrush}"/></StackPanel></ScrollViewer>
+  </Grid>
+  <Border x:Name="ErrorNotice" Grid.Row="2" Visibility="Collapsed" Margin="14,0,14,12" Padding="12" CornerRadius="6" BorderThickness="1" BorderBrush="#60D55656" Background="#20D55656" AutomationProperties.AutomationId="OperationError"><StackPanel><TextBlock Text="{Binding Error}" TextWrapping="Wrap" Margin="0,0,0,8"/><Button Content="重试" Command="{Binding ReconnectCommand}" HorizontalAlignment="Left"/></StackPanel></Border>
+ </Grid>
+</UserControl>

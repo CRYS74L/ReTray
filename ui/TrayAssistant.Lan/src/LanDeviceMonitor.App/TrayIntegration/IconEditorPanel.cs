@@ -13,10 +13,12 @@ public sealed class IconEditorPanel : UserControl
     public IconEditorPanel(TrayViewModel vm, IconRow row, Func<Task> close)
     {
         DataContext = vm;
+        Focusable = true;
+        System.Windows.Input.KeyboardNavigation.SetIsTabStop(this, false);
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition());
-        var header = new Grid { Margin = new Thickness(0, 0, 0, 14) };
+        var header = new Grid { Margin = new Thickness(4, 4, 4, 14) };
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.Children.Add(new TextBlock { Text = row.Name, FontWeight = FontWeights.Medium,
@@ -65,13 +67,18 @@ public sealed class IconEditorPanel : UserControl
         FieldLabelAlignment.SetTarget(label, tip); content.Children.Add(label); content.Children.Add(tip);
         var error = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12, Margin = new Thickness(0, 10, 0, 0) };
         error.SetResourceReference(TextBlock.ForegroundProperty, "DangerTextBrush");
+        var errorStyle = new Style(typeof(TextBlock), TryFindResource(typeof(TextBlock)) as Style);
+        var emptyError = new DataTrigger { Binding = new Binding(nameof(vm.Error)), Value = "" };
+        emptyError.Setters.Add(new Setter(VisibilityProperty, Visibility.Collapsed));
+        errorStyle.Triggers.Add(emptyError); error.Style = errorStyle;
         error.SetBinding(TextBlock.TextProperty, nameof(vm.Error)); content.Children.Add(error);
         var scroll = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
-        scroll.SetResourceReference(StyleProperty, "FadingDetailScrollViewerStyle");
+        scroll.SetResourceReference(StyleProperty, "IconEditorScrollViewerStyle");
+        System.Windows.Automation.AutomationProperties.SetAutomationId(scroll, "IconEditorScroll");
         DeviceListViewport.SetEnabled(scroll, true); Grid.SetRow(scroll, 1); root.Children.Add(scroll);
         Content = root;
         System.Windows.Automation.AutomationProperties.SetAutomationId(this, "IconEditorPanel");
-        Loaded += (_, _) => { Localization.Apply(this); tip.Focus(); };
+        Loaded += (_, _) => { Localization.Apply(this); Focus(); };
     }
 }

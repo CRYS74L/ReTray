@@ -41,14 +41,47 @@
       <Setter Property="Template">
         <Setter.Value>
           <ControlTemplate TargetType="Button">
-            <Grid Background="Transparent">
-              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <Grid Background="Transparent" RenderTransformOrigin="0.5,0.5">
+              <Border x:Name="CloseHover" Background="{DynamicResource ControlHoverBrush}" CornerRadius="16" Opacity="0" IsHitTestVisible="False" />
+              <Border x:Name="ClosePressed" Background="{DynamicResource FooterPressedBrush}" CornerRadius="16" Opacity="0" IsHitTestVisible="False" />
+              <ContentPresenter x:Name="CloseGlyph" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                <ContentPresenter.RenderTransform><ScaleTransform /></ContentPresenter.RenderTransform>
+              </ContentPresenter>
             </Grid>
             <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Trigger.EnterActions><BeginStoryboard><Storyboard>
+                  <DoubleAnimation Storyboard.TargetName="CloseHover" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.1" />
+                </Storyboard></BeginStoryboard></Trigger.EnterActions>
+                <Trigger.ExitActions><BeginStoryboard><Storyboard>
+                  <DoubleAnimation Storyboard.TargetName="CloseHover" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.1" />
+                </Storyboard></BeginStoryboard></Trigger.ExitActions>
+              </Trigger>
               <Trigger Property="IsPressed" Value="True">
-                <Setter Property="Opacity" Value="0.65" />
+                <Setter TargetName="ClosePressed" Property="Opacity" Value="1" />
+                <Setter TargetName="CloseGlyph" Property="Opacity" Value="0.65" />
+                <Setter TargetName="CloseGlyph" Property="RenderTransform">
+                  <Setter.Value><ScaleTransform ScaleX="0.9" ScaleY="0.9" /></Setter.Value>
+                </Setter>
               </Trigger>
             </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="IconEditorScrollViewerStyle" TargetType="ScrollViewer" BasedOn="{StaticResource FadingDetailScrollViewerStyle}">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollViewer">
+            <Grid Background="{TemplateBinding Background}">
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+              <Grid x:Name="DetailViewportMask" Background="Transparent" ClipToBounds="True">
+                <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" Margin="{TemplateBinding Padding}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" CanContentScroll="{TemplateBinding CanContentScroll}" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+              </Grid>
+              <Grid Grid.Column="1" Width="14" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}">
+                <ScrollBar x:Name="PART_VerticalScrollBar" Width="10" MinWidth="0" HorizontalAlignment="Center" Orientation="Vertical" Margin="0,14,0,14" Style="{StaticResource WindowsSettingsScrollBarStyle}" Maximum="{TemplateBinding ScrollableHeight}" ViewportSize="{TemplateBinding ViewportHeight}" Value="{Binding VerticalOffset,RelativeSource={RelativeSource TemplatedParent},Mode=OneWay}" />
+              </Grid>
+            </Grid>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
@@ -203,7 +236,7 @@
         </controls:RoundedCardBorder>
       </Grid>
       <Grid x:Name="FloatingLayer" Panel.ZIndex="100" Background="#38000000" Visibility="Collapsed" MouseDown="FloatingBackgroundDown" KeyboardNavigation.TabNavigation="Cycle" AutomationProperties.AutomationId="FloatingLayer">
-        <controls:RoundedCardBorder x:Name="FloatingCard" Background="{DynamicResource FloatingSurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="24" Padding="20" Margin="16" MaxWidth="420" HorizontalAlignment="Stretch" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+        <controls:RoundedCardBorder x:Name="FloatingCard" Background="{DynamicResource FloatingSurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="24" Padding="20" Margin="16" MaxWidth="420" HorizontalAlignment="Stretch" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5" AutomationProperties.AutomationId="IconEditorCard">
           <controls:RoundedCardBorder.RenderTransform>
             <TransformGroup>
               <ScaleTransform x:Name="FloatingScale" />

@@ -1,4 +1,5 @@
 #include "native_snapshot.h"
+#include "process_identity.h"
 #include <algorithm>
 #include <cstring>
 #include <fstream>
@@ -206,19 +207,7 @@ static uint64_t ModuleBase(uint32_t pid) {
     return base;
 }
 static uint64_t OwnerInfo(uint32_t pid, std::wstring& executable) {
-    HANDLE p = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-    if (!p)
-        return 0;
-    std::vector<wchar_t> path(32768);
-    DWORD length = static_cast<DWORD>(path.size());
-    if (QueryFullProcessImageNameW(p, 0, path.data(), &length))
-        executable.assign(path.data(), length);
-    FILETIME created{}, exited{}, kernel{}, user{};
-    uint64_t generation{};
-    if (GetProcessTimes(p, &created, &exited, &kernel, &user))
-        generation = (static_cast<uint64_t>(created.dwHighDateTime) << 32) | created.dwLowDateTime;
-    CloseHandle(p);
-    return generation;
+    return ReadOwnerInfo(pid, executable);
 }
 SnapshotResult ReadSnapshot(const SymbolAdapter& a, uint32_t pid, uint64_t epoch,
                             bool includeCaches) {

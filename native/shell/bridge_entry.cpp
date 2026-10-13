@@ -1,5 +1,6 @@
 #include "../core/notify_patch.h"
 #include "../platform/software_bitmap.h"
+#include "../platform/process_identity.h"
 #include "shared.h"
 #include "system_controls.h"
 #include "behavior_hooks.h"
@@ -469,20 +470,8 @@ bool ReadAdded(const WireEvent& event, NativeIconRecord& record) {
         if (!GetWindowThreadProcessId(reinterpret_cast<HWND>(id.ownerHwnd), &pid) || !pid)
             return false;
         id.ownerPid = pid;
-        HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
-        if (!process)
-            return false;
-        FILETIME c{}, e{}, k{}, u{};
-        if (!GetProcessTimes(process, &c, &e, &k, &u)) {
-            CloseHandle(process);
-            return false;
-        }
-        id.ownerCreatedAt = (uint64_t(c.dwHighDateTime) << 32) | c.dwLowDateTime;
-        wchar_t path[32768]{};
-        DWORD length = 32768;
-        if (QueryFullProcessImageNameW(process, 0, path, &length))
-            record.executable.assign(path, length);
-        CloseHandle(process);
+        id.ownerCreatedAt = ReadOwnerInfo(pid, record.executable);
+        if (!id.ownerCreatedAt) return false;
         record.identity = id;
         record.recordAddress = address;
         if (!LocalRead(address + adapter.callback, record.callbackMessage) ||

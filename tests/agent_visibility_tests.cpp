@@ -1,5 +1,6 @@
 #include "../native/shell/bridge_client.h"
 #include "../native/agent/settings.h"
+#include "../native/agent/logon_startup.h"
 #include <algorithm>
 #include <cstdio>
 #include <memory>
@@ -11,6 +12,12 @@ BOOL WINAPI AgentTestCreateProcessW(LPCWSTR, LPWSTR, LPSECURITY_ATTRIBUTES, LPSE
                                   BOOL, DWORD, LPVOID, LPCWSTR, LPSTARTUPINFOW,
                                   LPPROCESS_INFORMATION);
 int WINAPI AgentTestMessageBoxW(HWND, LPCWSTR, LPCWSTR, UINT);
+DWORD AgentTestSetLogonStartupResult(const std::filesystem::path&, bool, const std::wstring&,
+                                    const std::wstring&);
+LSTATUS WINAPI AgentTestRegOpenKeyExW(HKEY, LPCWSTR, DWORD, REGSAM, PHKEY);
+LSTATUS WINAPI AgentTestRegQueryValueExW(HKEY, LPCWSTR, LPDWORD, LPDWORD, LPBYTE, LPDWORD);
+LSTATUS WINAPI AgentTestRegDeleteValueW(HKEY, LPCWSTR);
+LSTATUS WINAPI AgentTestRegCloseKey(HKEY);
 
 // Exercise real handlers, native menus, waits, and persistence. Replace only the external
 // Explorer bridge and desktop popup/process launch boundaries, keeping the tests isolated.
@@ -75,12 +82,44 @@ struct AgentTestBridgeClient {
 #define TrackPopupMenu AgentTestTrackPopupMenu
 #define CreateProcessW AgentTestCreateProcessW
 #define MessageBoxW AgentTestMessageBoxW
+#define SetLogonStartupResult AgentTestSetLogonStartupResult
+#define RegOpenKeyExW AgentTestRegOpenKeyExW
+#define RegQueryValueExW AgentTestRegQueryValueExW
+#define RegDeleteValueW AgentTestRegDeleteValueW
+#define RegCloseKey AgentTestRegCloseKey
 #include "../native/agent/main.cpp"
+#undef RegCloseKey
+#undef RegDeleteValueW
+#undef RegQueryValueExW
+#undef RegOpenKeyExW
+#undef SetLogonStartupResult
 #undef MessageBoxW
 #undef CreateProcessW
 #undef TrackPopupMenu
 #undef Shell_NotifyIconW
 #undef BridgeClient
+
+bool startupTaskEnabled{};
+unsigned startupTaskWrites{};
+LONG startupRunOpenError{ERROR_FILE_NOT_FOUND}, startupRunDeleteError{};
+std::wstring startupRunCommand;
+DWORD AgentTestSetLogonStartupResult(const std::filesystem::path&, bool enabled,
+                                    const std::wstring&, const std::wstring&) {
+    startupTaskEnabled = enabled; ++startupTaskWrites; return ERROR_SUCCESS;
+}
+LSTATUS WINAPI AgentTestRegOpenKeyExW(HKEY, LPCWSTR, DWORD, REGSAM, PHKEY key) {
+    if (!startupRunOpenError) *key = reinterpret_cast<HKEY>(uintptr_t(1));
+    return startupRunOpenError;
+}
+LSTATUS WINAPI AgentTestRegQueryValueExW(HKEY, LPCWSTR, LPDWORD, LPDWORD type, LPBYTE data,
+                                      LPDWORD bytes) {
+    auto size = static_cast<DWORD>((startupRunCommand.size() + 1) * sizeof(wchar_t));
+    if (size > *bytes) { *bytes = size; return ERROR_MORE_DATA; }
+    *type = REG_SZ; *bytes = size; memcpy(data, startupRunCommand.c_str(), size);
+    return ERROR_SUCCESS;
+}
+LSTATUS WINAPI AgentTestRegDeleteValueW(HKEY, LPCWSTR) { return startupRunDeleteError; }
+LSTATUS WINAPI AgentTestRegCloseKey(HKEY) { return ERROR_SUCCESS; }
 
 #define CHECK(x) do { if (!(x)) throw std::runtime_error(#x); } while (0)
 BridgeIcon removedOwnIcon;
@@ -182,6 +221,8 @@ void ResetFixture() {
     registrations.clear();
     environmentStamp.clear(); environmentEpoch = lastEnvironmentCheck = 0;
     activityHistory = Json::object(); activityDirty = false; ownAdded = false;
+    startupTaskEnabled = false; startupTaskWrites = 0;
+    startupRunOpenError = ERROR_FILE_NOT_FOUND; startupRunDeleteError = 0; startupRunCommand.clear();
     wchar_t systemPath[MAX_PATH]{}; GetSystemDirectoryW(systemPath, MAX_PATH);
     IconRule target, peer;
     target.selector = SelectorFor(Record(bridge.shared->icons[0])); target.visibility = 0;
@@ -590,11 +631,83 @@ void SourceHiddenSlotBecomesListedWhenApplicationShowsIt() {
     bridge.shared->snapshotSequence += 2; Refresh();
     CHECK(CatalogJson()["icons"].size() == 3);
 }
+void MacTrayUidChangeRestoresHiddenPolicy() {
+    ResetFixture();
+    auto peer = settings["rules"][1];
+    auto& row = bridge.shared->icons[0];
+    wcscpy_s(row.executable, L"C:\\Fonts\\MacType\\MacTray.exe");
+    wcscpy_s(row.windowClass, L"TPUtilWindow");
+    row.identity.uid = 42036080; row.custom = row.managed = false; row.placement = 1;
+    IconRule old; old.selector.executable = row.executable; old.selector.uid = 42888048;
+    old.visibility = 1;
+    auto first = RuleJson(old); old.selector.uid = 18967408;
+    settings["rules"] = {first, peer, RuleJson(old)};
+    CHECK(SaveSettings(settingsPath, settings));
+    bool recovered{}; settings = LoadSettings(settingsPath, recovered); CHECK(!recovered);
+    CHECK(settings["rules"].size() == 2); LoadRules();
+    bridge.shared->snapshotSequence += 2; Refresh(); CHECK(row.placement == 2);
+    auto key = IdentityKey(row.identity);
+    CHECK(Call("icon.visibility", {{"key", key}, {"visibility", 0}}).value("success", false));
+    CHECK(row.placement == 1); CHECK(settings["rules"].size() == 2);
+    CHECK(Call("icon.visibility", {{"key", key}, {"visibility", 1}}).value("success", false));
+    row.identity.uid = 23456789; row.identity.ownerPid += 50;
+    row.identity.ownerCreatedAt += 100; row.identity.ownerHwnd += 50;
+    row.registration += 10; row.placement = 1; row.managed = false;
+    bridge.shared->snapshotSequence += 2; Refresh(); CHECK(row.placement == 2);
+    CHECK(bridge.shared->icons[1].placement == 1);
+    CHECK(LoadSettings(settingsPath, recovered)["rules"] == settings["rules"]);
+}
+void UnresolvedIdentityCannotPoisonConfiguration() {
+    ResetFixture(); auto before = settings;
+    bridge.shared->icons[0].executable[0] = 0;
+    bridge.shared->snapshotSequence += 2;
+    Json reply;
+    try { reply = Call("icon.visibility", {{"key", TargetKey()}, {"visibility", 1}}); }
+    catch (...) { reply = {{"success", false}}; }
+    CHECK(!reply.value("success", true)); CHECK(settings == before);
+    auto peerKey = IdentityKey(bridge.shared->icons[1].identity);
+    CHECK(Call("icon.visibility", {{"key", peerKey}, {"visibility", 1}}).value("success", false));
+}
+void StartupRunPreflightFailureCannotChangeTask() {
+    for (bool previous : {false, true}) {
+        ResetFixture(); settings["startup"] = previous; auto before = settings;
+        startupTaskEnabled = previous; startupRunOpenError = ERROR_ACCESS_DENIED;
+        auto reply = Call("settings.apply", {{"startup", !previous}});
+        CHECK(!reply.value("success", true)); CHECK(settings == before);
+        CHECK(startupTaskEnabled == previous); CHECK(startupTaskWrites == 0);
+    }
+}
+void NormalizeFailureDoesNotCommitSettingsOrRevision() {
+    ResetFixture(); auto valid = settings; auto revision = configRevision;
+    bool recovered{}; auto disk = LoadSettings(settingsPath, recovered);
+    settings["rules"][0]["selector"]["executable"] = "";
+    auto invalid = settings;
+    CHECK(!Persist()); CHECK(settings == invalid); CHECK(configRevision == revision);
+    CHECK(LoadSettings(settingsPath, recovered) == disk);
+    settings = valid;
+    CHECK(Call("icon.visibility", {{"key", TargetKey()}, {"visibility", 1}}).value("success", false));
+}
+void StartupRunDeleteFailureRestoresTask() {
+    for (bool previous : {false, true}) {
+        ResetFixture(); settings["startup"] = previous; auto before = settings;
+        startupTaskEnabled = previous; startupRunOpenError = ERROR_SUCCESS;
+        startupRunDeleteError = ERROR_WRITE_FAULT;
+        startupRunCommand = L"\"" + (root / L"TrayAssistant.Agent.exe").wstring() + L"\" --background";
+        auto reply = Call("settings.apply", {{"startup", !previous}});
+        CHECK(!reply.value("success", true)); CHECK(settings == before);
+        CHECK(startupTaskEnabled == previous);
+    }
+}
 int wmain(int argc, wchar_t** argv) {
     if (argc != 2) return 2;
     fixtureRoot = std::filesystem::path(argv[1]); std::filesystem::create_directories(fixtureRoot);
     int failed{};
-    for (const auto& test : {std::pair{"generic blink preview retains visible image", BlinkPresentationKeepsVisibleFrameForAnyApplication},
+    for (const auto& test : {std::pair{"unresolved owner cannot poison later configuration saves", UnresolvedIdentityCannotPoisonConfiguration},
+                            std::pair{"normalization failure does not commit configuration or revision", NormalizeFailureDoesNotCommitSettingsOrRevision},
+                            std::pair{"Run registry preflight failure leaves task unchanged", StartupRunPreflightFailureCannotChangeTask},
+                            std::pair{"Run retirement failure restores startup task", StartupRunDeleteFailureRestoresTask},
+                            std::pair{"MacTray recreated UID inherits saved hiding without touching peer", MacTrayUidChangeRestoresHiddenPolicy},
+                            std::pair{"generic blink preview retains visible image", BlinkPresentationKeepsVisibleFrameForAnyApplication},
                             std::pair{"hidden native image bank does not create public rows", NativeHiddenImageSlotsDoNotBecomeCatalogRows},
                             std::pair{"assistant-hidden active icon stays controllable", AssistantHiddenActiveIconRemainsControllable},
                             std::pair{"source hidden registration appears on activation", SourceHiddenSlotBecomesListedWhenApplicationShowsIt},

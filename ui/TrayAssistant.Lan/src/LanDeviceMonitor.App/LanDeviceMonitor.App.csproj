@@ -38,6 +38,7 @@
     <Compile Include="$(TraySharedSourceDirectory)\Services\PipeClient.cs" Link="Services\PipeClient.cs" />
     <Compile Include="$(TraySharedSourceDirectory)\Services\Localization.cs" Link="Services\Localization.cs" />
     <Content Include="$(TrayProductDirectory)\build\TrayAssistant.Agent.exe" Link="TrayAssistant.Agent.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(TrayProductDirectory)\build\TrayAssistant.Startup.exe" Link="TrayAssistant.Startup.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(TrayProductDirectory)\build\TrayAssistant.ShellBridge.dll" Link="TrayAssistant.ShellBridge.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(TrayProductDirectory)\native\platform\supported-adapters.json" Link="supported-adapters.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

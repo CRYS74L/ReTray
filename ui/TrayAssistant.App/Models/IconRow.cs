@@ -8,6 +8,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using System.Runtime.InteropServices.WindowsRuntime;
 #endif
 using System.Text.Json.Nodes;
+using System.IO;
 
 namespace TrayAssistant_App.Models;
 public sealed class IconRow : ObservableObject
@@ -23,7 +24,7 @@ public sealed class IconRow : ObservableObject
     public bool ActualVisible=>Rule["acknowledgedVisible"]?.GetValue<bool>()??Rule["placement"]?.GetValue<int>()!=2;
     public bool Owned=>Rule["owned"]?.GetValue<bool>()==true;
     public bool IsBusy { get=>isBusy;set{if(SetProperty(ref isBusy,value))OnPropertyChanged(nameof(CanToggle));} }
-    public bool CanToggle=>!IsBusy;
+    public bool CanToggle=>!IsBusy && (Rule["canPersist"]?.GetValue<bool>() ?? true);
     public string Name { get => name; private set => SetProperty(ref name, value); }
     public string Tip { get => tip; private set => SetProperty(ref tip, value); }
     public string State { get => state; private set => SetProperty(ref state, value); }
@@ -41,11 +42,15 @@ public sealed class IconRow : ObservableObject
     public void AcknowledgeVisibility(JsonObject acknowledgment) { ApplyVisibilityAcknowledgment(acknowledgment); Visible = ActualVisible; }
     public void Update(JsonObject json, JsonObject? acknowledgment = null)
     {
+        var couldToggle = CanToggle;
         Rule = (JsonObject)json.DeepClone();
+        if (couldToggle != CanToggle) OnPropertyChanged(nameof(CanToggle));
         if (acknowledgment != null) ApplyVisibilityAcknowledgment(acknowledgment);
         if(!IsBusy)Visible=ActualVisible;
         Executable = json["selector"]!["executable"]!.GetValue<string>();
         Name = Path.GetFileNameWithoutExtension(Executable);
+        if (string.IsNullOrWhiteSpace(Name))
+            Name = json["tipCurrent"]?.GetValue<string>() is { Length: > 0 } ownerTip ? ownerTip : "未知程序";
         Name=Name.ToLowerInvariant() switch{"weixin"=>"微信","qq"=>"QQ","trayassistant.agent"=>"托盘图标助手",_=>Name};
         Tip = json["tipCurrent"]?.GetValue<string>() ?? "";
         Identity = (json["selector"]!["hasGuid"]!.GetValue<bool>() ? "GUID" : $"UID {json["selector"]!["uid"]}") + $" · PID {json["pid"]}";

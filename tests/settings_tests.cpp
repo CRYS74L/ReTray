@@ -1,4 +1,5 @@
 #include "../native/agent/settings.h"
+#include "../native/platform/process_identity.h"
 #include <cstdio>
 #include <fstream>
 #include <stdexcept>
@@ -15,6 +16,15 @@ int wmain(int argc, wchar_t** argv) {
     std::filesystem::create_directories(directory);
     auto path = directory / L"settings.json";
     try {
+        std::wstring systemPath;
+        auto created = SystemOwnerInfo(GetCurrentProcessId(), systemPath);
+        wchar_t ownPath[32768]{}; GetModuleFileNameW(nullptr, ownPath, std::size(ownPath));
+        CHECK(!_wcsicmp(systemPath.c_str(), ownPath));
+        FILETIME c{}, e{}, k{}, u{};
+        CHECK(GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u));
+        CHECK(created == ((uint64_t(c.dwHighDateTime) << 32) | c.dwLowDateTime));
+        systemPath.clear(); CHECK(!SystemOwnerInfo(UINT32_MAX, systemPath));
+        CHECK(systemPath.empty());
         auto settings = DefaultSettings();
         CHECK(ValidateSettings(settings));
         settings["ownIcon"]["visible"] = false;
@@ -40,6 +50,14 @@ int wmain(int argc, wchar_t** argv) {
         invalid["startup"] = "invalid";
         CHECK(!SaveSettings(path, invalid));
         invalid = settings; invalid["autoSort"] = "bad";
+        for (auto value : {Json("invalid"), Json(-1), Json(UINT64_MAX)}) {
+            auto badRevision = settings; badRevision["revision"] = value;
+            CHECK(!SaveSettings(path, badRevision));
+        }
+        for (auto field : {"language", "uiActivation"}) {
+            auto badText = settings; badText[field] = 123;
+            CHECK(!SaveSettings(path, badText));
+        }
         CHECK(!SaveSettings(path, invalid));
         invalid = settings;
         invalid["password"] = "synthetic-test-value";
@@ -75,6 +93,57 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(parsed.visibility == 1 && parsed.asset == L"example.ico" && parsed.assetIndex == 7);
         CHECK(!parsed.swapButtons && !parsed.alwaysShow && parsed.hotkey == 0);
         CHECK(parsed.inactiveSeconds == 0 && parsed.unusedDays == 0);
+        auto migrated = DefaultSettings();
+        NativeIconRecord mac;
+        mac.executable = L"C:\\Fonts\\MacType\\MacTray.exe";
+        IconRule oldMac; oldMac.selector = SelectorFor(mac);
+        oldMac.selector.uid = 42888048; oldMac.visibility = 0;
+        auto first = RuleJson(oldMac);
+        auto oldOrderKey = PersistentKey(oldMac.selector);
+        oldMac.selector.uid = 18967408; oldMac.visibility = 1;
+        migrated["rules"] = {first, RuleJson(rule), RuleJson(oldMac)};
+        migrated["iconOrder"] = {"@assistant", oldOrderKey, "peer", PersistentKey(oldMac.selector)};
+        CHECK(SaveDataJson(path, migrated));
+        read = LoadSettings(path, recovered); CHECK(!recovered);
+        CHECK(read["rules"].size() == 2);
+        mac.windowClass = L"TPUtilWindow"; mac.identity.uid = 42036080;
+        bool matched{};
+        for (const auto& entry : read["rules"]) {
+            auto saved = ParseRule(entry);
+            if (Matches(saved.selector, mac)) { CHECK(saved.visibility == 1); matched = true; }
+        }
+        CHECK(matched);
+        CHECK(read["iconOrder"].size() == 3);
+        CHECK(read["iconOrder"][1] == "peer");
+        CHECK(read["iconOrder"][2] == PersistentKey(SelectorFor(mac)));
+        CHECK(SaveSettings(path, read));
+        CHECK(LoadSettings(path, recovered)["rules"] == read["rules"]);
+        for (bool explicitFirst : {false, true}) {
+            IconRule broad, explicitRule;
+            broad.selector.executable = L"C:\\Fonts\\MacType\\MacTray.exe";
+            broad.selector.uid = 42; broad.visibility = 0;
+            explicitRule = broad; explicitRule.selector.windowClass = L"TPUtilWindow";
+            explicitRule.visibility = 1;
+            auto overlap = DefaultSettings();
+            RuleSelector oldUi; oldUi.executable = mac.executable; oldUi.uid = 42;
+            overlap["iconOrder"] = {"before", PersistentKey(oldUi), "after"};
+            overlap["rules"] = explicitFirst ? Json::array({RuleJson(explicitRule), RuleJson(broad)})
+                                               : Json::array({RuleJson(broad), RuleJson(explicitRule)});
+            CHECK(SaveDataJson(path, overlap));
+            auto migrated = LoadSettings(path, recovered); CHECK(!recovered);
+            std::unordered_map<std::string, IconRule> rules;
+            for (const auto& entry : migrated["rules"]) {
+                auto saved = ParseRule(entry); rules[PersistentKey(saved.selector)] = saved;
+            }
+            mac.identity.uid = 42;
+            auto resolved = ResolveRule(rules, mac);
+            CHECK(resolved.rule && !resolved.ambiguous && resolved.rule->visibility == 1);
+            CHECK(migrated["iconOrder"][1] == PersistentKey(SelectorFor(mac)));
+            overlap["rules"] = {RuleJson(explicitRule)};
+            CHECK(SaveDataJson(path, overlap));
+            migrated = LoadSettings(path, recovered); CHECK(!recovered);
+            CHECK(migrated["iconOrder"][1] == PersistentKey(SelectorFor(mac)));
+        }
         printf("PASS defaults, atomic settings, corruption backup recovery, invalid schema "
                "rejection, lossless rule identity roundtrip, legacy policy neutralization\n");
         return 0;

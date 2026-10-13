@@ -27,15 +27,16 @@ try{
 $manifest=Join-Path $layout 'AppxManifest.xml'
 $doc=[xml](Get-Content -LiteralPath (Join-Path $productRoot 'ui\TrayAssistant.App\Package.appxmanifest') -Raw)
 $doc.Package.Identity.Version=$version+'.0'
-$doc.Package.Applications.Application.Executable='TrayAssistant.App.exe'
-$doc.Package.Applications.Application.EntryPoint='Windows.FullTrustApplication'
+$mainApplication=$doc.Package.Applications.Application | Where-Object Id -eq 'App'
+$mainApplication.Executable='TrayAssistant.App.exe'
+$mainApplication.EntryPoint='Windows.FullTrustApplication'
 $doc.Package.Resources.Resource.Language='zh-CN'
 # WPF has no generated PRI. Reference the real packaged artwork directly.
 $doc.Package.Properties.Logo='Assets\StoreLogo.png'
-$doc.Package.Applications.Application.VisualElements.Square150x150Logo='Assets\Square150x150Logo.scale-200.png'
-$doc.Package.Applications.Application.VisualElements.Square44x44Logo='Assets\Square44x44Logo.scale-200.png'
-$doc.Package.Applications.Application.VisualElements.DefaultTile.Wide310x150Logo='Assets\Wide310x150Logo.scale-200.png'
-$doc.Package.Applications.Application.VisualElements.SplashScreen.Image='Assets\SplashScreen.scale-200.png'
+$mainApplication.VisualElements.Square150x150Logo='Assets\Square150x150Logo.scale-200.png'
+$mainApplication.VisualElements.Square44x44Logo='Assets\Square44x44Logo.scale-200.png'
+$mainApplication.VisualElements.DefaultTile.Wide310x150Logo='Assets\Wide310x150Logo.scale-200.png'
+$mainApplication.VisualElements.SplashScreen.Image='Assets\SplashScreen.scale-200.png'
 $doc.Save($manifest)
 $signing=Join-Path $productRoot 'artifacts\signing'
 New-Item -ItemType Directory -Force -Path $signing | Out-Null

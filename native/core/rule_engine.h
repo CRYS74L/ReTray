@@ -6,6 +6,8 @@ struct RuleSelector {
     std::wstring executable, windowClass;
     uint32_t uid{};
     bool hasGuid{};
+    bool matchUid{true};
+    bool windowClassIsIdentity{};
     GUID guid{};
     std::wstring tipPattern;
     uint32_t tipMode{}, ownerPid{};
@@ -39,6 +41,7 @@ struct CatalogDelta {
     size_t added{}, updated{}, removed{};
 };
 RuleSelector SelectorFor(const NativeIconRecord&);
+bool UsesVolatileLegacyUid(const std::wstring& executable);
 std::string PersistentKey(const RuleSelector&);
 bool Matches(const RuleSelector&, const NativeIconRecord&);
 CatalogDelta MergeSnapshot(IconCatalog&, const SnapshotResult&, uint64_t now);

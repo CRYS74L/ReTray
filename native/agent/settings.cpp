@@ -13,6 +13,8 @@ Json RuleJson(const IconRule& r) {
               {"windowClass", Utf8(r.selector.windowClass)},
               {"uid", r.selector.uid},
               {"hasGuid", r.selector.hasGuid},
+              {"matchUid", r.selector.matchUid},
+              {"windowClassIsIdentity", r.selector.windowClassIsIdentity},
               {"guid", Utf8(guid)},
               {"tipPattern", Utf8(r.selector.tipPattern)},
               {"tipMode", r.selector.tipMode},
@@ -44,6 +46,8 @@ IconRule ParseRule(const Json& j) {
     r.selector.windowClass = Wide(s.value("windowClass", std::string{}));
     r.selector.uid = s.value("uid", 0u);
     r.selector.hasGuid = s.value("hasGuid", false);
+    r.selector.matchUid = s.value("matchUid", true);
+    r.selector.windowClassIsIdentity = s.value("windowClassIsIdentity", false);
     r.selector.tipPattern = Wide(s.value("tipPattern", std::string{}));
     r.selector.tipMode = s.value("tipMode", 0u);
     r.selector.ownerPid = s.value("ownerPid", 0u);
@@ -67,6 +71,8 @@ IconRule ParseRule(const Json& j) {
         r.tip.size() > 127 || r.visibility < -1 || r.visibility > 1 ||
         r.selector.tipMode > 3 || r.selector.tipPattern.size() > 127 ||
         r.selector.windowClass.size() > 255 ||
+        (!r.selector.matchUid && (r.selector.hasGuid || r.selector.windowClass.empty())) ||
+        (r.selector.windowClassIsIdentity && r.selector.matchUid) ||
         (bool(r.selector.ownerPid) != bool(r.selector.ownerCreatedAt)) || r.assetIndex > 10000 ||
         r.baselineWidth > 2048 || r.baselineHeight > 2048)
         throw std::runtime_error("Rule values out of bounds");
@@ -121,6 +127,16 @@ bool ValidateSettings(const Json& j) {
             !j.at("rules").is_array() || j.at("rules").size() > 512)
             return false;
         auto theme = j.value("theme", std::string("system"));
+        if (j.contains("revision")) {
+            const auto& revision = j.at("revision");
+            if (!revision.is_number_integer() ||
+                (revision.is_number_unsigned() ? revision.get<uint64_t>() > INT64_MAX
+                                              : revision.get<int64_t>() < 0)) return false;
+        }
+        for (auto field : {"language", "uiActivation"})
+            if (j.contains(field) && (!j.at(field).is_string() ||
+                                     j.at(field).get_ref<const std::string&>().size() > 32768))
+                return false;
         if (theme != "system" && theme != "light" && theme != "dark")
             return false;
         for (auto& r : j.at("rules"))
@@ -295,6 +311,55 @@ Json NormalizeSettings(Json value) {
                          {"alwaysShow", false}, {"inactiveSeconds", 0}, {"unusedDays", 0},
                          {"hotkey", 0}, {"hotkeyAction", 0}, {"newState", -1},
                          {"swapButtons", false}});
+    auto migratedRules = Json::array();
+    std::unordered_map<std::string, size_t> migratedKeys;
+    std::unordered_map<std::string, std::string> renamedKeys;
+    std::unordered_map<std::string, std::string> preferredOrderKeys;
+    for (auto entry : result["rules"]) {
+        auto rule = ParseRule(entry);
+        auto& selector = rule.selector;
+        if (UsesVolatileLegacyUid(selector.executable) && !selector.hasGuid &&
+            !selector.ownerPid &&
+            (selector.windowClass.empty() || selector.windowClass == L"TPUtilWindow")) {
+            auto oldKey = PersistentKey(selector);
+            RuleSelector oldOrder;
+            oldOrder.executable = selector.executable; oldOrder.uid = selector.uid;
+            if (!selector.matchUid) {
+                oldOrder.matchUid = false; oldOrder.windowClass = L"TPUtilWindow";
+                oldOrder.windowClassIsIdentity = selector.windowClassIsIdentity;
+            }
+            NativeIconRecord orderRecord;
+            orderRecord.executable = selector.executable;
+            orderRecord.windowClass = L"TPUtilWindow";
+            auto orderKey = PersistentKey(SelectorFor(orderRecord));
+            auto oldOrderKey = PersistentKey(oldOrder);
+            if (selector.windowClass.empty()) selector.windowClassIsIdentity = true;
+            selector.matchUid = false; selector.uid = 0;
+            selector.windowClass = L"TPUtilWindow";
+            entry = RuleJson(rule);
+            auto key = PersistentKey(selector);
+            renamedKeys[oldKey] = renamedKeys[oldOrderKey] = orderKey;
+            preferredOrderKeys[orderKey] = oldOrderKey;
+            auto [found, added] = migratedKeys.emplace(key, migratedRules.size());
+            if (!added) { migratedRules[found->second] = std::move(entry); continue; }
+        }
+        migratedRules.push_back(std::move(entry));
+    }
+    result["rules"] = std::move(migratedRules);
+    auto migratedOrder = Json::array();
+    std::set<std::string> seenOrder;
+    for (const auto& entry : result["iconOrder"]) {
+        auto key = entry.get<std::string>();
+        if (auto rename = renamedKeys.find(key); rename != renamedKeys.end()) {
+            const auto& preferred = preferredOrderKeys.at(rename->second);
+            if (key != preferred &&
+                std::find(result["iconOrder"].begin(), result["iconOrder"].end(), Json(preferred)) !=
+                    result["iconOrder"].end()) continue;
+            key = rename->second;
+        }
+        if (seenOrder.insert(key).second) migratedOrder.push_back(std::move(key));
+    }
+    result["iconOrder"] = std::move(migratedOrder);
     return result;
 }
 Json LoadSettings(const std::filesystem::path& path, bool& recovered) {

@@ -6,8 +6,12 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <DefineConstants>$(DefineConstants);TRAY_WPF</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../ui/TrayAssistant.Lan/src/LanDeviceMonitor.App/Controls/SwitchControl.cs" Link="SwitchControl.cs" />
+    <Compile Include="../../ui/TrayAssistant.App/Models/IconRow.cs" Link="IconRow.cs" />
+    <Compile Include="../../ui/TrayAssistant.App/Services/Localization.cs" Link="Localization.cs" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
 </Project>

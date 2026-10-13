@@ -3,6 +3,7 @@
 #include "../platform/user_security.h"
 #include "../shell/bridge_client.h"
 #include "settings.h"
+#include "logon_startup.h"
 #include "tray_menu_typography.h"
 
 #include <algorithm>
@@ -76,6 +77,7 @@ std::string environmentStamp;
 std::unordered_map<int, bool> environmentPolicies;
 std::array<bool, 10> environmentAvailable{};
 Json environmentOutcome = {{"success", true}};
+Json startupOutcome = {{"success", true}};
 struct Request {
     Json input, output;
     HANDLE event{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
@@ -153,13 +155,14 @@ Json Result(bool ok, const std::string& detail = {}, DWORD error = 0) {
         {"success", ok}, {"detail", detail}, {"errorCode", error}, {"revision", configRevision}};
 }
 bool Persist() {
-    settings = NormalizeSettings(settings);
-    settings["revision"] = ++configRevision;
-    if (!SaveSettings(settingsPath, settings)) {
-        --configRevision;
-        return false;
-    }
-    return true;
+    try {
+        auto candidate = NormalizeSettings(settings);
+        candidate["revision"] = configRevision + 1;
+        if (!SaveSettings(settingsPath, candidate)) return false;
+        settings = std::move(candidate);
+        ++configRevision;
+        return true;
+    } catch (...) { return false; }
 }
 void LoadRules() {
     rules.clear();
@@ -266,49 +269,95 @@ bool SetOwnIcon(bool reloadImage = true) {
     }
     return ok;
 }
-bool SetStartup(bool enabled) {
+bool SetStartup(bool enabled, bool previousEnabled) {
+    startupOutcome.erase("rollbackFailed");
+    std::filesystem::path startupExecutable = root / L"TrayAssistant.Agent.exe";
+    std::wstring startupArguments = L"--background";
     UINT32 packageNameLength{};
-    if (GetCurrentPackageFullName(&packageNameLength, nullptr) == ERROR_INSUFFICIENT_BUFFER) {
-        try {
-            const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
-            auto wait = [&](auto operation) {
-                while (operation.Status() == winrt::Windows::Foundation::AsyncStatus::Started) {
-                    if (stopping || std::chrono::steady_clock::now() >= deadline) {
-                        operation.Cancel();
-                        throw winrt::hresult_error(
-                            HRESULT_FROM_WIN32(stopping ? ERROR_CANCELLED : ERROR_TIMEOUT));
-                    }
-                    operation.wait_for(std::chrono::milliseconds(25));
-                }
-                return operation.get();
-            };
-            auto task = wait(
-                winrt::Windows::ApplicationModel::StartupTask::GetAsync(L"TrayAssistantStartup"));
-            if (!enabled) {
-                task.Disable();
-                return true;
-            }
-            auto state = wait(task.RequestEnableAsync());
-            if (state == winrt::Windows::ApplicationModel::StartupTaskState::Enabled)
-                return true;
-            SetLastError(ERROR_ACCESS_DISABLED_BY_POLICY);
-        } catch (const winrt::hresult_error& error) {
-            SetLastError(static_cast<DWORD>(error.code().value));
-        }
-        return false;
-    }
+    bool packaged = GetCurrentPackageFullName(&packageNameLength, nullptr) == ERROR_INSUFFICIENT_BUFFER;
     HKEY key{};
-    if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0,
-                        nullptr, 0, KEY_SET_VALUE, nullptr, &key, nullptr) != ERROR_SUCCESS)
-        return false;
-    std::wstring command =
-        L"\"" + (root / L"TrayAssistant.Agent.exe").wstring() + L"\" --background";
-    LONG code = enabled ? RegSetValueExW(key, L"TrayIconAssistant", 0, REG_SZ,
-                                         reinterpret_cast<const BYTE*>(command.c_str()),
-                                         static_cast<DWORD>((command.size() + 1) * 2))
-                        : RegDeleteValueW(key, L"TrayIconAssistant");
-    RegCloseKey(key);
-    return code == ERROR_SUCCESS || (!enabled && code == ERROR_FILE_NOT_FOUND);
+    bool retireRun{};
+    if (!packaged) {
+        auto opened = RegOpenKeyExW(HKEY_CURRENT_USER,
+            L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0,
+            KEY_QUERY_VALUE | KEY_SET_VALUE, &key);
+        if (opened != ERROR_SUCCESS && opened != ERROR_FILE_NOT_FOUND) {
+            SetLastError(opened); return false;
+        }
+        if (key) {
+            auto command = L"\"" + startupExecutable.wstring() + L"\" --background";
+            wchar_t previous[32768]{}; DWORD bytes = sizeof(previous), type{};
+            auto code = RegQueryValueExW(key, L"TrayIconAssistant", nullptr, &type,
+                                       reinterpret_cast<BYTE*>(previous), &bytes);
+            if (code != ERROR_SUCCESS && code != ERROR_FILE_NOT_FOUND && code != ERROR_MORE_DATA) {
+                RegCloseKey(key); SetLastError(code); return false;
+            }
+            retireRun = code == ERROR_SUCCESS && type == REG_SZ && bytes <= sizeof(previous) &&
+                        previous[std::size(previous) - 1] == 0 && command == previous;
+        }
+    }
+    if (packaged && enabled) {
+        UINT32 familyLength{};
+        GetCurrentPackageFamilyName(&familyLength, nullptr);
+        std::vector<wchar_t> family(familyLength);
+        auto code = GetCurrentPackageFamilyName(&familyLength, family.data());
+        if (code != ERROR_SUCCESS) { SetLastError(code); return false; }
+        wchar_t local[32768]{};
+        GetEnvironmentVariableW(L"LOCALAPPDATA", local, std::size(local));
+        startupExecutable = std::filesystem::path(local) / L"Packages" / family.data() /
+                            L"LocalState" / L"Startup" / L"TrayAssistant.Startup-v1.exe";
+        try { std::filesystem::create_directories(startupExecutable.parent_path()); }
+        catch (...) { SetLastError(ERROR_CANNOT_MAKE); return false; }
+        // The small v1 activator is version-independent and never reads personal settings.
+        if (!CopyFileW((root / L"TrayAssistant.Startup.exe").c_str(), startupExecutable.c_str(), TRUE) &&
+            GetLastError() != ERROR_FILE_EXISTS) return false;
+        startupArguments = L"\"" + std::wstring(family.data()) + L"!Background\"";
+    }
+    auto scheduled = SetLogonStartupResult(startupExecutable, enabled, StartupTaskName(), startupArguments);
+    if (scheduled != ERROR_SUCCESS) {
+        if (key) RegCloseKey(key);
+        SetLastError(scheduled); return false;
+    }
+    if (packaged) {
+        // Keep the existing extension as an upgrade fallback until our task is created.
+        // StartupTask is scoped to the App identity that declares it. Background must
+        // not query it; our immediate task is already valid under either identity.
+        UINT32 applicationLength{};
+        GetCurrentApplicationUserModelId(&applicationLength, nullptr);
+        std::vector<wchar_t> application(applicationLength);
+        if (applicationLength &&
+            GetCurrentApplicationUserModelId(&applicationLength, application.data()) == ERROR_SUCCESS &&
+            std::wstring_view(application.data()).ends_with(L"!App")) {
+            try {
+                auto operation = winrt::Windows::ApplicationModel::StartupTask::GetAsync(L"TrayAssistantStartup");
+                auto deadline = GetTickCount64() + 3000;
+                while (operation.Status() == winrt::Windows::Foundation::AsyncStatus::Started &&
+                       !stopping && GetTickCount64() < deadline)
+                    operation.wait_for(std::chrono::milliseconds(25));
+                if (operation.Status() == winrt::Windows::Foundation::AsyncStatus::Started)
+                    operation.Cancel();
+                else operation.get().Disable();
+            } catch (...) {
+                // An unavailable legacy extension cannot undo the successfully applied task.
+                // The single-instance guard also prevents the fallback starting a second agent.
+            }
+        }
+        return true;
+    }
+    // Only an exact legacy command is retired. Failure restores the task's prior preference.
+    if (retireRun) {
+        auto code = RegDeleteValueW(key, L"TrayIconAssistant");
+        if (code != ERROR_SUCCESS && code != ERROR_FILE_NOT_FOUND) {
+            auto restored = SetLogonStartupResult(startupExecutable, previousEnabled,
+                                                  StartupTaskName(), startupArguments);
+            RegCloseKey(key);
+            if (restored != ERROR_SUCCESS) startupOutcome["rollbackFailed"] = true;
+            SetLastError(restored == ERROR_SUCCESS ? code : restored);
+            return false;
+        }
+    }
+    if (key) RegCloseKey(key);
+    return true;
 }
 int EffectiveVisibility(const BridgeIcon& row, const IconRule* rule) {
     (void)row;
@@ -674,6 +723,7 @@ Json CatalogJson() {
         auto j = RuleJson(rule);
         bool owned = row.identity.ownerPid == GetCurrentProcessId();
         j["owned"] = owned;
+        j["canPersist"] = owned || !record.executable.empty();
         j["stableKey"] = StableIconKey(row);
         if (owned) {
             j["asset"] = settings["ownIcon"].value("asset", std::string{});
@@ -912,6 +962,8 @@ Json SetIconVisibility(const Json& data) {
                     result["data"]["placement"] = row.placement;
         return result;
     }
+    if (!target->executable[0])
+        return Result(false, "暂时无法识别图标所属程序，配置未改变", ERROR_NOT_READY);
     auto found = ResolveRule(rules, Record(*target));
     if (found.ambiguous)
         return Result(false, "多个匹配规则冲突", ERROR_DUP_NAME);
@@ -1167,6 +1219,7 @@ Json Handle(const Json& req) {
             {"version", TRAY_ASSISTANT_VERSION},
 
             {"environment", environmentOutcome},
+            {"startup", startupOutcome},
             {"hotkeyErrors", shortcuts},
             {"recovered", recovered},
             {"pid", GetCurrentProcessId()},
@@ -1326,13 +1379,28 @@ Json Handle(const Json& req) {
             if (key != "schema" && key != "rules" && key != "ownIcon" && key != "revision" &&
                 key != "newIconLocation" && key != "systemControls")
                 settings[key] = value;
-        if (!Persist()) {
+        bool changedStartup = d.contains("startup") && settings["startup"].is_boolean();
+        if (!ValidateSettings(settings)) {
             settings = saved;
-            return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
+            return Result(false, "设置参数无效，配置未改变", ERROR_INVALID_DATA);
         }
-        bool ok = !d.contains("startup") || SetStartup(settings.value("startup", false));
+        if (changedStartup && !SetStartup(settings["startup"].get<bool>(), saved.value("startup", false))) {
+            auto error = GetLastError();
+            settings = saved;
+            return Result(false, startupOutcome.value("rollbackFailed", false)
+                                    ? "自启动设置失败，原有自启动状态恢复失败"
+                                    : "自启动设置失败，配置未改变", error);
+        }
+        if (!Persist()) {
+            bool restored = !changedStartup ||
+                SetStartup(saved.value("startup", false), settings.value("startup", false));
+            settings = saved;
+            return Result(false, restored ? "配置保存失败" : "配置保存失败，自启动状态恢复失败",
+                          ERROR_WRITE_FAULT);
+        }
         ScheduleHotkeys();
-        result = Result(ok, ok ? "设置已保存" : "已保存，自启动设置失败", ok ? 0 : GetLastError());
+        result = Result(true, "设置已保存");
+        if (changedStartup) startupOutcome = Result(true, "登录计划任务已更新");
         result["saved"] = true;
     } else if (method == "icon.invoke") {
         auto key = d.at("key").get<std::string>();
@@ -1594,6 +1662,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     ProcessIdToSessionId(GetCurrentProcessId(), &session);
     int argc{};
     auto args = CommandLineToArgvW(GetCommandLineW(), &argc);
+    UINT32 startupPackageLength{};
+    // The legacy manifest entry invokes Agent without arguments. Deliberate UI
+    // launches and the new activator explicitly pass --background or --open.
+    bool legacyAutomaticLaunch = argc == 1 &&
+        GetCurrentPackageFullName(&startupPackageLength, nullptr) == ERROR_INSUFFICIENT_BUFFER;
     bool background = true;
     bool restartWaiting{};
     HANDLE restartHandles[3]{};
@@ -1672,6 +1745,18 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             }
         }
         configRevision = settings.value("revision", uint64_t{});
+        if (legacyAutomaticLaunch && !settings.value("startup", false)) {
+            CloseHandle(singleton);
+            CoUninitialize();
+            return 0;
+        }
+        // Refresh the action after a package update and migrate the old enabled mechanism.
+        // Disabled users are not silently opted into startup.
+        if (settings.value("startup", false)) {
+            auto ok = SetStartup(true, true);
+            startupOutcome = Result(ok, ok ? "登录计划任务已更新" : "登录计划任务更新失败",
+                                    ok ? 0 : GetLastError());
+        }
 
         try {
             auto activityPath = dataRoot / L"activity.json";

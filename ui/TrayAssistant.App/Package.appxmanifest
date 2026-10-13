@@ -53,6 +53,12 @@
         </desktop:Extension>
       </Extensions>
     </Application>
+    <Application Id="Background" Executable="TrayAssistant.Agent.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements DisplayName="托盘图标助手" Description="托盘图标助手后台"
+        BackgroundColor="transparent" AppListEntry="none"
+        Square150x150Logo="Assets\Square150x150Logo.scale-200.png"
+        Square44x44Logo="Assets\Square44x44Logo.scale-200.png" />
+    </Application>
   </Applications>
 
   <Capabilities>

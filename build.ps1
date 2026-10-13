@@ -1,4 +1,4 @@
-param([ValidateSet('CoreTests','Probe','Agent','AgentVisibilityTests','AgentSystemTests','Bridge','BridgeRegistrationTests','BridgeTest','BridgeControls','Source','SettingsTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
+param([ValidateSet('CoreTests','Probe','Agent','AgentVisibilityTests','AgentSystemTests','Bridge','BridgeRegistrationTests','BridgeTest','BridgeControls','Source','SettingsTests','StartupTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
 $ErrorActionPreference='Stop'
 $productRoot=$PSScriptRoot
 $projectVersion=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
@@ -72,7 +72,16 @@ if ($Target -in @('AgentVisibilityTests','AgentSystemTests')) {
     & $exe (Join-Path $productRoot $fixture)
     exit $LASTEXITCODE
 }
+if ($Target -eq 'StartupTests') {
+    $exe=Join-Path $outputRoot 'StartupTests.exe'
+    & $clang @commonArgs '-municode' (Join-Path $productRoot 'tests\startup_tests.cpp') '-o' $exe '-lole32' '-loleaut32' '-ladvapi32' '-luuid' '-lruntimeobject'
+    if($LASTEXITCODE -ne 0){throw 'Startup tests build failed'}
+    & $exe
+    exit $LASTEXITCODE
+}
 if ($Target -eq 'Agent') {
+    & $clang @commonArgs '-municode' '-mwindows' (Join-Path $productRoot 'native\agent\startup_launcher.cpp') '-o' (Join-Path $outputRoot 'TrayAssistant.Startup.exe') '-lole32' '-lshell32' '-luuid'
+    if($LASTEXITCODE -ne 0){throw 'Startup launcher build failed'}
     & $clang @commonArgs '-municode' '-mwindows' (Join-Path $productRoot 'native\agent\main.cpp') (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\shell\bridge_client.cpp') '-o' (Join-Path $outputRoot 'TrayAssistant.Agent.exe') '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt' '-ladvapi32' '-lbcrypt' '-lgdiplus' '-lbcrypt' '-luuid'
     if($LASTEXITCODE -ne 0){throw 'Agent build failed'}
     Copy-Item -LiteralPath (Join-Path $productRoot 'native\platform\supported-adapters.json') -Destination $outputRoot -Force

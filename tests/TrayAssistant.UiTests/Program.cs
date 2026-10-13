@@ -6,6 +6,8 @@ using System.Windows.Automation.Provider;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
 using LanDeviceMonitor.Controls;
+using System.Text.Json.Nodes;
+using TrayAssistant_App.Models;
 
 internal static class Program
 {
@@ -17,7 +19,8 @@ internal static class Program
         {
             ("automation commits one-way tray switch click", OneWaySwitch),
             ("automation preserves two-way setting binding", TwoWaySwitch),
-            ("disabled automation switch cannot act", DisabledSwitch)
+            ("disabled automation switch cannot act", DisabledSwitch),
+            ("owner identity recovery reenables bound tray toggle", IdentityRecovery)
         })
         {
             try { test(); Console.WriteLine($"PASS {name}"); }
@@ -62,6 +65,24 @@ internal static class Program
         try { Provider(control).Toggle(); throw new InvalidOperationException("Disabled switch accepted automation"); }
         catch (ElementNotEnabledException) { }
         Require(!clicked && control.IsChecked == false, "Disabled automation changed state");
+    }
+
+    private static void IdentityRecovery()
+    {
+        var json = JsonNode.Parse("""
+        {"key":"identity-fixture","canPersist":false,"selector":{"executable":"","hasGuid":false,"uid":11},
+         "pid":1,"tipCurrent":"Protected app","placement":1,"pixels":"","width":0,"height":0,
+         "originalPixels":"","originalWidth":0,"originalHeight":0}
+        """)!.AsObject();
+        var row = new IconRow(json);
+        var control = new SwitchControl();
+        control.SetBinding(ToggleButton.IsEnabledProperty, new Binding(nameof(IconRow.CanToggle)) { Source = row });
+        Require(!control.IsEnabled && row.Name == "Protected app", "Unresolved owner remains actionable or unnamed");
+        json["canPersist"] = true; json["selector"]!["executable"] = @"C:\Fixture\Known.exe";
+        row.Update(json);
+        Require(control.IsEnabled, "Owner recovery did not notify the real bound control");
+        row.IsBusy = true; Require(!control.IsEnabled, "Busy switch remains actionable");
+        row.IsBusy = false; Require(control.IsEnabled, "Completed operation did not restore the control");
     }
 
     private sealed class State : INotifyPropertyChanged

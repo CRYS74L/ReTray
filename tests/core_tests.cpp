@@ -400,6 +400,24 @@ int main(int argc, char** argv) {
         r.identity.uid = 8;
         REQUIRE(!Matches(s, r));
     });
+    test("Rule.MacTrayVolatileUidUsesStableWindowClass", [] {
+        NativeIconRecord r;
+        r.executable = L"C:\\Fonts\\MacType\\MacTray.exe";
+        r.windowClass = L"TPUtilWindow";
+        r.identity.uid = 42888048;
+        auto saved = SelectorFor(r);
+        r.identity.uid = 18967408;
+        r.identity.ownerPid = 7654; r.identity.ownerHwnd = 8765;
+        r.identity.ownerCreatedAt = 9876;
+        REQUIRE(Matches(saved, r));
+        REQUIRE(PersistentKey(saved) == PersistentKey(SelectorFor(r)));
+        r.windowClass = L"OtherWindow"; REQUIRE(!Matches(saved, r));
+        r.windowClass = L"TPUtilWindow"; r.executable = L"C:\\Other.exe";
+        REQUIRE(!Matches(saved, r));
+        r.executable = L"C:\\Fonts\\MacType\\MacTray.exe";
+        r.identity.hasGuid = true; r.identity.guid.Data1 = 55;
+        REQUIRE(!Matches(saved, r));
+    });
     test("Activity.FrameAndAccessTimersAreSeparate", [] {
         IconRule r;
         r.inactiveSeconds = 10;

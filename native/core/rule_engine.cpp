@@ -12,21 +12,36 @@ static std::wstring Normalize(std::wstring text) {
     }
     return text;
 }
+bool UsesVolatileLegacyUid(const std::wstring& executable) {
+    auto path = Normalize(executable);
+    auto separator = path.find_last_of(L'\\');
+    return separator != std::wstring::npos && path.substr(separator + 1) == L"mactray.exe";
+}
 RuleSelector SelectorFor(const NativeIconRecord& r) {
     RuleSelector s;
     s.executable = Normalize(r.executable);
     s.uid = r.identity.uid;
     s.hasGuid = r.identity.hasGuid;
     s.guid = r.identity.guid;
+    // MacTray's observed legacy uID changes across registrations.
+    // Keep the executable and its known notification window class as the persistent key.
+    if (!s.hasGuid && UsesVolatileLegacyUid(s.executable) && r.windowClass == L"TPUtilWindow") {
+        s.matchUid = false;
+        s.uid = 0;
+        s.windowClass = r.windowClass;
+        s.windowClassIsIdentity = true;
+    }
     return s;
 }
 std::string PersistentKey(const RuleSelector& s) {
     wchar_t guid[40]{};
     StringFromGUID2(s.guid, guid, 40);
     auto value = Normalize(s.executable) + L"|" + s.windowClass +
-                 (s.hasGuid ? L"|guid:" + std::wstring(guid) : L"|uid:" + std::to_wstring(s.uid)) +
+                 (s.hasGuid ? L"|guid:" + std::wstring(guid)
+                            : s.matchUid ? L"|uid:" + std::to_wstring(s.uid) : L"|class") +
                  L"|" + std::to_wstring(s.tipMode) + L":" + s.tipPattern + L"|" +
-                 std::to_wstring(s.ownerPid) + L":" + std::to_wstring(s.ownerCreatedAt);
+                 std::to_wstring(s.ownerPid) + L":" + std::to_wstring(s.ownerCreatedAt) +
+                 (s.windowClassIsIdentity ? L"|identity-class" : L"");
     int size = WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
                                    nullptr, 0, nullptr, nullptr);
     std::string key(size, 0);
@@ -38,7 +53,8 @@ bool Matches(const RuleSelector& s, const NativeIconRecord& r) {
     if (s.executable.empty() || Normalize(s.executable) != Normalize(r.executable) ||
         (!s.windowClass.empty() && s.windowClass != r.windowClass) ||
         s.hasGuid != r.identity.hasGuid ||
-        !(s.hasGuid ? IsEqualGUID(s.guid, r.identity.guid) : s.uid == r.identity.uid))
+        !(s.hasGuid ? IsEqualGUID(s.guid, r.identity.guid)
+                    : s.matchUid ? s.uid == r.identity.uid : !s.windowClass.empty()))
         return false;
     if (s.ownerPid &&
         (s.ownerPid != r.identity.ownerPid || s.ownerCreatedAt != r.identity.ownerCreatedAt))
@@ -112,7 +128,8 @@ RuleResolution ResolveRule(const std::unordered_map<std::string, IconRule>& rule
         if (!Matches(rule.selector, record))
             continue;
         const auto& s = rule.selector;
-        int rank = (s.ownerPid ? 32 : 0) + (!s.windowClass.empty() ? 16 : 0) +
+        int rank = (s.ownerPid ? 32 : 0) +
+                   (!s.windowClass.empty() && !s.windowClassIsIdentity ? 16 : 0) +
                    (s.tipMode == 1   ? 8
                     : s.tipMode == 2 ? 4
                     : s.tipMode == 3 ? 2

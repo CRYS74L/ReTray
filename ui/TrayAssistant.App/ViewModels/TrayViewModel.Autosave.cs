@@ -131,7 +131,7 @@ public partial class TrayViewModel
         var previous = row.Rule["selector"]!.DeepClone();
         QueueEdit("rule:" + row.StableKey, async () =>
         {
-            await Call("rule.apply", new() { ["rule"] = rule.DeepClone(), ["previousSelector"] = previous.DeepClone() });
+            await Call("rule.apply", new() { ["key"] = row.Key, ["rule"] = rule.DeepClone(), ["previousSelector"] = previous.DeepClone() });
             await RefreshAsync();
         });
     }

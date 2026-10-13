@@ -144,17 +144,27 @@ bool Method(uint64_t object, size_t slot, uint32_t rva, void*& function) {
     function = reinterpret_cast<void*>(target);
     return true;
 }
-IUnknown* CurrentBitmap(const NativeIconRecord& record, bool* known = nullptr) {
+IUnknown* CurrentBitmap(const NativeIconRecord& record, bool* known = nullptr,
+                        uint32_t* error = nullptr) {
     if (known)
         *known = false;
     void* method{};
-    if (!Method(record.recordAddress + 0x10, 8, adapter.getIcon, method))
+    if (error)
+        *error = 0;
+    if (!Method(record.recordAddress + 0x10, 8, adapter.getIcon, method)) {
+        if (error)
+            *error = static_cast<uint32_t>(E_NOINTERFACE);
         return nullptr;
+    }
     void* value{};
     using Fn = HRESULT(__stdcall*)(void*, void**);
-    if (FAILED(reinterpret_cast<Fn>(method)(reinterpret_cast<void*>(record.recordAddress + 0x10),
-                                            &value)))
+    auto hr = reinterpret_cast<Fn>(method)(reinterpret_cast<void*>(record.recordAddress + 0x10),
+                                          &value);
+    if (FAILED(hr)) {
+        if (error)
+            *error = static_cast<uint32_t>(hr);
         return nullptr;
+    }
     if (known)
         *known = true;
     return static_cast<IUnknown*>(value);
@@ -175,22 +185,15 @@ void RestoreBitmap(Entry& entry) {
     RaiseChanged(entry.record.recordAddress);
 }
 Frame SourceFrame(IUnknown* object) {
-    if (object) {
-        auto frame = RasterizeSoftwareBitmap(object);
-        if (frame.outcome.success)
-            return std::move(frame.frame);
-        return {};
-    }
-    Frame blank;
-    blank.origin = FrameOrigin::SourceLive;
-    blank.transparent = true;
-    return blank;
+    return RasterizeSoftwareBitmap(object).frame;
 }
 void SaveOriginal(Entry& entry) {
     bool known{};
-    auto object = CurrentBitmap(entry.record, &known);
+    uint32_t error{};
+    auto object = CurrentBitmap(entry.record, &known, &error);
     if (!known) {
         entry.source = {};
+        entry.source.readError = error;
         entry.source.revision = ++entry.revision;
         return;
     }
@@ -201,7 +204,8 @@ void SaveOriginal(Entry& entry) {
     entry.source.revision = ++entry.revision;
     if (entry.source.origin == FrameOrigin::SourceLive && !entry.source.transparent &&
         entry.source.width && entry.source.height &&
-        entry.source.pixels.size() >= static_cast<size_t>(entry.source.width) * entry.source.height)
+        entry.source.pixels.size() >=
+            static_cast<size_t>(entry.source.PixelWidth()) * entry.source.PixelHeight())
         entry.originalPreview = entry.source;
 }
 void BeginRegistration(Entry& entry, const NativeIconRecord& record) {
@@ -238,19 +242,21 @@ void WriteFrame(BridgeIcon& out, const Frame& frame) {
     out.transparent = frame.transparent;
     out.fingerprint = frame.fingerprint;
     out.revision = frame.revision;
-    if (!frame.width || !frame.height) {
+    const auto pixelWidth = frame.PixelWidth(), pixelHeight = frame.PixelHeight();
+    if (!pixelWidth || !pixelHeight ||
+        frame.pixels.size() < static_cast<size_t>(pixelWidth) * pixelHeight) {
         out.width = out.height = 0;
         return;
     }
-    const uint32_t w = std::min<uint32_t>(64, frame.width),
-                   h = std::min<uint32_t>(64, frame.height);
+    const uint32_t w = std::min<uint32_t>(64, pixelWidth),
+                   h = std::min<uint32_t>(64, pixelHeight);
     out.width = w;
     out.height = h;
     for (uint32_t y = 0; y < h; ++y)
         for (uint32_t x = 0; x < w; ++x)
             out.pixels[y * w + x] =
-                frame.pixels[static_cast<size_t>(y) * frame.height / h * frame.width +
-                             static_cast<size_t>(x) * frame.width / w];
+                frame.pixels[static_cast<size_t>(y) * pixelHeight / h * pixelWidth +
+                             static_cast<size_t>(x) * pixelWidth / w];
 }
 bool SetTip(const NativeIconRecord& record, const std::wstring& text) {
     if (record.tip == text)
@@ -329,17 +335,25 @@ void FillRow(BridgeIcon& row, Entry& entry) {
     row.sourceFingerprint = entry.source.fingerprint;
     row.sourceWidth = entry.source.width;
     row.sourceHeight = entry.source.height;
+    row.sourceReadState = static_cast<uint32_t>(entry.source.readState);
+    row.sourceReadError = entry.source.readError;
+    row.nativeWidth = entry.source.nativeWidth;
+    row.nativeHeight = entry.source.nativeHeight;
+    row.nativePixelFormat = entry.source.nativePixelFormat;
+    row.nativeAlphaMode = entry.source.nativeAlphaMode;
+    wcsncpy_s(row.sourceRuntimeType, std::size(row.sourceRuntimeType),
+              entry.source.runtimeType.c_str(), _TRUNCATE);
     row.decision = static_cast<uint32_t>(ChooseFrame(entry.source, entry.baseline, entry.custom));
     wcsncpy_s(row.originalTip, std::size(row.originalTip), entry.originalTip.c_str(), _TRUNCATE);
     const auto& preview = entry.originalPreview;
-    row.originalWidth = std::min<uint32_t>(64, preview.width);
-    row.originalHeight = std::min<uint32_t>(64, preview.height);
+    row.originalWidth = std::min<uint32_t>(64, preview.PixelWidth());
+    row.originalHeight = std::min<uint32_t>(64, preview.PixelHeight());
     for (uint32_t y = 0; y < row.originalHeight; ++y)
         for (uint32_t x = 0; x < row.originalWidth; ++x)
             row.originalPixels[y * row.originalWidth + x] =
-                preview.pixels[static_cast<size_t>(y) * preview.height / row.originalHeight *
-                                   preview.width +
-                               static_cast<size_t>(x) * preview.width / row.originalWidth];
+                preview.pixels[static_cast<size_t>(y) * preview.PixelHeight() / row.originalHeight *
+                                   preview.PixelWidth() +
+                               static_cast<size_t>(x) * preview.PixelWidth() / row.originalWidth];
     row.dynamic =
         ChooseFrame(entry.source, entry.baseline, entry.custom) == FrameDecision::NativeDynamic;
     row.managed = entry.custom || entry.visibility != -1 || entry.tipChanged || entry.moved ||
@@ -382,8 +396,12 @@ void Publish(bool refreshOriginal, const WireEvent* event = nullptr) {
              (event->patch.operation == NIM_ADD || (event->patch.suppliedFlags & NIF_ICON)))) {
             SaveOriginal(entry);
             DrawPolicy(entry);
-        } else if (refreshOriginal && !entry.custom)
+        } else if ((refreshOriginal && !entry.custom) ||
+                   ((entry.source.origin != FrameOrigin::SourceLive ||
+                     entry.source.readState == FrameReadState::Absent) && !entry.customPainted)) {
             SaveOriginal(entry);
+            DrawPolicy(entry);
+        }
         if (sourceUpdate && (event->patch.suppliedFlags & NIF_TIP))
             entry.originalTip = event->patch.tip;
         if (state->count >= MaxBridgeIcons)

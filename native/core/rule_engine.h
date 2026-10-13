@@ -2,6 +2,14 @@
 #include "types.h"
 #include <unordered_map>
 namespace tray {
+struct LegacyRole {
+    bool ready{}, single{}, cardinalityKnown{}, dynamicTip{}, dynamicImage{}, hasObservedUid{};
+    uint32_t callback{}, observedUid{};
+    std::wstring windowClass;
+    std::vector<std::wstring> tips;
+    std::vector<uint64_t> images;
+    std::string listKey;
+};
 struct RuleSelector {
     std::wstring executable, windowClass;
     uint32_t uid{};
@@ -12,6 +20,7 @@ struct RuleSelector {
     std::wstring tipPattern;
     uint32_t tipMode{}, ownerPid{};
     uint64_t ownerCreatedAt{};
+    LegacyRole legacy;
 };
 struct IconRule {
     RuleSelector selector;
@@ -41,7 +50,8 @@ struct CatalogDelta {
     size_t added{}, updated{}, removed{};
 };
 RuleSelector SelectorFor(const NativeIconRecord&);
-bool UsesVolatileLegacyUid(const std::wstring& executable);
+RuleSelector SelectorFor(const NativeIconRecord&, const std::vector<NativeIconRecord>&);
+LegacyRole DescribeLegacyRole(const NativeIconRecord&, const std::vector<NativeIconRecord>&);
 std::string PersistentKey(const RuleSelector&);
 bool Matches(const RuleSelector&, const NativeIconRecord&);
 CatalogDelta MergeSnapshot(IconCatalog&, const SnapshotResult&, uint64_t now);
@@ -50,7 +60,13 @@ void RecordAccess(ActivityState&, uint64_t now);
 struct RuleResolution {
     const IconRule* rule{};
     bool ambiguous{};
+    bool reassociated{}, provisional{};
 };
+struct RuleBinding { std::string key; bool provisional{}; uint64_t registration{}; };
 RuleResolution ResolveRule(const std::unordered_map<std::string, IconRule>&,
                            const NativeIconRecord&);
+RuleResolution ResolveRule(const std::unordered_map<std::string, IconRule>&,
+                           const NativeIconRecord&, const std::vector<NativeIconRecord>&,
+                           const RuleBinding* binding = nullptr,
+                           const std::unordered_map<std::string, RuleBinding>* bindings = nullptr);
 } // namespace tray

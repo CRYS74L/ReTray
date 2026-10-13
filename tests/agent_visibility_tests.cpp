@@ -219,6 +219,8 @@ void ResetFixture() {
     retryAfter.clear(); outcomes.clear(); seenSequence = -1;
     lastCatalogRefresh = 0;
     registrations.clear();
+    roleBindings.clear(); roleObservations.clear(); ruleContext.clear();
+    identityRetryAt = 0; identityOutcome = Json::object();
     environmentStamp.clear(); environmentEpoch = lastEnvironmentCheck = 0;
     activityHistory = Json::object(); activityDirty = false; ownAdded = false;
     startupTaskEnabled = false; startupTaskWrites = 0;
@@ -631,17 +633,18 @@ void SourceHiddenSlotBecomesListedWhenApplicationShowsIt() {
     bridge.shared->snapshotSequence += 2; Refresh();
     CHECK(CatalogJson()["icons"].size() == 3);
 }
-void MacTrayUidChangeRestoresHiddenPolicy() {
+void GenericUidChangeRestoresHiddenPolicy() {
     ResetFixture();
     auto peer = settings["rules"][1];
     auto& row = bridge.shared->icons[0];
-    wcscpy_s(row.executable, L"C:\\Fonts\\MacType\\MacTray.exe");
-    wcscpy_s(row.windowClass, L"TPUtilWindow");
+    wcscpy_s(row.executable, L"C:\\Fixture\\ChangingUid.exe");
+    wcscpy_s(row.windowClass, L"SharedTrayHost");
+    wcscpy_s(row.originalTip, L"Primary role"); row.callback = WM_APP + 8;
     row.identity.uid = 42036080; row.custom = row.managed = false; row.placement = 1;
-    IconRule old; old.selector.executable = row.executable; old.selector.uid = 42888048;
+    IconRule old; old.selector = SelectorFor(Record(row), RuleRecords(bridge.Snapshot()));
     old.visibility = 1;
-    auto first = RuleJson(old); old.selector.uid = 18967408;
-    settings["rules"] = {first, peer, RuleJson(old)};
+    auto initialKey = PersistentKey(old.selector);
+    settings["rules"] = {RuleJson(old), peer}; settings["iconOrder"] = {initialKey, "@assistant"};
     CHECK(SaveSettings(settingsPath, settings));
     bool recovered{}; settings = LoadSettings(settingsPath, recovered); CHECK(!recovered);
     CHECK(settings["rules"].size() == 2); LoadRules();
@@ -654,8 +657,89 @@ void MacTrayUidChangeRestoresHiddenPolicy() {
     row.identity.ownerCreatedAt += 100; row.identity.ownerHwnd += 50;
     row.registration += 10; row.placement = 1; row.managed = false;
     bridge.shared->snapshotSequence += 2; Refresh(); CHECK(row.placement == 2);
+    auto catalog = CatalogJson()["icons"];
+    auto current = std::find_if(catalog.begin(), catalog.end(), [&](const auto& icon) { return icon["key"] == IdentityKey(row.identity); });
+    CHECK(current != catalog.end()); CHECK((*current)["identityReassociated"] == true);
+    CHECK((*current)["selector"]["uid"] == 42036080); CHECK((*current)["nativeUid"] == 23456789);
+    CHECK(settings["iconOrder"][0] == initialKey); CHECK(settings["rules"].size() == 2);
     CHECK(bridge.shared->icons[1].placement == 1);
     CHECK(LoadSettings(settingsPath, recovered)["rules"] == settings["rules"]);
+}
+void IdentityLearningDoesNotReplayVisualPolicy() {
+    ResetFixture(); auto key = TargetKey(); auto before = configRevision;
+    auto& row = bridge.shared->icons[0];
+    wcscpy_s(row.originalTip, L"Native dynamic tooltip");
+    row.originalWidth = row.originalHeight = 1; row.originalPixels[0] = 0xff778899;
+    bridge.shared->snapshotSequence += 2; Refresh();
+    CHECK(configRevision > before); CHECK(IconCommands().empty());
+    auto captured = ParseRule(settings["rules"][0]); CHECK(captured.selector.legacy.dynamicTip);
+    CHECK(!captured.selector.legacy.images.empty());
+    CHECK(applied.contains(key));
+    CHECK(Call("icon.visibility", {{"key", key}, {"visibility", 1}}).value("success", false));
+    CHECK(IconCommands().size() == 1); CHECK(Target().placement == 2);
+}
+void ProvisionalAssociationCannotTrainIdentityAndDelayedUidRestores() {
+    ResetFixture(); auto& row = bridge.shared->icons[0];
+    row.custom = row.managed = false; row.placement = 1; row.identity.uid = 99;
+    IconRule old; old.selector.executable = row.executable; old.selector.uid = 7; old.visibility = 1;
+    settings["rules"] = {RuleJson(old), settings["rules"][1]};
+    CHECK(SaveSettings(settingsPath, settings)); auto initial = settings["rules"][0];
+    LoadRules(); bridge.shared->snapshotSequence += 2; Refresh();
+    CHECK(row.placement == 2); CHECK(settings["rules"][0] == initial);
+    auto& delayed = bridge.shared->icons[bridge.shared->count++]; delayed = row;
+    delayed.identity.uid = 7; delayed.identity.ownerHwnd += 50; delayed.registration += 50;
+    delayed.managed = false; delayed.placement = 1;
+    bridge.shared->snapshotSequence += 2; Refresh();
+    CHECK(row.placement == 1); CHECK(delayed.placement == 2);
+    CHECK(ParseRule(settings["rules"][0]).selector.uid == 7);
+    CHECK(ParseRule(settings["rules"][0]).selector.legacy.observedUid == 7);
+}
+void ConfirmedRowKeepsItsOwnRuleWhenOldUidArrives() {
+    for (bool editor : {false, true}) {
+        ResetFixture(); auto& row = bridge.shared->icons[0];
+        row.custom = row.managed = false; row.placement = 1; row.identity.uid = 99;
+        IconRule old; old.selector.executable = row.executable; old.selector.uid = 7; old.visibility = 0;
+        settings["rules"] = {RuleJson(old), settings["rules"][1]};
+        CHECK(SaveSettings(settingsPath, settings)); LoadRules();
+        bridge.shared->snapshotSequence += 2; Refresh();
+        CHECK(roleBindings.at(TargetKey()).provisional);
+        Json reply;
+        if (editor) {
+            auto edited = settings["rules"][0]; edited["visibility"] = 1; edited["tip"] = "Explicit edited tip";
+            reply = Call("rule.apply", {{"key", TargetKey()}, {"rule", edited}, {"previousSelector", edited["selector"]}});
+        } else reply = Call("icon.visibility", {{"key", TargetKey()}, {"visibility", 1}});
+        CHECK(reply.value("success", false)); Refresh(); CHECK(row.placement == 2);
+        CHECK(settings["rules"].size() == 3);
+        auto found = ResolveCurrent(rules, Record(row), RuleRecords(bridge.Snapshot()));
+        CHECK(found.rule && !found.provisional && found.rule->selector.uid == 99);
+        wcscpy_s(row.originalTip, L"New dynamic tooltip");
+        row.originalWidth = row.originalHeight = 1; row.originalPixels[0] = 0xff991122;
+        auto& delayed = bridge.shared->icons[bridge.shared->count++]; delayed = row;
+        delayed.identity.uid = 7; delayed.registration += 50; delayed.managed = false;
+        delayed.placement = 1;
+        bridge.shared->snapshotSequence += 2; Refresh();
+        CHECK(row.placement == 2); CHECK(delayed.placement == 1);
+        found = ResolveCurrent(rules, Record(row), RuleRecords(bridge.Snapshot()));
+        CHECK(found.rule && !found.provisional && found.rule->selector.uid == 99);
+        std::unordered_set<std::string> listKeys;
+        for (const auto& icon : CatalogJson()["icons"]) CHECK(listKeys.insert(icon["stableKey"].get<std::string>()).second);
+    }
+}
+void ExplicitBatchReapplyRetriesReassociatedRegistration() {
+    ResetFixture(); auto& row = bridge.shared->icons[0];
+    wcscpy_s(row.windowClass, L"SharedTrayHost"); wcscpy_s(row.originalTip, L"Primary");
+    row.callback = WM_APP + 8;
+    auto saved = ParseRule(settings["rules"][0]);
+    saved.selector = SelectorFor(Record(row), RuleRecords(bridge.Snapshot()));
+    settings["rules"][0] = RuleJson(saved); CHECK(SaveSettings(settingsPath, settings)); LoadRules();
+    row.identity.uid = 99; row.registration += 100; row.custom = row.managed = false;
+    bridge.nextError = ERROR_FILE_NOT_FOUND;
+    bridge.shared->snapshotSequence += 2; Refresh();
+    CHECK(failedStamp.contains(TargetKey())); bridge.commands.clear();
+    auto reply = Call("rules.apply", {{"rules", Json::array({RuleJson(saved)})}});
+    CHECK(reply.value("success", false)); CHECK(!failedStamp.contains(TargetKey()));
+    CHECK(!IconCommands().empty());
+    for (const auto& command : IconCommands()) CHECK(command.identity.ownerPid == row.identity.ownerPid);
 }
 void UnresolvedIdentityCannotPoisonConfiguration() {
     ResetFixture(); auto before = settings;
@@ -706,7 +790,11 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"normalization failure does not commit configuration or revision", NormalizeFailureDoesNotCommitSettingsOrRevision},
                             std::pair{"Run registry preflight failure leaves task unchanged", StartupRunPreflightFailureCannotChangeTask},
                             std::pair{"Run retirement failure restores startup task", StartupRunDeleteFailureRestoresTask},
-                            std::pair{"MacTray recreated UID inherits saved hiding without touching peer", MacTrayUidChangeRestoresHiddenPolicy},
+                            std::pair{"generic recreated UID inherits saved hiding without touching peer", GenericUidChangeRestoresHiddenPolicy},
+                            std::pair{"identity metadata learning does not replay visual policy", IdentityLearningDoesNotReplayVisualPolicy},
+                            std::pair{"provisional identity cannot train and delayed UID restores secondary", ProvisionalAssociationCannotTrainIdentityAndDelayedUidRestores},
+                            std::pair{"explicit row confirmation survives dynamic image and delayed old UID", ConfirmedRowKeepsItsOwnRuleWhenOldUidArrives},
+                            std::pair{"explicit batch reapply retries changed UID", ExplicitBatchReapplyRetriesReassociatedRegistration},
                             std::pair{"generic blink preview retains visible image", BlinkPresentationKeepsVisibleFrameForAnyApplication},
                             std::pair{"hidden native image bank does not create public rows", NativeHiddenImageSlotsDoNotBecomeCatalogRows},
                             std::pair{"assistant-hidden active icon stays controllable", AssistantHiddenActiveIconRemainsControllable},

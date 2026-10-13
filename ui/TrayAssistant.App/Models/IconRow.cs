@@ -53,7 +53,7 @@ public sealed class IconRow : ObservableObject
             Name = json["tipCurrent"]?.GetValue<string>() is { Length: > 0 } ownerTip ? ownerTip : "未知程序";
         Name=Name.ToLowerInvariant() switch{"weixin"=>"微信","qq"=>"QQ","trayassistant.agent"=>"托盘图标助手",_=>Name};
         Tip = json["tipCurrent"]?.GetValue<string>() ?? "";
-        Identity = (json["selector"]!["hasGuid"]!.GetValue<bool>() ? "GUID" : $"UID {json["selector"]!["uid"]}") + $" · PID {json["pid"]}";
+        Identity = (json["selector"]!["hasGuid"]!.GetValue<bool>() ? "GUID" : $"UID {json["nativeUid"] ?? json["selector"]!["uid"]}") + $" · PID {json["pid"]}";
         State = json["decision"]?.GetValue<int>()==4?"待确认静态图像":json["decision"]?.GetValue<int>()==2?"原应用闪烁空帧":json["dynamic"]?.GetValue<bool>() == true ? "原应用动态帧" : json["placement"]!.GetValue<int>() == 2 ? "已隐藏" : json["custom"]?.GetValue<bool>() == true ? "自定义图标" : json["placement"]!.GetValue<int>() == 0 ? "任务栏" : "折叠区";
         State=Services.Localization.Text(State);
         var value = (json["displayPixels"] ?? json["pixels"])!.GetValue<string>();

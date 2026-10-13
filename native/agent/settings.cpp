@@ -19,7 +19,19 @@ Json RuleJson(const IconRule& r) {
               {"tipPattern", Utf8(r.selector.tipPattern)},
               {"tipMode", r.selector.tipMode},
               {"ownerPid", r.selector.ownerPid},
-              {"ownerCreatedAt", r.selector.ownerCreatedAt}}},
+              {"ownerCreatedAt", r.selector.ownerCreatedAt},
+              {"legacyRole", {{"ready", r.selector.legacy.ready},
+                              {"single", r.selector.legacy.single},
+                              {"cardinalityKnown", r.selector.legacy.cardinalityKnown},
+                              {"dynamicTip", r.selector.legacy.dynamicTip},
+                              {"dynamicImage", r.selector.legacy.dynamicImage},
+                              {"hasObservedUid", r.selector.legacy.hasObservedUid},
+                              {"observedUid", r.selector.legacy.observedUid},
+                              {"callback", r.selector.legacy.callback},
+                              {"windowClass", Utf8(r.selector.legacy.windowClass)},
+                              {"tips", [&] { auto tips = Json::array(); for (const auto& tip : r.selector.legacy.tips) tips.push_back(Utf8(tip)); return tips; }()},
+                              {"images", r.selector.legacy.images},
+                              {"listKey", r.selector.legacy.listKey}}}}},
             {"visibility", r.visibility},
             {"location", -1},
             {"order", -1},
@@ -52,6 +64,34 @@ IconRule ParseRule(const Json& j) {
     r.selector.tipMode = s.value("tipMode", 0u);
     r.selector.ownerPid = s.value("ownerPid", 0u);
     r.selector.ownerCreatedAt = s.value("ownerCreatedAt", uint64_t{});
+    if (s.contains("legacyRole")) {
+        const auto& data = s.at("legacyRole");
+        if (!data.is_object()) throw std::runtime_error("Invalid legacy role");
+        auto& role = r.selector.legacy;
+        role.ready = data.value("ready", false); role.single = data.value("single", false);
+        role.cardinalityKnown = data.value("cardinalityKnown", false);
+        role.dynamicTip = data.value("dynamicTip", false); role.dynamicImage = data.value("dynamicImage", false);
+        role.hasObservedUid = data.value("hasObservedUid", false);
+        role.observedUid = data.value("observedUid", 0u); role.callback = data.value("callback", 0u);
+        role.windowClass = Wide(data.value("windowClass", std::string{}));
+        role.listKey = data.value("listKey", std::string{});
+        auto tips = data.value("tips", Json::array());
+        auto images = data.value("images", Json::array());
+        if (!tips.is_array() || tips.size() > 8 || !images.is_array() || images.size() > 8 ||
+            role.windowClass.size() > 255 || role.listKey.size() > 32768 ||
+            (role.ready && r.selector.hasGuid)) throw std::runtime_error("Legacy role out of bounds");
+        for (const auto& tip : tips) {
+            auto text = Wide(tip.get<std::string>());
+            if (text.size() > 127) throw std::runtime_error("Legacy role tooltip out of bounds");
+            role.tips.push_back(std::move(text));
+        }
+        for (const auto& image : images) {
+            if (!image.is_number_unsigned() &&
+                (!image.is_number_integer() || image.get<int64_t>() < 0))
+                throw std::runtime_error("Invalid legacy role image");
+            role.images.push_back(image.get<uint64_t>());
+        }
+    }
     if (FAILED(CLSIDFromString(
             Wide(s.value("guid", std::string("{00000000-0000-0000-0000-000000000000}"))).c_str(),
             &r.selector.guid)))
@@ -74,7 +114,8 @@ IconRule ParseRule(const Json& j) {
         (!r.selector.matchUid && (r.selector.hasGuid || r.selector.windowClass.empty())) ||
         (r.selector.windowClassIsIdentity && r.selector.matchUid) ||
         (bool(r.selector.ownerPid) != bool(r.selector.ownerCreatedAt)) || r.assetIndex > 10000 ||
-        r.baselineWidth > 2048 || r.baselineHeight > 2048)
+        r.baselineWidth > MaximumSourceDimension || r.baselineHeight > MaximumSourceDimension ||
+        static_cast<uint64_t>(r.baselineWidth) * r.baselineHeight > MaximumSourcePixels)
         throw std::runtime_error("Rule values out of bounds");
     return r;
 }
@@ -311,55 +352,8 @@ Json NormalizeSettings(Json value) {
                          {"alwaysShow", false}, {"inactiveSeconds", 0}, {"unusedDays", 0},
                          {"hotkey", 0}, {"hotkeyAction", 0}, {"newState", -1},
                          {"swapButtons", false}});
-    auto migratedRules = Json::array();
-    std::unordered_map<std::string, size_t> migratedKeys;
-    std::unordered_map<std::string, std::string> renamedKeys;
-    std::unordered_map<std::string, std::string> preferredOrderKeys;
-    for (auto entry : result["rules"]) {
-        auto rule = ParseRule(entry);
-        auto& selector = rule.selector;
-        if (UsesVolatileLegacyUid(selector.executable) && !selector.hasGuid &&
-            !selector.ownerPid &&
-            (selector.windowClass.empty() || selector.windowClass == L"TPUtilWindow")) {
-            auto oldKey = PersistentKey(selector);
-            RuleSelector oldOrder;
-            oldOrder.executable = selector.executable; oldOrder.uid = selector.uid;
-            if (!selector.matchUid) {
-                oldOrder.matchUid = false; oldOrder.windowClass = L"TPUtilWindow";
-                oldOrder.windowClassIsIdentity = selector.windowClassIsIdentity;
-            }
-            NativeIconRecord orderRecord;
-            orderRecord.executable = selector.executable;
-            orderRecord.windowClass = L"TPUtilWindow";
-            auto orderKey = PersistentKey(SelectorFor(orderRecord));
-            auto oldOrderKey = PersistentKey(oldOrder);
-            if (selector.windowClass.empty()) selector.windowClassIsIdentity = true;
-            selector.matchUid = false; selector.uid = 0;
-            selector.windowClass = L"TPUtilWindow";
-            entry = RuleJson(rule);
-            auto key = PersistentKey(selector);
-            renamedKeys[oldKey] = renamedKeys[oldOrderKey] = orderKey;
-            preferredOrderKeys[orderKey] = oldOrderKey;
-            auto [found, added] = migratedKeys.emplace(key, migratedRules.size());
-            if (!added) { migratedRules[found->second] = std::move(entry); continue; }
-        }
-        migratedRules.push_back(std::move(entry));
-    }
-    result["rules"] = std::move(migratedRules);
-    auto migratedOrder = Json::array();
-    std::set<std::string> seenOrder;
-    for (const auto& entry : result["iconOrder"]) {
-        auto key = entry.get<std::string>();
-        if (auto rename = renamedKeys.find(key); rename != renamedKeys.end()) {
-            const auto& preferred = preferredOrderKeys.at(rename->second);
-            if (key != preferred &&
-                std::find(result["iconOrder"].begin(), result["iconOrder"].end(), Json(preferred)) !=
-                    result["iconOrder"].end()) continue;
-            key = rename->second;
-        }
-        if (seenOrder.insert(key).second) migratedOrder.push_back(std::move(key));
-    }
-    result["iconOrder"] = std::move(migratedOrder);
+    // Runtime evidence enriches old rules. Loading must not guess application names,
+    // collapse different UIDs or rewrite explicit selector priority.
     return result;
 }
 Json LoadSettings(const std::filesystem::path& path, bool& recovered) {

@@ -1,4 +1,4 @@
-param([ValidateSet('CoreTests','Probe','Agent','AgentVisibilityTests','AgentSystemTests','Bridge','BridgeRegistrationTests','BridgeTest','BridgeControls','Source','SettingsTests','StartupTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
+param([ValidateSet('CoreTests','BitmapTests','ProcessIdentityTests','Probe','Agent','AgentVisibilityTests','AgentSystemTests','Bridge','BridgeRegistrationTests','BridgeTest','BridgeControls','Source','SettingsTests','StartupTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
 $ErrorActionPreference='Stop'
 $productRoot=$PSScriptRoot
 $projectVersion=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
@@ -17,6 +17,13 @@ if ($Target -eq 'CoreTests') {
     & $clang @commonArgs (Join-Path $productRoot 'tests\core_tests.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\platform\software_bitmap.cpp') '-o' $exe '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt'
     if ($LASTEXITCODE -ne 0) { throw 'Core test build failed' }
     & $exe $Filter
+    exit $LASTEXITCODE
+}
+if ($Target -eq 'ProcessIdentityTests') {
+    $exe=Join-Path $outputRoot 'ProcessIdentityTests.exe'
+    & $clang @commonArgs '-municode' (Join-Path $productRoot 'tests\process_identity_tests.cpp') '-o' $exe '-ladvapi32' '-lshell32'
+    if($LASTEXITCODE -ne 0){throw 'Process identity tests build failed'}
+    & $exe
     exit $LASTEXITCODE
 }
 if ($Target -eq 'Probe') {
@@ -39,7 +46,7 @@ if ($Target -eq 'BridgeControls') {
     if($LASTEXITCODE -ne 0){throw 'Bridge controls build failed'}
     exit 0
 }
-if ($Target -in @('Bridge','BridgeRegistrationTests')) {
+if ($Target -in @('Bridge','BridgeRegistrationTests','BitmapTests')) {
     $clangC=Join-Path (Split-Path $clang -Parent) 'clang.exe'
     $hookObjects=@()
     foreach($sourceName in @('buffer','hook','trampoline','hde\hde64')) {
@@ -50,11 +57,11 @@ if ($Target -in @('Bridge','BridgeRegistrationTests')) {
         $hookObjects+=$object
     }
     $bridgeMode=if($Target -eq 'Bridge'){'-shared'}else{'-municode'}
-    $bridgeSource=if($Target -eq 'Bridge'){'native\shell\bridge_entry.cpp'}else{'tests\bridge_registration_tests.cpp'}
-    $bridgeOutput=Join-Path $outputRoot $(if($Target -eq 'Bridge'){'TrayAssistant.ShellBridge.dll'}else{'BridgeRegistrationTests.exe'})
+    $bridgeSource=if($Target -eq 'Bridge'){'native\shell\bridge_entry.cpp'}elseif($Target -eq 'BitmapTests'){'tests\bitmap_tests.cpp'}else{'tests\bridge_registration_tests.cpp'}
+    $bridgeOutput=Join-Path $outputRoot $(if($Target -eq 'Bridge'){'TrayAssistant.ShellBridge.dll'}else{$Target+'.exe'})
     & $clang @commonArgs $bridgeMode (Join-Path $productRoot $bridgeSource) (Join-Path $productRoot 'native\shell\system_controls.cpp') (Join-Path $productRoot 'native\shell\behavior_hooks.cpp') @hookObjects (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\platform\software_bitmap.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') '-o' $bridgeOutput '-luser32' '-lgdi32' '-lshell32' '-lcomctl32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt'
     if($LASTEXITCODE -ne 0){throw 'Bridge build failed'}
-    if($Target -eq 'BridgeRegistrationTests'){& $bridgeOutput;exit $LASTEXITCODE}
+    if($Target -in @('BridgeRegistrationTests','BitmapTests')){& $bridgeOutput;exit $LASTEXITCODE}
     exit 0
 }
 if ($Target -eq 'SettingsTests') {

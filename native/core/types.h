@@ -20,12 +20,22 @@ struct IconIdentity {
 };
 enum class Placement { Promoted, Overflow, Hidden };
 enum class FrameOrigin { Unknown, CachedOriginal, SourceLive, Custom };
+enum class FrameReadState : uint32_t { Unknown, Absent, Ready, DecodeError };
+inline constexpr uint32_t MaximumSourceDimension = 4096;
+inline constexpr uint64_t MaximumSourcePixels = 4 * 1024 * 1024;
 struct Frame {
     uint32_t width{}, height{};
+    // Native dimensions drive frame policy; raster storage is bounded independently.
+    uint32_t rasterWidth{}, rasterHeight{};
     uint64_t fingerprint{}, revision{};
     bool transparent{};
     FrameOrigin origin{FrameOrigin::Unknown};
+    FrameReadState readState{FrameReadState::Unknown};
+    uint32_t readError{}, nativeWidth{}, nativeHeight{}, nativePixelFormat{}, nativeAlphaMode{};
+    std::wstring runtimeType;
     std::vector<uint32_t> pixels;
+    uint32_t PixelWidth() const { return rasterWidth ? rasterWidth : width; }
+    uint32_t PixelHeight() const { return rasterHeight ? rasterHeight : height; }
 };
 struct OperationResult {
     bool success{};
@@ -40,6 +50,8 @@ struct FrameResult {
 };
 struct NativeIconRecord {
     IconIdentity identity;
+    bool managed{};
+    uint64_t registrationSerial{};
     uint32_t callbackMessage{}, notifyVersion{}, sourceState{}, nativeIndex{};
     Placement placement{Placement::Overflow};
     Frame cachedOriginal, currentFrame;

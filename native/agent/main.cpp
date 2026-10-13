@@ -43,6 +43,12 @@ HICON ownImage{};
 std::string ownIdentityKey;
 uint64_t ownIdentityEpoch{};
 std::unordered_map<std::string, IconRule> rules;
+std::unordered_map<std::string, RuleBinding> roleBindings;
+std::vector<NativeIconRecord> ruleContext;
+struct RoleObservation { std::string rule; uint64_t registration{}; std::wstring tip; uint64_t image{}; };
+std::unordered_map<std::string, RoleObservation> roleObservations;
+uint64_t identityRetryAt{};
+Json identityOutcome = {{"success", true}};
 std::unordered_map<std::string, std::string> applied;
 std::unordered_map<std::string, std::string> instanceOrderKeys;
 std::unordered_map<std::string, std::string> failedStamp;
@@ -139,6 +145,9 @@ uint64_t Now() {
 NativeIconRecord Record(const BridgeIcon& row) {
     NativeIconRecord r;
     r.identity = row.identity;
+    r.registrationSerial = row.registration;
+    r.managed = row.managed;
+    r.sourceState = row.sourceHidden ? NIS_HIDDEN : 0;
     r.executable = row.executable;
     r.windowClass = row.windowClass;
     r.tip = row.originalTip;
@@ -148,7 +157,61 @@ NativeIconRecord Record(const BridgeIcon& row) {
     r.nativeIndex = row.index;
     r.sourceRevision = row.revision;
     r.currentFrame.fingerprint = row.sourceFingerprint;
+    r.currentFrame.transparent = row.transparent;
+    if (HasVisiblePixels(row.originalPixels, row.originalWidth, row.originalHeight)) {
+        uint64_t hash = 1469598103934665603ULL;
+        for (size_t i = 0; i < static_cast<size_t>(row.originalWidth) * row.originalHeight; ++i) {
+            hash ^= row.originalPixels[i]; hash *= 1099511628211ULL;
+        }
+        r.cachedOriginal.fingerprint = hash;
+    }
     return r;
+}
+std::vector<NativeIconRecord> RuleRecords(const std::vector<BridgeIcon>& current) {
+    std::vector<NativeIconRecord> records;
+    records.reserve(current.size());
+    for (const auto& row : current) records.push_back(Record(row));
+    return records;
+}
+RuleResolution ResolveCurrent(const std::unordered_map<std::string, IconRule>& available,
+                              const NativeIconRecord& record,
+                              const std::vector<NativeIconRecord>& context) {
+    auto key = IdentityKey(record.identity);
+    auto bound = roleBindings.find(key);
+    bool valid = bound != roleBindings.end() && bound->second.registration == record.registrationSerial;
+    return ResolveRule(available, record, context, valid ? &bound->second : nullptr, &roleBindings);
+}
+std::string LegacyListBase(const RuleSelector& selector, const NativeIconRecord& record) {
+    if (!selector.legacy.listKey.empty()) return selector.legacy.listKey;
+    auto current = PersistentKey(SelectorFor(record));
+    auto has = [&](const std::string& value) {
+        const auto& order = settings["iconOrder"];
+        return std::find(order.begin(), order.end(), Json(value)) != order.end();
+    };
+    if (has(current)) return current;
+    if (!selector.matchUid) {
+        auto old = selector;
+        old.windowClass = record.windowClass; old.windowClassIsIdentity = true;
+        old.tipMode = old.ownerPid = 0; old.ownerCreatedAt = 0; old.tipPattern.clear();
+        auto oldBase = PersistentKey(old);
+        if (has(oldBase)) return oldBase;
+    }
+    auto saved = PersistentKey(selector);
+    return has(saved) ? saved : current;
+}
+std::string DisplayBase(const NativeIconRecord& record) {
+    auto found = ResolveCurrent(rules, record, ruleContext);
+    return found.rule && !found.rule->selector.hasGuid
+        ? LegacyListBase(found.rule->selector, record) : PersistentKey(SelectorFor(record));
+}
+RuleSelector ConfirmSelector(const RuleSelector& previous, const NativeIconRecord& record,
+                             const std::vector<NativeIconRecord>& context) {
+    auto confirmed = SelectorFor(record, context);
+    confirmed.windowClass = previous.windowClassIsIdentity ? L"" : previous.windowClass;
+    confirmed.tipMode = previous.tipMode; confirmed.tipPattern = previous.tipPattern;
+    confirmed.ownerPid = previous.ownerPid; confirmed.ownerCreatedAt = previous.ownerCreatedAt;
+    confirmed.legacy.listKey = LegacyListBase(previous, record);
+    return confirmed;
 }
 Json Result(bool ok, const std::string& detail = {}, DWORD error = 0) {
     return {
@@ -171,10 +234,71 @@ void LoadRules() {
         rules[PersistentKey(rule.selector)] = std::move(rule);
     }
 }
+void LearnLegacyIdentities() {
+    if (GetTickCount64() < identityRetryAt) return;
+    auto candidate = settings;
+    bool changed{};
+    for (const auto& row : rows) {
+        if (row.identity.ownerPid == GetCurrentProcessId() || row.identity.hasGuid ||
+            !row.executable[0] || (row.sourceHidden && !row.managed)) continue;
+        auto record = Record(row);
+        auto resolved = ResolveCurrent(rules, record, ruleContext);
+        if (!resolved.rule || resolved.ambiguous || resolved.provisional) continue;
+        auto key = PersistentKey(resolved.rule->selector);
+        auto entry = std::find_if(candidate["rules"].begin(), candidate["rules"].end(), [&](const auto& item) {
+            return PersistentKey(ParseRule(item).selector) == key;
+        });
+        if (entry == candidate["rules"].end()) continue;
+        auto rule = ParseRule(*entry);
+        auto& role = rule.selector.legacy;
+        auto list = LegacyListBase(rule.selector, record);
+        auto observed = DescribeLegacyRole(record, ruleContext);
+        if (!role.ready) {
+            role = observed; role.listKey = std::move(list);
+        } else {
+            if (role.windowClass.empty()) role.windowClass = observed.windowClass;
+            if (!role.callback) role.callback = observed.callback;
+            if (!role.cardinalityKnown) { role.single = observed.single; role.cardinalityKnown = true; }
+            else role.single &= observed.single;
+        }
+        if (role.listKey.empty()) role.listKey = std::move(list);
+        auto nativeKey = IdentityKey(record.identity);
+        auto old = roleObservations.find(nativeKey);
+        auto image = record.cachedOriginal.fingerprint;
+        if (old != roleObservations.end() && old->second.registration == row.registration &&
+            old->second.rule == key) {
+            role.dynamicTip |= old->second.tip != record.tip;
+            role.dynamicImage |= image && old->second.image && image != old->second.image;
+        }
+        // Only a proven association learns variants. Provisional weak evidence must not
+        // make a later different icon look like the old role.
+        if (!resolved.provisional) {
+            if (!record.tip.empty() && role.tips.size() < 8 &&
+                std::find(role.tips.begin(), role.tips.end(), record.tip) == role.tips.end())
+                role.tips.push_back(record.tip);
+            if (image && role.images.size() < 8 &&
+                std::find(role.images.begin(), role.images.end(), image) == role.images.end())
+                role.images.push_back(image);
+            roleObservations[nativeKey] = {key, row.registration, record.tip, image};
+        }
+        auto updated = RuleJson(rule);
+        if (updated != *entry) { *entry = std::move(updated); changed = true; }
+    }
+    if (!changed) return;
+    auto previous = settings;
+    settings = std::move(candidate);
+    if (Persist()) {
+        LoadRules(); identityOutcome = Result(true, "通用图标身份信息已保存");
+        identityRetryAt = 0;
+    } else {
+        settings = std::move(previous); identityRetryAt = GetTickCount64() + 3000;
+        identityOutcome = Result(false, "图标身份信息保存失败，原配置仍保留", ERROR_WRITE_FAULT);
+    }
+}
 void InvalidateRule(const RuleSelector& selector, const std::string& previousKey = {}) {
     for (const auto& row : rows) {
         auto record = Record(row);
-        auto prior = ResolveRule(rules, record);
+        auto prior = ResolveCurrent(rules, record, ruleContext);
         if (!Matches(selector, record) &&
             (previousKey.empty() || !prior.rule ||
              PersistentKey(prior.rule->selector) != previousKey))
@@ -364,8 +488,10 @@ int EffectiveVisibility(const BridgeIcon& row, const IconRule* rule) {
     return rule && rule->enabled ? rule->visibility : -1;
 }
 std::string RuleStamp(const IconRule* rule, int visibility) {
-    return (rule ? RuleJson(*rule).dump() : std::string("native")) + ":" +
-           std::to_string(visibility);
+    if (!rule) return "native:" + std::to_string(visibility);
+    auto policy = RuleJson(*rule);
+    policy["selector"].erase("legacyRole");
+    return policy.dump() + ":" + std::to_string(visibility);
 }
 void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
     if (!ShouldRecover(lifecycle))
@@ -533,18 +659,18 @@ bool ApplyEnvironment(bool force = false) {
 std::string StableIconKey(const BridgeIcon& row) {
     if (row.identity.ownerPid == GetCurrentProcessId())
         return "@assistant";
-    auto base = PersistentKey(SelectorFor(Record(row)));
+    auto base = DisplayBase(Record(row));
     auto owner = base + "|live:" + std::to_string(row.identity.ownerCreatedAt) + ":" +
-                 std::to_string(row.identity.ownerHwnd);
+                 std::to_string(row.identity.ownerHwnd) + ":" + std::to_string(row.identity.uid);
     auto found = instanceOrderKeys.find(owner);
     if (found != instanceOrderKeys.end())
         return found->second;
     std::unordered_set<std::string> activeOwners;
     for (const auto& current : rows) {
-        auto currentBase = PersistentKey(SelectorFor(Record(current)));
+        auto currentBase = DisplayBase(Record(current));
         activeOwners.insert(currentBase +
                             "|live:" + std::to_string(current.identity.ownerCreatedAt) + ":" +
-                            std::to_string(current.identity.ownerHwnd));
+                            std::to_string(current.identity.ownerHwnd) + ":" + std::to_string(current.identity.uid));
     }
     for (auto it = instanceOrderKeys.begin(); it != instanceOrderKeys.end();)
         if (!activeOwners.contains(it->first))
@@ -586,6 +712,7 @@ void Refresh() {
         seenSequence = -1;
         lastCatalogRefresh = 0;
         registrations.clear();
+        roleBindings.clear(); roleObservations.clear(); ruleContext.clear();
         presentationFrames.clear();
         outcomes.clear();
         applied.clear();
@@ -626,6 +753,7 @@ void Refresh() {
             // DELETE/ADD can complete between polls with the same HWND/UID or GUID.
             // The new registration must inherit saved policy and its own source image.
             known->second = row.registration;
+            roleBindings.erase(key); roleObservations.erase(key);
             applied.erase(key);
             failedStamp.erase(key);
             retryAfter.erase(key);
@@ -636,13 +764,19 @@ void Refresh() {
     }
     for (auto it = registrations.begin(); it != registrations.end();)
         if (!present.contains(it->first)) it = registrations.erase(it); else ++it;
+    for (auto it = roleBindings.begin(); it != roleBindings.end();)
+        if (!present.contains(it->first)) it = roleBindings.erase(it); else ++it;
+    for (auto it = roleObservations.begin(); it != roleObservations.end();)
+        if (!present.contains(it->first)) it = roleObservations.erase(it); else ++it;
     for (auto it = presentationFrames.begin(); it != presentationFrames.end();)
         if (!present.contains(it->first)) it = presentationFrames.erase(it); else ++it;
     for (const auto& row : rows)
         RememberOwnIcon(row);
+    ruleContext = RuleRecords(rows);
+    LearnLegacyIdentities();
     for (const auto& row : rows) {
         auto record = Record(row);
-        auto stable = PersistentKey(SelectorFor(record));
+        auto stable = DisplayBase(record);
         auto& activity = catalog.items[IdentityKey(row.identity)].activity;
         if (!activityHistory.contains(stable)) {
             activityHistory[stable] = {{"firstSeen", Now()}, {"lastAccess", Now()}};
@@ -675,11 +809,16 @@ void Refresh() {
     for (auto& row : rows) {
         if (row.identity.ownerPid == GetCurrentProcessId())
             continue;
-        auto found = ResolveRule(rules, Record(row));
+        auto found = ResolveCurrent(rules, Record(row), ruleContext);
         if (found.ambiguous) {
+            ApplyRule(row, nullptr);
+            roleBindings.erase(IdentityKey(row.identity));
             outcomes[IdentityKey(row.identity)] = Result(false, "多个匹配规则冲突", ERROR_DUP_NAME);
             continue;
         }
+        if (found.rule && !found.rule->selector.hasGuid)
+            roleBindings[IdentityKey(row.identity)] = {PersistentKey(found.rule->selector), found.provisional, row.registration};
+        else roleBindings.erase(IdentityKey(row.identity));
         ApplyRule(row, found.rule);
     }
     ScheduleHotkeys();
@@ -715,15 +854,19 @@ Json CatalogJson() {
             continue;
         auto record = Record(row);
         auto key = IdentityKey(row.identity);
-        auto selector = SelectorFor(record);
-        auto found = ResolveRule(rules, record);
+        auto selector = SelectorFor(record, ruleContext);
+        auto found = ResolveCurrent(rules, record, ruleContext);
         IconRule empty;
         empty.selector = selector;
         auto rule = found.rule ? *found.rule : empty;
         auto j = RuleJson(rule);
         bool owned = row.identity.ownerPid == GetCurrentProcessId();
         j["owned"] = owned;
-        j["canPersist"] = owned || !record.executable.empty();
+        j["canPersist"] = owned || (!record.executable.empty() && record.identity.ownerCreatedAt && !found.ambiguous);
+        j["identityAmbiguous"] = found.ambiguous;
+        j["identityReassociated"] = found.reassociated;
+        j["identityProvisional"] = found.provisional;
+        j["nativeUid"] = row.identity.uid;
         j["stableKey"] = StableIconKey(row);
         if (owned) {
             j["asset"] = settings["ownIcon"].value("asset", std::string{});
@@ -750,13 +893,20 @@ Json CatalogJson() {
         j["sourceFingerprint"] = row.sourceFingerprint;
         j["sourceWidth"] = row.sourceWidth;
         j["sourceHeight"] = row.sourceHeight;
+        j["sourceReadState"] = row.sourceReadState;
+        j["sourceReadError"] = row.sourceReadError;
+        j["nativeWidth"] = row.nativeWidth;
+        j["nativeHeight"] = row.nativeHeight;
+        j["nativePixelFormat"] = row.nativePixelFormat;
+        j["nativeAlphaMode"] = row.nativeAlphaMode;
+        j["sourceRuntimeType"] = Utf8(row.sourceRuntimeType);
         j["decision"] = row.decision;
         j["created"] = row.identity.ownerCreatedAt;
         j["originalWidth"] = row.originalWidth;
         j["originalHeight"] = row.originalHeight;
         j["originalPixels"] = Bytes64(row.originalPixels, row.originalWidth * row.originalHeight);
         j["outcome"] = outcomes.contains(key) ? outcomes[key] : Result(true, "原生状态");
-        auto stable = PersistentKey(SelectorFor(record));
+        auto stable = DisplayBase(record);
         auto history = activityHistory.value(stable, Json::object());
         j["firstSeen"] = history.value("firstSeen", Now());
         j["lastAccess"] = history.value("lastAccess", Now());
@@ -962,14 +1112,22 @@ Json SetIconVisibility(const Json& data) {
                     result["data"]["placement"] = row.placement;
         return result;
     }
-    if (!target->executable[0])
+    if (!target->executable[0] || !target->identity.ownerCreatedAt)
         return Result(false, "暂时无法识别图标所属程序，配置未改变", ERROR_NOT_READY);
-    auto found = ResolveRule(rules, Record(*target));
+    auto currentContext = RuleRecords(current);
+    auto found = ResolveCurrent(rules, Record(*target), currentContext);
     if (found.ambiguous)
         return Result(false, "多个匹配规则冲突", ERROR_DUP_NAME);
     IconRule rule = found.rule ? *found.rule : IconRule{};
     if (!found.rule)
-        rule.selector = SelectorFor(Record(*target));
+        rule.selector = SelectorFor(Record(*target), currentContext);
+    else if (found.provisional) {
+        // The old role was only inferred. An explicit row edit creates its own exact
+        // rule; retain the old preference for a delayed or other-process registration.
+        rule.selector = ConfirmSelector(rule.selector, Record(*target), currentContext);
+    }
+    if (!rule.selector.hasGuid && rule.selector.legacy.listKey.empty())
+        rule.selector.legacy.listKey = LegacyListBase(rule.selector, Record(*target));
     rule.visibility = visibility;
     rule.inactiveSeconds = rule.unusedDays = 0;
     rule.enabled = true;
@@ -983,10 +1141,10 @@ Json SetIconVisibility(const Json& data) {
     };
     std::vector<Affected> affected;
     for (const auto& row : current) {
-        auto next = ResolveRule(updatedRules, Record(row));
+        auto next = ResolveCurrent(updatedRules, Record(row), currentContext);
         if (!next.rule || PersistentKey(next.rule->selector) != stable)
             continue;
-        auto prior = ResolveRule(rules, Record(row));
+        auto prior = ResolveCurrent(rules, Record(row), currentContext);
         auto oldVisibility = EffectiveVisibility(row, prior.rule);
         auto appliedTo = applied.find(IdentityKey(row.identity));
         bool wasApplied = appliedTo != applied.end() &&
@@ -1219,6 +1377,7 @@ Json Handle(const Json& req) {
             {"version", TRAY_ASSISTANT_VERSION},
 
             {"environment", environmentOutcome},
+            {"identity", identityOutcome},
             {"startup", startupOutcome},
             {"hotkeyErrors", shortcuts},
             {"recovered", recovered},
@@ -1313,8 +1472,10 @@ Json Handle(const Json& req) {
             settings["hotkeys"].erase("restoreIcons");
         for (auto& entry : settings["rules"])
             entry["enabled"] = true;
-        for (const auto& entry : list)
-            InvalidateRule(ParseRule(entry).selector);
+        for (const auto& entry : list) {
+            auto selector = ParseRule(entry).selector;
+            InvalidateRule(selector, PersistentKey(selector));
+        }
         LoadRules();
         seenSequence = -1;
         Refresh();
@@ -1323,6 +1484,24 @@ Json Handle(const Json& req) {
         result["detail"] = "批量规则已保存并应用";
     } else if (method == "rule.apply" || method == "rule.remove") {
         auto rule = ParseRule(d.at("rule"));
+        bool preservePrevious{};
+        if (method == "rule.apply" && d.contains("key")) {
+            if (!ReconcileNativeCatalog(true)) return Result(false, "原生图标暂时无法读取，配置未改变", ERROR_NOT_READY);
+            bool complete{}; auto current = bridge.Snapshot(&complete);
+            if (!complete) return Result(false, "原生图标暂时无法读取，配置未改变", ERROR_NOT_READY);
+            auto target = std::find_if(current.begin(), current.end(), [&](const auto& row) {
+                return IdentityKey(row.identity) == d.at("key").get<std::string>();
+            });
+            if (target == current.end()) return Result(false, "图标已退出，配置未改变", ERROR_NOT_FOUND);
+            auto context = RuleRecords(current);
+            auto selected = ResolveCurrent(rules, Record(*target), context);
+            if (selected.ambiguous) return Result(false, "多个匹配规则冲突", ERROR_DUP_NAME);
+            if (selected.provisional && selected.rule &&
+                PersistentKey(selected.rule->selector) == PersistentKey(rule.selector)) {
+                rule.selector = ConfirmSelector(rule.selector, Record(*target), context);
+                preservePrevious = true;
+            }
+        }
         auto key = PersistentKey(rule.selector);
         auto saved = settings;
         auto& list = settings["rules"];
@@ -1332,9 +1511,17 @@ Json Handle(const Json& req) {
             prior["selector"] = d.at("previousSelector");
             priorKey = PersistentKey(ParseRule(prior).selector);
         }
+        std::vector<std::string> previouslyLinked;
+        for (const auto& row : rows) {
+            auto prior = ResolveCurrent(rules, Record(row), ruleContext);
+            if ((prior.rule && (PersistentKey(prior.rule->selector) == key ||
+                               PersistentKey(prior.rule->selector) == priorKey)) ||
+                Matches(rule.selector, Record(row)))
+                previouslyLinked.push_back(IdentityKey(row.identity));
+        }
         for (auto it = list.begin(); it != list.end();)
             if (PersistentKey(ParseRule(*it).selector) == key ||
-                (!priorKey.empty() && PersistentKey(ParseRule(*it).selector) == priorKey))
+                (!preservePrevious && !priorKey.empty() && PersistentKey(ParseRule(*it).selector) == priorKey))
                 it = list.erase(it);
             else
                 ++it;
@@ -1349,17 +1536,20 @@ Json Handle(const Json& req) {
             settings["hotkeys"].erase("restoreIcons");
         for (auto& entry : settings["rules"])
             entry["enabled"] = true;
-        InvalidateRule(rule.selector, priorKey);
+        InvalidateRule(rule.selector, priorKey.empty() ? key : priorKey);
         LoadRules();
         seenSequence = -1;
         Refresh();
         result["saved"] = true;
-        for (auto& row : rows)
-            if (Matches(rule.selector, Record(row))) {
+        for (auto& row : rows) {
+            auto resolved = ResolveCurrent(rules, Record(row), ruleContext);
+            if ((resolved.rule && PersistentKey(resolved.rule->selector) == key) ||
+                std::find(previouslyLinked.begin(), previouslyLinked.end(), IdentityKey(row.identity)) != previouslyLinked.end()) {
                 result = outcomes[IdentityKey(row.identity)];
                 result["saved"] = true;
                 break;
             }
+        }
     } else if (method == "icon.visibility")
         result = SetIconVisibility(d);
     else if (method == "ownIcon.apply") {
@@ -1428,7 +1618,7 @@ Json Handle(const Json& req) {
             cmd.y = d.value("y", cmd.y);
         }
         RecordAccess(catalog.items[key].activity, Now());
-        auto stable = PersistentKey(SelectorFor(Record(*row)));
+        auto stable = DisplayBase(Record(*row));
         activityHistory[stable]["lastAccess"] = Now();
         activityDirty = true;
         applied.erase(key);

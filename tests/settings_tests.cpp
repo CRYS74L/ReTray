@@ -95,7 +95,7 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(parsed.inactiveSeconds == 0 && parsed.unusedDays == 0);
         auto migrated = DefaultSettings();
         NativeIconRecord mac;
-        mac.executable = L"C:\\Fonts\\MacType\\MacTray.exe";
+        mac.executable = L"C:\\Synthetic\\ChangingUid.exe";
         IconRule oldMac; oldMac.selector = SelectorFor(mac);
         oldMac.selector.uid = 42888048; oldMac.visibility = 0;
         auto first = RuleJson(oldMac);
@@ -105,24 +105,19 @@ int wmain(int argc, wchar_t** argv) {
         migrated["iconOrder"] = {"@assistant", oldOrderKey, "peer", PersistentKey(oldMac.selector)};
         CHECK(SaveDataJson(path, migrated));
         read = LoadSettings(path, recovered); CHECK(!recovered);
-        CHECK(read["rules"].size() == 2);
-        mac.windowClass = L"TPUtilWindow"; mac.identity.uid = 42036080;
-        bool matched{};
-        for (const auto& entry : read["rules"]) {
-            auto saved = ParseRule(entry);
-            if (Matches(saved.selector, mac)) { CHECK(saved.visibility == 1); matched = true; }
-        }
-        CHECK(matched);
-        CHECK(read["iconOrder"].size() == 3);
-        CHECK(read["iconOrder"][1] == "peer");
-        CHECK(read["iconOrder"][2] == PersistentKey(SelectorFor(mac)));
+        // The loader cannot infer which obsolete UID was a particular application role.
+        // Preserve every preference and order entry; association uses live evidence.
+        CHECK(read["rules"].size() == 3);
+        CHECK(read["rules"] == migrated["rules"]);
+        CHECK(read["iconOrder"] == migrated["iconOrder"]);
+        mac.windowClass = L"CommonTrayHost"; mac.identity.uid = 42036080;
         CHECK(SaveSettings(path, read));
         CHECK(LoadSettings(path, recovered)["rules"] == read["rules"]);
         for (bool explicitFirst : {false, true}) {
             IconRule broad, explicitRule;
-            broad.selector.executable = L"C:\\Fonts\\MacType\\MacTray.exe";
+            broad.selector.executable = mac.executable;
             broad.selector.uid = 42; broad.visibility = 0;
-            explicitRule = broad; explicitRule.selector.windowClass = L"TPUtilWindow";
+            explicitRule = broad; explicitRule.selector.windowClass = mac.windowClass;
             explicitRule.visibility = 1;
             auto overlap = DefaultSettings();
             RuleSelector oldUi; oldUi.executable = mac.executable; oldUi.uid = 42;
@@ -144,6 +139,22 @@ int wmain(int argc, wchar_t** argv) {
             migrated = LoadSettings(path, recovered); CHECK(!recovered);
             CHECK(migrated["iconOrder"][1] == PersistentKey(SelectorFor(mac)));
         }
+        mac.callbackMessage = WM_APP + 8; mac.tip = L"Original tooltip";
+        mac.cachedOriginal.fingerprint = 123; mac.identity.uid = 42;
+        IconRule captured; captured.selector = SelectorFor(mac, {mac});
+        captured.selector.legacy.listKey = "saved-list-position";
+        captured.selector.legacy.dynamicImage = true;
+        auto encoded = RuleJson(captured);
+        CHECK(RuleJson(ParseRule(encoded)) == encoded);
+        auto wideBaseline = encoded;
+        wideBaseline["baselineWidth"] = 4096; wideBaseline["baselineHeight"] = 1024;
+        CHECK(ParseRule(wideBaseline).baselineWidth == 4096);
+        auto oversizedBaseline = wideBaseline; oversizedBaseline["baselineHeight"] = 4096;
+        bool oversizedRejected{}; try { ParseRule(oversizedBaseline); } catch (...) { oversizedRejected = true; }
+        CHECK(oversizedRejected);
+        auto malformed = encoded; malformed["selector"]["legacyRole"]["images"] = {-1};
+        bool rejected{}; try { ParseRule(malformed); } catch (...) { rejected = true; }
+        CHECK(rejected);
         printf("PASS defaults, atomic settings, corruption backup recovery, invalid schema "
                "rejection, lossless rule identity roundtrip, legacy policy neutralization\n");
         return 0;

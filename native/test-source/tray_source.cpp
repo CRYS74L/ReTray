@@ -16,6 +16,7 @@ HANDLE map{};
 HICON current{};
 HWND window{};
 bool silentOwnerExit{};
+uint32_t legacyUid = 11;
 std::unordered_set<uint32_t> extras;
 GUID GuidIcon = {
     0x31415926, 0x1011, 0x2022, {0x93, 0x24, 0x45, 0x66, 0x87, 0xa8, 0xc9, 0xea}};
@@ -54,7 +55,7 @@ NOTIFYICONDATAW Data(bool guid, DWORD flags) {
     NOTIFYICONDATAW data{};
     data.cbSize = sizeof(data);
     data.hWnd = window;
-    data.uID = guid ? 42 : 11;
+    data.uID = guid ? 42 : legacyUid;
     data.uFlags = flags;
     data.hIcon = current;
     data.uCallbackMessage = Callback;
@@ -78,6 +79,18 @@ void Update(uint32_t color) {
         DestroyIcon(old);
 }
 LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
+    if (message == WM_APP + 31) {
+        auto next = static_cast<uint32_t>(w), previous = legacyUid;
+        if (next == previous) return 1;
+        if (extras.contains(next)) return 0;
+        auto data = Data(false, 0);
+        if (!Shell_NotifyIconW(NIM_DELETE, &data)) return 0;
+        legacyUid = next; data = Data(false, NIF_ICON | NIF_TIP | NIF_MESSAGE);
+        if (Shell_NotifyIconW(NIM_ADD, &data)) return 1;
+        legacyUid = previous; data = Data(false, NIF_ICON | NIF_TIP | NIF_MESSAGE);
+        Shell_NotifyIconW(NIM_ADD, &data);
+        return 0;
+    }
     if (message == WM_APP + 30) {
         for (bool guid : {false, true}) {
             auto data = Data(guid, 0);

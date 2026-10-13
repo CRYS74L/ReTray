@@ -1,4 +1,5 @@
 #include "system_controls.h"
+#include "input_method_logo.h"
 #include <objbase.h>
 #undef GetCurrentTime
 #include <algorithm>
@@ -16,6 +17,7 @@ using namespace winrt::Windows::UI::Xaml;
 struct Control {
     uint32_t id{};
     FrameworkElement element{nullptr};
+    winrt::Windows::Foundation::IInspectable model{nullptr};
     winrt::Windows::Foundation::IInspectable original{nullptr};
     Data::Binding binding{nullptr};
     bool changed{};
@@ -63,7 +65,7 @@ Property(const winrt::Windows::Foundation::IInspectable& source, const GUID& iid
         return nullptr;
     return {output, winrt::take_ownership_from_abi};
 }
-std::wstring DataClass(const FrameworkElement& element) {
+winrt::Windows::Foundation::IInspectable DataModel(const FrameworkElement& element) {
     static const GUID view{
         0xcbdd88d7, 0x22a3, 0x58d8, {0x8b, 0xf3, 0x1c, 0xd6, 0x14, 0x09, 0xed, 0x9a}},
         model{0x99c155bb, 0x604b, 0x553e, {0x9a, 0xd0, 0xbb, 0x3f, 0xb7, 0xd6, 0x78, 0x0f}},
@@ -71,7 +73,7 @@ std::wstring DataClass(const FrameworkElement& element) {
     auto vm = Property(element, view, 10);
     auto config = Property(vm, model, 6);
     auto data = Property(config, configuration, 6);
-    return data ? std::wstring(winrt::get_class_name(data)) : L"";
+    return data;
 }
 int Classify(const std::wstring& name, const std::wstring& type, const std::wstring& data) {
     if (name == L"ControlCenterButton")
@@ -170,7 +172,8 @@ void Discover(const FrameworkElement& root, bool beforePaint = false) {
         auto node = pending.back(); pending.pop_back();
         if (auto element = node.try_as<FrameworkElement>()) {
             auto type = std::wstring(winrt::get_class_name(element));
-            auto data = type.find(L"IconView") != std::wstring::npos ? DataClass(element) : L"";
+            auto model = type.find(L"IconView") != std::wstring::npos ? DataModel(element) : winrt::Windows::Foundation::IInspectable{nullptr};
+            auto data = model ? std::wstring(winrt::get_class_name(model)) : L"";
             auto id = Classify(std::wstring(element.Name()), type, data);
             if (beforePaint) {
                 auto known = std::find_if(controls.begin(), controls.end(), [&](const auto& c) { return c.element == element; });
@@ -204,6 +207,7 @@ void Discover(const FrameworkElement& root, bool beforePaint = false) {
                             }
                         });
                 }
+                c.model=model;
                 if (!beforePaint) ReadGlyph(element, id);
                 if (hiddenIds.contains(id)) {
                     if (beforePaint && id != 7 && element.Visibility() == Visibility::Visible) ++prePaintHides[id];
@@ -221,6 +225,9 @@ void Discover(const FrameworkElement& root, bool beforePaint = false) {
             Restore(old);
         }
     controls = std::move(discovered);
+    std::vector<InputMethodLogoHost> logos;
+    for(const auto& c:controls)if(c.id==3)logos.push_back({c.element,c.model});
+    DiscoverInputMethodLogos(logos);
 }
 void Watch(const FrameworkElement& root) {
     if (watchedRoot == root) return;
@@ -229,7 +236,8 @@ void Watch(const FrameworkElement& root) {
     layoutToken = root.LayoutUpdated([](const auto&, const auto&) {
         // LayoutUpdated runs on the taskbar's XAML thread before its frame is
         // presented. A late-created privacy control is collapsed in that frame.
-        if (hiddenIds.empty() || discovering) return;
+        if (discovering) return;
+        if (hiddenIds.empty() && !HasInputMethodLogos()) return;
         try { Discover(watchedRoot, true); } catch (...) { /* Keep Explorer's layout event alive. */ }
     });
 }
@@ -263,6 +271,7 @@ bool ReadSystemControls(uint64_t base, const SymbolAdapter& adapter, BridgeState
                           _TRUNCATE);
             }
             ++row->instances;
+            if(c.id==3)ReadInputMethodLogoStatus(*row);
             row->visible = row->visible || (c.id==7 ? c.element.Opacity()>0 && c.element.IsHitTestVisible()
                                                   : c.element.Visibility() == Visibility::Visible);
             if (auto glyph = glyphs.find(c.id); glyph != glyphs.end()) {
@@ -316,6 +325,7 @@ bool SetSystemPolicy(uint32_t id, int visibility) {
     return true;
 }
 void RestoreSystemControls(bool restore) {
+    RestoreInputMethodLogos(restore);
     if (watchedRoot) { watchedRoot.LayoutUpdated(layoutToken); watchedRoot = nullptr; }
     hiddenIds.clear();
     for (auto& c : controls)

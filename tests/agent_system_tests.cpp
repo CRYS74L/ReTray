@@ -1,5 +1,6 @@
 #include "../native/shell/bridge_client.h"
 #include "../native/agent/settings.h"
+#include "../native/platform/input_profiles.h"
 #include <cstdio>
 #include <map>
 #include <memory>
@@ -23,6 +24,8 @@ struct SystemTestBridgeClient {
     DWORD readError{}, setError{};
     int failingId{-1};
     bool failAfterChange{};
+    bool failLogo{};
+    std::string displayedInputProfile;
     bool Alive() const { return shared && shared->status == 1; }
     void AddNativeControl(int id) { hidden[id] = pendingPolicies.contains(id) && pendingPolicies.at(id); }
     bool Attach(const SymbolAdapter&, const std::filesystem::path&) { return Alive(); }
@@ -32,12 +35,15 @@ struct SystemTestBridgeClient {
         for (const auto& [id, value] : hidden) {
             auto& row = shared->systemControls[shared->systemCount++];
             row = {}; row.id = id; row.visible = !value; row.instances = 1;
+            if(id==3)wcsncpy_s(row.inputProfileKey,Wide(displayedInputProfile).c_str(),_TRUNCATE);
         }
     }
     bool Command(BridgeCommand command, DWORD = 2000) {
         commands.push_back(command);
         shared->lastError = 0;
-        if (command.operation == BridgeOperation::SystemRead) {
+        if(command.operation==BridgeOperation::InputMethodLogo) {
+            if(failLogo)shared->lastError=ERROR_NOT_READY;
+        } else if (command.operation == BridgeOperation::SystemRead) {
             PublishSystems();
             shared->lastError = std::exchange(readError, 0);
         } else if (command.operation == BridgeOperation::SystemSet || command.operation == BridgeOperation::SystemPolicy) {
@@ -59,12 +65,20 @@ struct SystemTestBridgeClient {
     }
 };
 } // namespace tray
+std::vector<tray::InputProfile> SystemTestInputProfiles() {
+    tray::InputProfile row;
+    tray::ParseInputProfileKey("tsf:0804:{86598FB9-66A2-463E-B9C2-AEB906D477AD}:{607FDF85-FCC8-4DBD-A365-41296F980C9C}",row.id);
+    row.key=tray::InputProfileKey(row.id);row.name=L"Fixture input method";row.active=false;
+    return {row};
+}
+#define EnumerateInputProfiles SystemTestInputProfiles
 #define BridgeClient SystemTestBridgeClient
 #define Shell_NotifyIconW SystemTestNotifyIcon
 #define RegisterHotKey SystemTestRegisterHotKey
 #define UnregisterHotKey SystemTestUnregisterHotKey
 #define RegCreateKeyExW SystemTestRegCreateKeyExW
 #include "../native/agent/main.cpp"
+#undef EnumerateInputProfiles
 #undef RegCreateKeyExW
 #undef UnregisterHotKey
 #undef RegisterHotKey
@@ -99,6 +113,9 @@ void ResetFixture() {
     requestedHotkeys = registeredHotkeys = hotkeyErrors = Json::array(); hotkeyRegistrations = 0;
     activityHistory = Json::object(); activityDirty = false; ownAdded = false;
     registrations.clear(); lastCatalogRefresh = 0;
+    inputMethodStamp.clear();inputMethodEpoch=inputMethodRetryAt=0;appliedInputMethods.clear();inputMethodApplySuccess=true;inputMethodRollback=nullptr;
+    bridge.failLogo=false;
+    bridge.displayedInputProfile.clear();
     CHECK(SaveSettings(settingsPath, settings));
 }
 std::vector<BridgeCommand> SystemChanges() {
@@ -317,11 +334,47 @@ void LoadedLegacyPoliciesKeepCustomAppearanceAndManualVisibility() {
     CHECK(parsed.menuVisible); CHECK(settings["iconOrder"] == Json::array({"custom", "@assistant"}));
     CHECK(LoadSettings(settingsPath, recovered) == settings);
 }
+void InputMethodSaveFailureRollsBackCachedImageWithoutOldFile() {
+    ResetFixture();auto profile=SystemTestInputProfiles().front();
+    Json prior={{"key",profile.key},{"asset",Utf8(fixtureRoot/L"missing-old.png")},{"index",0},{"useReplacement",true}};
+    settings["inputMethodIcons"]={prior};CHECK(SaveSettings(settingsPath,settings));auto before=settings;
+    settingsPath=fixtureRoot;
+    auto wanted=prior;wanted["useReplacement"]=false;
+    auto reply=Call("inputMethods.set",wanted);CHECK(!reply.at("success").get<bool>());CHECK(settings==before);
+    std::vector<int> phases;for(const auto& command:bridge.commands)if(command.operation==BridgeOperation::InputMethodLogo)phases.push_back(command.index);
+    CHECK(phases==std::vector<int>({1,3}));
+}
+void InputMethodTransientFailureRetriesAfterBackoff() {
+    ResetFixture();auto profile=SystemTestInputProfiles().front();
+    settings["inputMethodIcons"]={{{"key",profile.key},{"asset",""},{"index",0},{"useReplacement",false}}};
+    bridge.failLogo=true;CHECK(!ApplyInputMethodIcons());auto count=bridge.commands.size();
+    bridge.failLogo=false;CHECK(!ApplyInputMethodIcons());CHECK(bridge.commands.size()==count);
+    Sleep(3100);CHECK(ApplyInputMethodIcons());CHECK(bridge.commands.size()>count);
+}
+void InactiveInputMethodPolicyPersistsWithoutSwitchingOrChangingStateControl() {
+    ResetFixture();auto profile=SystemTestInputProfiles().front();
+    auto reply=Call("inputMethods.set",{{"key",profile.key},{"asset",""},{"index",0},{"useReplacement",true}});
+    CHECK(reply.at("success").get<bool>());bool recovered{};auto read=LoadSettings(settingsPath,recovered);
+    CHECK(!recovered && read["inputMethodIcons"][0]["key"]==profile.key && read["inputMethodIcons"][0]["useReplacement"]==true);
+    for(const auto& command:bridge.commands)CHECK(command.operation==BridgeOperation::InputMethodLogo);
+    auto invalid=Call("inputMethods.set",{{"key","language:0804"},{"asset",""},{"index",0},{"useReplacement",true}});
+    CHECK(!invalid.at("success").get<bool>());
+}
+void InputMethodActiveFlagUsesShellInsteadOfCallerThread() {
+    ResetFixture();auto profile=SystemTestInputProfiles().front();CHECK(!profile.active);
+    bridge.hidden[3]=false;bridge.displayedInputProfile=profile.key;
+    auto reply=Call("inputMethods.read",Json::object());CHECK(reply.at("success").get<bool>());
+    CHECK(reply["data"][0]["active"]==true);
+}
 int wmain(int argc, wchar_t** argv) {
     if (argc != 2) return 2;
     fixtureRoot = std::filesystem::path(argv[1]); std::filesystem::create_directories(fixtureRoot);
     int failed{};
-    for (const auto& test : {std::pair{"single system target excludes missing peer", SingleSystemToggleIgnoresUnavailableSavedPeer},
+    for (const auto& test : {std::pair{"input method rollback uses cached image",InputMethodSaveFailureRollsBackCachedImageWithoutOldFile},
+                            std::pair{"input method retry is delayed but recovers",InputMethodTransientFailureRetriesAfterBackoff},
+                            std::pair{"inactive input method saves without touching state control",InactiveInputMethodPolicyPersistsWithoutSwitchingOrChangingStateControl},
+                            std::pair{"active input method comes from Shell data model",InputMethodActiveFlagUsesShellInsteadOfCallerThread},
+                            std::pair{"single system target excludes missing peer", SingleSystemToggleIgnoresUnavailableSavedPeer},
                             std::pair{"missing hide and missing show", MissingHideCannotSaveButMissingShowClearsPreference},
                             std::pair{"save failure restores target policy", SystemSaveFailureRestoresPreviousTargetPolicy},
                             std::pair{"native failure does not persist", FailedSystemNativeActionRestoresPolicyWithoutSaving},

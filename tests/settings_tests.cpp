@@ -1,4 +1,5 @@
 #include "../native/agent/settings.h"
+#include "../native/platform/input_profiles.h"
 #include "../native/platform/process_identity.h"
 #include <cstdio>
 #include <fstream>
@@ -27,6 +28,40 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(systemPath.empty());
         auto settings = DefaultSettings();
         CHECK(ValidateSettings(settings));
+        // Inactive input methods retain their selected replacement while original mode
+        // is selected. Duplicate/malformed identities must never target another logo.
+        const std::string inputKey = "tsf:0804:{86598FB9-66A2-463E-B9C2-AEB906D477AD}:{607FDF85-FCC8-4DBD-A365-41296F980C9C}";
+        InputProfileId profileId;
+        CHECK(ParseInputProfileKey(inputKey, profileId) && profileId.language == 0x0804);
+        CHECK(InputProfileKey(profileId) == inputKey);
+        InputProfileId shellProfile;
+        CHECK(ParseInputTipId("0804:{86598FB9-66A2-463E-B9C2-AEB906D477AD}{607FDF85-FCC8-4DBD-A365-41296F980C9C}",shellProfile));
+        CHECK(InputProfileKey(shellProfile)==inputKey);
+        CHECK(!ParseInputTipId("0409:00000409",shellProfile));
+        CHECK(!ParseInputTipId("0804:{00000000-0000-0000-0000-000000000000}{607FDF85-FCC8-4DBD-A365-41296F980C9C}",shellProfile));
+        auto otherProfile = profileId; otherProfile.profile.Data1 = 1;
+        CHECK(InputProfileKey(otherProfile) != inputKey);
+        auto otherLanguage = profileId; otherLanguage.language = 0x0411;
+        CHECK(InputProfileKey(otherLanguage) != inputKey);
+        auto inputSettings = settings;
+        inputSettings["inputMethodIcons"] = {{{"key", inputKey}, {"asset", "chosen.png"},
+                                             {"index", 0}, {"useReplacement", false}}};
+        CHECK(ValidateSettings(inputSettings));
+        auto duplicateInput = inputSettings;
+        duplicateInput["inputMethodIcons"].push_back(inputSettings["inputMethodIcons"][0]);
+        CHECK(!ValidateSettings(duplicateInput));
+        auto malformedInput = inputSettings;
+        malformedInput["inputMethodIcons"][0]["key"] = "language:0804";
+        CHECK(!ValidateSettings(malformedInput));
+        auto emptyReplacement = inputSettings;
+        emptyReplacement["inputMethodIcons"][0]["useReplacement"] = true;
+        emptyReplacement["inputMethodIcons"][0]["asset"] = "";
+        CHECK(ValidateSettings(emptyReplacement)); // Mode can be selected before a file is chosen.
+        CHECK(SaveSettings(path, inputSettings));
+        bool inputRecovered{};
+        auto inputRead = LoadSettings(path, inputRecovered);
+        CHECK(!inputRecovered && inputRead["inputMethodIcons"][0]["asset"] == "chosen.png");
+        CHECK(inputRead["inputMethodIcons"][0]["useReplacement"] == false);
         settings["ownIcon"]["visible"] = false;
         CHECK(SaveSettings(path, settings));
         bool recovered{};

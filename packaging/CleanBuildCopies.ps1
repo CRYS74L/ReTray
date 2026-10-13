@@ -5,6 +5,21 @@ $publishRoot=[System.IO.Path]::GetFullPath((Join-Path $productRoot 'publish'))
 $distRoot=[System.IO.Path]::GetFullPath((Join-Path $productRoot 'dist'))
 $version=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
 $activePaths=@(Get-Process -Name 'TrayAssistant.App','TrayAssistant.Agent' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path)
+# A loose MSIX registration points at its build directory even while the app is
+# stopped. Never remove that directory just because no process is using it.
+try {
+    $registeredPackages=@(Get-AppxPackage -Name 'CRYS74L.TrayIconAssistant' -ErrorAction Stop)
+    foreach($registered in $registeredPackages) {
+        if([string]::IsNullOrWhiteSpace($registered.InstallLocation)) {
+            Write-Warning 'Build copy cleanup skipped: the registered package location is unavailable.'
+            return
+        }
+        $activePaths+=([System.IO.Path]::GetFullPath($registered.InstallLocation)+[System.IO.Path]::DirectorySeparatorChar+'AppxManifest.xml')
+    }
+} catch {
+    Write-Warning 'Build copy cleanup skipped: package registration could not be checked.'
+    return
+}
 $copies=@(Get-ChildItem -LiteralPath $publishRoot -Directory | Where-Object {$_.Name -match '^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$'})
 $previous=$copies | Where-Object {[version]($_.Name.Split('-')[0]) -lt [version]$version} |
     Sort-Object @{Expression={[version]($_.Name.Split('-')[0])};Descending=$true}, @{Expression={$_.LastWriteTime};Descending=$true} |

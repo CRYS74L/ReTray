@@ -1,4 +1,4 @@
-param([ValidateSet('CoreTests','BitmapTests','ProcessIdentityTests','Probe','Agent','AgentVisibilityTests','AgentSystemTests','Bridge','BridgeRegistrationTests','BridgeTest','BridgeControls','Source','SettingsTests','StartupTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
+param([ValidateSet('InputMethodLiveTests','CoreTests','BitmapTests','ProcessIdentityTests','Probe','Agent','AgentVisibilityTests','AgentSystemTests','Bridge','BridgeRegistrationTests','BridgeTest','BridgeControls','Source','SettingsTests','StartupTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
 $ErrorActionPreference='Stop'
 $productRoot=$PSScriptRoot
 $projectVersion=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
@@ -12,6 +12,11 @@ $commonArgs=@('-std=c++20','-O2','-static','-DUNICODE','-D_UNICODE','-DWIN32_LEA
 $cppWinrt=Join-Path $workspaceBase '【Common】\WindowsSDK\10.0.28000.2705\microsoft.windows.sdk.cpp\c\Include\10.0.28000.0\cppwinrt'
 $commonArgs+=@('-fms-extensions','-Wno-nonportable-include-path','-I',$cppWinrt)
 $commonArgs+=@('-include',(Join-Path $outputRoot 'product_version.h'))
+if ($Target -eq 'InputMethodLiveTests') {
+    & $clang @commonArgs '-municode' (Join-Path $productRoot 'tests\input_method_live_tests.cpp') (Join-Path $productRoot 'native\platform\input_profiles.cpp') (Join-Path $productRoot 'native\shell\bridge_client.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\core\types.cpp') '-o' (Join-Path $outputRoot 'InputMethodLiveTests.exe') '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-ladvapi32' '-luuid'
+    if($LASTEXITCODE -ne 0){throw 'Input method live tests build failed'}
+    exit 0
+}
 if ($Target -eq 'CoreTests') {
     $exe=Join-Path $outputRoot 'CoreTests.exe'
     & $clang @commonArgs (Join-Path $productRoot 'tests\core_tests.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\platform\software_bitmap.cpp') '-o' $exe '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt'
@@ -59,7 +64,7 @@ if ($Target -in @('Bridge','BridgeRegistrationTests','BitmapTests')) {
     $bridgeMode=if($Target -eq 'Bridge'){'-shared'}else{'-municode'}
     $bridgeSource=if($Target -eq 'Bridge'){'native\shell\bridge_entry.cpp'}elseif($Target -eq 'BitmapTests'){'tests\bitmap_tests.cpp'}else{'tests\bridge_registration_tests.cpp'}
     $bridgeOutput=Join-Path $outputRoot $(if($Target -eq 'Bridge'){'TrayAssistant.ShellBridge.dll'}else{$Target+'.exe'})
-    & $clang @commonArgs $bridgeMode (Join-Path $productRoot $bridgeSource) (Join-Path $productRoot 'native\shell\system_controls.cpp') (Join-Path $productRoot 'native\shell\behavior_hooks.cpp') @hookObjects (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\platform\software_bitmap.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') '-o' $bridgeOutput '-luser32' '-lgdi32' '-lshell32' '-lcomctl32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt'
+    & $clang @commonArgs $bridgeMode (Join-Path $productRoot $bridgeSource) (Join-Path $productRoot 'native\shell\system_controls.cpp') (Join-Path $productRoot 'native\shell\input_method_logo.cpp') (Join-Path $productRoot 'native\platform\input_profiles.cpp') (Join-Path $productRoot 'native\shell\behavior_hooks.cpp') @hookObjects (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\platform\software_bitmap.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') '-o' $bridgeOutput '-luser32' '-lgdi32' '-lshell32' '-lcomctl32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt' '-luuid'
     if($LASTEXITCODE -ne 0){throw 'Bridge build failed'}
     if($Target -in @('BridgeRegistrationTests','BitmapTests')){& $bridgeOutput;exit $LASTEXITCODE}
     exit 0
@@ -74,7 +79,7 @@ if ($Target -in @('AgentVisibilityTests','AgentSystemTests')) {
     $testSource=if($Target -eq 'AgentSystemTests'){'tests\agent_system_tests.cpp'}else{'tests\agent_visibility_tests.cpp'}
     $fixture=if($Target -eq 'AgentSystemTests'){'artifacts\agent-system-fixture'}else{'artifacts\agent-visibility-fixture'}
     $exe=Join-Path $outputRoot ($Target+'.exe')
-    & $clang @commonArgs '-municode' (Join-Path $productRoot $testSource) (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') '-o' $exe '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt' '-ladvapi32' '-lgdiplus' '-luuid'
+    & $clang @commonArgs '-municode' (Join-Path $productRoot $testSource) (Join-Path $productRoot 'native\platform\input_profiles.cpp') (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') '-o' $exe '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt' '-ladvapi32' '-lgdiplus' '-luuid'
     if($LASTEXITCODE -ne 0){throw "$Target build failed"}
     & $exe (Join-Path $productRoot $fixture)
     exit $LASTEXITCODE
@@ -89,7 +94,7 @@ if ($Target -eq 'StartupTests') {
 if ($Target -eq 'Agent') {
     & $clang @commonArgs '-municode' '-mwindows' (Join-Path $productRoot 'native\agent\startup_launcher.cpp') '-o' (Join-Path $outputRoot 'TrayAssistant.Startup.exe') '-lole32' '-lshell32' '-luuid'
     if($LASTEXITCODE -ne 0){throw 'Startup launcher build failed'}
-    & $clang @commonArgs '-municode' '-mwindows' (Join-Path $productRoot 'native\agent\main.cpp') (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\shell\bridge_client.cpp') '-o' (Join-Path $outputRoot 'TrayAssistant.Agent.exe') '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt' '-ladvapi32' '-lbcrypt' '-lgdiplus' '-lbcrypt' '-luuid'
+    & $clang @commonArgs '-municode' '-mwindows' (Join-Path $productRoot 'native\agent\main.cpp') (Join-Path $productRoot 'native\platform\input_profiles.cpp') (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\shell\bridge_client.cpp') '-o' (Join-Path $outputRoot 'TrayAssistant.Agent.exe') '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt' '-ladvapi32' '-lbcrypt' '-lgdiplus' '-lbcrypt' '-luuid'
     if($LASTEXITCODE -ne 0){throw 'Agent build failed'}
     Copy-Item -LiteralPath (Join-Path $productRoot 'native\platform\supported-adapters.json') -Destination $outputRoot -Force
     exit 0
@@ -106,8 +111,3 @@ if ($Target -eq 'Stress') {
     exit 0
 }
 throw "Target $Target has not been implemented"
-
-
-
-
-

@@ -33,6 +33,7 @@ public partial class MainPage : UserControl
     private Action? finishPageTransition;
     private bool loaded, systemLoading, systemLoaded, systemRefreshPending, editorOpen;
     private bool closingFloating;
+    private InputMethodIconEditorModel? inputMethodEditor;
     private readonly BlurEffect floatingBlur = new() { Radius = 0, RenderingBias = RenderingBias.Performance };
     private IconRow? dragRow;
     private Point dragStart;
@@ -204,6 +205,16 @@ public partial class MainPage : UserControl
         editorOpen = true; Vm.Selected = row;
         ShowFloating(new IconEditorPanel(Vm, row, CloseFloatingAsync));
     }
+    private async void InputMethodSettingsClick(object sender, RoutedEventArgs args)
+    {
+        if(editorOpen || !Vm.IsReady)return;
+        editorOpen=true;
+        var model=new InputMethodIconEditorModel(Vm.Pipe);
+        try {
+            await model.LoadAsync(); inputMethodEditor=model;
+            ShowFloating(new InputMethodIconEditor(model,CloseFloatingAsync));
+        } catch(Exception ex) {editorOpen=false;model.Stop();Vm.ReportError(ex);}
+    }
     private void ShowFloating(UIElement content)
     {
         finishPageTransition?.Invoke();
@@ -302,8 +313,8 @@ public partial class MainPage : UserControl
         closingFloating = true;
         try
         {
-            if (!await Vm.FlushChangesAsync()) return;
-            await HideFloatingAsync(); editorOpen = false; Vm.Selected = null;
+            if (!await FlushChangesAsync()) return;
+            await HideFloatingAsync(); editorOpen = false; Vm.Selected = null; inputMethodEditor=null;
         }
         finally { closingFloating = false; }
     }
@@ -370,7 +381,7 @@ public partial class MainPage : UserControl
         }
         return null;
     }
-    public async Task<bool> FlushChangesAsync() { await systemSaveGate.WaitAsync(); systemSaveGate.Release(); return await Vm.FlushChangesAsync(); }
+    public async Task<bool> FlushChangesAsync() { await systemSaveGate.WaitAsync(); systemSaveGate.Release(); if(inputMethodEditor!=null && !await inputMethodEditor.FlushAsync())return false; return await Vm.FlushChangesAsync(); }
     private void CreateSystemRows()
     {
         foreach (var id in new[] { 0, 1, 2, 3, 9, 4, 6, 7 })
@@ -378,7 +389,9 @@ public partial class MainPage : UserControl
             if (id == 5 || id == 8) continue;
             var row = new Grid { Height = 34 };
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
-            row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition());
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var glyph = new SystemGlyphImage { Width = 28, Height = 28, VerticalAlignment = VerticalAlignment.Center };
             glyph.SetResourceReference(SystemGlyphImage.FontFamilyProperty, "AppIconFont");
             glyph.SetResourceReference(SystemGlyphImage.ForegroundProperty, "TextBrush");
@@ -395,11 +408,21 @@ public partial class MainPage : UserControl
             else row.Children.Add(glyph);
             var label = new TextBlock { Text = SystemNames[id], Margin = new Thickness(8, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(label, 1); row.Children.Add(label);
+            if(id==3) {
+                var more=new Button { Width=28,Height=28,MinWidth=0,MinHeight=0,Margin=new Thickness(0,0,8,0),
+                    VerticalAlignment=VerticalAlignment.Center,Style=(Style)Resources["TrayMoreButtonStyle"] };
+                var dots=new TextBlock { Text="\uE712",FontSize=12 };dots.SetResourceReference(TextBlock.FontFamilyProperty,"AppIconFont");
+                dots.SetBinding(TextBlock.ForegroundProperty,new System.Windows.Data.Binding(nameof(Button.Foreground)){Source=more});
+                GlyphInkAlignment.SetEnabled(dots,true);more.Content=dots;more.Click+=InputMethodSettingsClick;
+                System.Windows.Automation.AutomationProperties.SetAutomationId(more,"InputMethodSettings");
+                System.Windows.Automation.AutomationProperties.SetName(more,"输入法图标设置");
+                Grid.SetColumn(more,2);row.Children.Add(more);
+            }
             var toggle = new SwitchControl { Style = (Style)Resources["TrayRowToggle"], Tag = id, IsEnabled = false,
                 Margin = new Thickness(0, 0, 4, 0) };
             System.Windows.Automation.AutomationProperties.SetAutomationId(toggle, "System" + id);
             System.Windows.Automation.AutomationProperties.SetName(toggle, SystemNames[id]);
-            toggle.Click += SystemVisibilityClick; Grid.SetColumn(toggle, 2); row.Children.Add(toggle); SystemList.Children.Add(row); systemToggles[id] = toggle;
+            toggle.Click += SystemVisibilityClick; Grid.SetColumn(toggle, 3); row.Children.Add(toggle); SystemList.Children.Add(row); systemToggles[id] = toggle;
             if (id != 7)
             {
                 var divider = new Border { Height = .5, Margin = new Thickness(36, 0, 0, 0) };

@@ -1,4 +1,5 @@
 #include "settings.h"
+#include "../platform/input_profiles.h"
 #include <fstream>
 #include <set>
 #include <objbase.h>
@@ -132,6 +133,7 @@ Json DefaultSettings() {
             {"ownIcon",
              {{"visible", true}, {"asset", ""}, {"tip", "托盘图标助手"}, {"showInList", true}}},
             {"rules", Json::array()},
+            {"inputMethodIcons", Json::array()},
 
             {"systemControls", Json::array()},
             {"splitInputIndicators", true},
@@ -210,6 +212,13 @@ bool ValidateSettings(const Json& j) {
             if (action != "menu" && action != "click" && action != "double" &&
                 action != "rightDouble")
                 return false;
+        }
+        if (j.contains("inputMethodIcons")) {
+            const auto& policies=j.at("inputMethodIcons");
+            if(!policies.is_array() || policies.size()>128)return false;
+            std::set<std::string> keys;
+            for(const auto& policy:policies)
+                if(!ValidInputMethodPolicy(policy) || !keys.insert(policy.at("key").get<std::string>()).second)return false;
         }
         if (j.contains("systemControls")) {
             const auto& controls = j["systemControls"];

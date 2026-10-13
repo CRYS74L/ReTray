@@ -2,10 +2,10 @@
 #include "../platform/native_snapshot.h"
 namespace tray {
 constexpr uint32_t BridgeMagic = 0x54494131;
-constexpr uint32_t BridgeSchema = 6;
+constexpr uint32_t BridgeSchema = 8;
 constexpr size_t MaxBridgeIcons = 256, MaxFramePixels = 4096;
-constexpr wchar_t InstallMessage[] = L"TrayAssistant.Bridge.Install.6";
-constexpr wchar_t CommandMessage[] = L"TrayAssistant.Bridge.Command.6";
+constexpr wchar_t InstallMessage[] = L"TrayAssistant.Bridge.Install.8";
+constexpr wchar_t CommandMessage[] = L"TrayAssistant.Bridge.Command.8";
 enum class BridgeOperation : uint32_t {
     Refresh = 1,
     Apply = 2,
@@ -22,7 +22,8 @@ enum class BridgeOperation : uint32_t {
     Behavior = 13,
     Invoke = 14,
     ClearImage = 15,
-    SystemPolicy = 16
+    SystemPolicy = 16,
+    InputMethodLogo = 17
 };
 struct SystemControl {
     uint32_t id{}, instances{};
@@ -30,6 +31,9 @@ struct SystemControl {
     wchar_t name[128]{}, type[128]{};
     wchar_t glyph[32]{}, fontFamily[96]{};
     uint64_t prePaintHides{}, visibilityHides{};
+    uint32_t logoTargets{}, logoApplied{}, logoError{};
+    wchar_t inputProfileKey[96]{};
+    wchar_t inputProfileId[160]{};
 };
 struct CompactAdapter {
     ImageIdentity image;
@@ -63,6 +67,7 @@ struct BridgeCommand {
     uint64_t baselineFingerprint{};
     uint32_t baselineWidth{}, baselineHeight{};
     bool suppliedBaseline{};
+    wchar_t inputProfileKey[96]{};
 };
 struct BridgeState {
     uint32_t magic{}, schema{}, agentPid{}, sessionId{}, byteSize{};
@@ -79,7 +84,7 @@ struct BridgeState {
     BridgeIcon icons[MaxBridgeIcons];
 };
 inline std::wstring MappingName(uint32_t session) {
-    return L"Local\\TrayAssistant.Bridge.6." + std::to_wstring(session);
+    return L"Local\\TrayAssistant.Bridge.8." + std::to_wstring(session);
 }
 inline std::wstring EndingEventName(uint32_t pid, uint64_t created) {
     return L"Local\\TrayAssistant.Ending." + std::to_wstring(pid) + L"." + std::to_wstring(created);

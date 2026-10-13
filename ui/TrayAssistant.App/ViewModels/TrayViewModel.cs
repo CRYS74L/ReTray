@@ -196,7 +196,7 @@ public partial class TrayViewModel : ObservableObject
     public void ReportError(Exception ex,bool connection=false){Status=ex.Message;Error=ex.Message;connectionError=connection;}
     private async Task Execute(Func<Task> action) { try { Error="";connectionError=false;await action(); } catch (Exception ex) { ReportError(ex); } }
     [RelayCommand] private async Task ReconnectAsync(){Pipe.AllowStart();if(!await FlushChangesAsync())return;IsReady=false;IsLoading=true;Error="";await InitializeAsync();}
-    private static async Task<string?> ChooseAssetAsync()
+    public static async Task<string?> ChooseAssetAsync()
     {
 #if TRAY_WPF
         var picker = new OpenFileDialog

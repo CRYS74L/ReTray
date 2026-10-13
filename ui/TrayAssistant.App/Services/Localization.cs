@@ -100,6 +100,8 @@ public static class Localization
         ["电源"]="Power",
         ["输入法 / 语言"]="Input method / language",
         ["输入法"]="Input method",
+        ["输入法图标设置"]="Input method icon settings",
+        ["没有可编辑的输入法标志"]="No input method logos available",
         ["时钟"]="Clock",
         ["通知"]="Notifications",
         ["隐私指示器"]="Privacy indicator",

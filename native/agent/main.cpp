@@ -3,6 +3,7 @@
 #include "../platform/user_security.h"
 #include "../shell/bridge_client.h"
 #include "settings.h"
+#include "../platform/input_profiles.h"
 #include "logon_startup.h"
 #include "tray_menu_typography.h"
 
@@ -34,6 +35,7 @@ DWORD session{};
 SessionMachine lifecycle;
 BridgeClient bridge;
 SymbolAdapter adapter;
+bool ApplyInputMethodIcons();
 std::filesystem::path root, dataRoot, settingsPath;
 Json settings;
 bool recovered{}, ownAdded{};
@@ -722,6 +724,7 @@ void Refresh() {
         SetOperationalState(lifecycle, SessionState::Ready);
     }
     ApplyEnvironment();
+    ApplyInputMethodIcons();
     if (!ReconcileNativeCatalog())
         return;
     if (activityDirty && GetTickCount64() - lastActivitySave >= 30000) {
@@ -1075,6 +1078,7 @@ bool RollbackSettings(const Json& previous) {
     settings = std::move(pending);
     return false;
 }
+#include "input_method_api.h"
 Json SetIconVisibility(const Json& data) {
     if (!data.contains("key") || !data.at("key").is_string() ||
         data.at("key").get_ref<const std::string&>().empty() ||
@@ -1429,6 +1433,8 @@ Json Handle(const Json& req) {
         result["data"] = CatalogJson();
     } else if (method == "settings.read")
         result["data"] = settings;
+    else if(method=="inputMethods.read") result=ReadInputMethods();
+    else if(method=="inputMethods.set") result=SetInputMethodIcon(d);
     else if (method == "system.read") {
         if (!RefreshSystemControls())
             return Result(false, "系统控件读取不可用",
@@ -1447,6 +1453,9 @@ Json Handle(const Json& req) {
                 {{"id", row.id}, {"visible", row.visible}, {"instances", row.instances},
                  {"savedHidden", saved}, {"glyph", Utf8(row.glyph)},
                  {"fontFamily", Utf8(row.fontFamily)},
+                 {"inputProfileKey",Utf8(row.inputProfileKey)},
+                 {"inputProfileId",Utf8(row.inputProfileId)},
+                 {"logoTargets",row.logoTargets},{"logoApplied",row.logoApplied},{"logoError",row.logoError},
                  {"prePaintHides", row.prePaintHides}, {"visibilityHides", row.visibilityHides}});
         }
         for (size_t id = 0; id < savedHidden.size(); ++id)

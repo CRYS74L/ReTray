@@ -3,6 +3,7 @@
 #include "../platform/process_identity.h"
 #include "shared.h"
 #include "system_controls.h"
+#include "input_method_logo.h"
 #include "behavior_hooks.h"
 #include <algorithm>
 #include <commctrl.h>
@@ -360,6 +361,7 @@ void FillRow(BridgeIcon& row, Entry& entry) {
                   entry.swapButtons;
 }
 void Publish(bool refreshOriginal, const WireEvent* event = nullptr) {
+    TickInputMethodLogos();
     if (!state)
         return;
     auto snapshot = ReadSnapshot(adapter, GetCurrentProcessId(), state->epoch, false);
@@ -665,6 +667,14 @@ void ExecuteCommand() {
             state->lastError = ok ? 0 : ERROR_NOT_SUPPORTED;
             InterlockedExchange(&state->replySequence, state->requestSequence);
             return;
+        }
+        if(cmd.operation==BridgeOperation::InputMethodLogo) {
+            const bool cachedTransaction=cmd.index==2 || cmd.index==3;
+            bool ok=(cachedTransaction || ReadSystemControls(moduleBase,adapter,*state)) &&
+                UpdateInputMethodLogo(Utf8(cmd.inputProfileKey),reinterpret_cast<HICON>(cmd.replacementIcon),cmd.index);
+            if(ok && !cachedTransaction)ReadSystemControls(moduleBase,adapter,*state);
+            state->lastError=ok?0:ERROR_NOT_SUPPORTED;
+            InterlockedExchange(&state->replySequence,state->requestSequence);return;
         }
         if (cmd.operation == BridgeOperation::Taskbar) {
             bool ok = true;

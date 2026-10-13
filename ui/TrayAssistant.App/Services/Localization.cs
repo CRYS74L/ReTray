@@ -66,6 +66,7 @@ public static class Localization
         ["图标设置"]="Icon settings",
         ["选择图标…"]="Choose icon…",
         ["选择图标"]="Choose icon",
+        ["选择替代图标"]="Choose custom icon",
         ["使用原图标"]="Use original icon",
         ["图标提示"]="Tooltip",
         ["位置"]="Location",

@@ -48,7 +48,7 @@ public partial class TrayViewModel : ObservableObject
     }
     public static JsonObject EditableRule(IconRow row)
     {
-        var result=new JsonObject();foreach(var key in new[]{"selector","visibility","location","order","asset","tip","enabled","menuVisible","alwaysShow","inactiveSeconds","unusedDays","hotkey","hotkeyAction","newState","swapButtons","baselineFingerprint","baselineWidth","baselineHeight","assetIndex"})
+        var result=new JsonObject();foreach(var key in new[]{"selector","visibility","location","order","asset","replacementAsset","replacementAssetIndex","tip","enabled","menuVisible","alwaysShow","inactiveSeconds","unusedDays","hotkey","hotkeyAction","newState","swapButtons","baselineFingerprint","baselineWidth","baselineHeight","assetIndex"})
             if(row.Rule[key]!=null)result[key]=row.Rule[key]!.DeepClone();return result;
     }
     [ObservableProperty] public partial string Status { get; set; } = "";
@@ -57,6 +57,7 @@ public partial class TrayViewModel : ObservableObject
     [ObservableProperty] public partial bool IsReady { get; set; }
 
     [ObservableProperty] public partial string Asset { get; set; } = "";
+    [ObservableProperty] public partial bool UseReplacement { get; set; }
     [ObservableProperty] public partial WriteableBitmap? AssetPreview { get; set; }
     [ObservableProperty] public partial string AssetSummary { get; set; } = "";
     partial void OnAssetChanged(string value) => _ = PreviewAssetAsync();
@@ -182,6 +183,9 @@ public partial class TrayViewModel : ObservableObject
         Hotkey=row.Rule["hotkey"]?.GetValue<int>()??0;HotkeyText=DescribeHotkey(Hotkey);HotkeyAction=row.Rule["hotkeyAction"]?.GetValue<int>()??1;
         NewStateIndex=(row.Rule["newState"]?.GetValue<int>()??-1)+1;
         var j = row.Rule; SwapButtons=j["swapButtons"]?.GetValue<bool>()??false;MatchClass=j["selector"]?["windowClass"]?.GetValue<string>()??"";MatchTip=j["selector"]?["tipPattern"]?.GetValue<string>()??"";MatchTipMode=j["selector"]?["tipMode"]?.GetValue<int>()??0;CurrentInstance=(j["selector"]?["ownerPid"]?.GetValue<int>()??0)>0;AssetIndex=j["assetIndex"]?.GetValue<int>()??0; Asset = j["asset"]!.GetValue<string>(); Tip = j["tip"]!.GetValue<string>(); VisibilityIndex = j["visibility"]!.GetValue<int>() + 1; Order = j["order"]!.GetValue<int>(); InactiveSeconds = j["inactiveSeconds"]!.GetValue<int>(); UnusedDays = j["unusedDays"]!.GetValue<int>(); MenuVisible = j["menuVisible"]!.GetValue<bool>(); AlwaysShow = j["alwaysShow"]!.GetValue<bool>();
+        UseReplacement = !string.IsNullOrEmpty(j["asset"]!.GetValue<string>());
+        AssetIndex = j["replacementAssetIndex"]?.GetValue<int>() ?? AssetIndex;
+        Asset = j["replacementAsset"]?.GetValue<string>() ?? Asset;
         }
         finally { readingEditor = false; }
     }
@@ -213,8 +217,8 @@ public partial class TrayViewModel : ObservableObject
         var info = new FileInfo(path); if (info.Length > 32 * 1024 * 1024) throw new IOException("图标资源不能超过 32 MB。");
         var bytes = await File.ReadAllBytesAsync(path); var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "TrayIconAssistant", "Assets"); Directory.CreateDirectory(directory); var target = Path.Combine(directory, Convert.ToHexString(SHA256.HashData(bytes)) + Path.GetExtension(path).ToLowerInvariant()); if (!File.Exists(target)) await File.WriteAllBytesAsync(target, bytes); return target;
     }
-    [RelayCommand] private Task ChooseIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) { AssetIndex = 0; Asset = path; } });
-    [RelayCommand] private void UseOriginalAsset() { Asset=""; AssetIndex=0; }
+    [RelayCommand] private Task ChooseIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) { UseReplacement = true; AssetIndex = 0; Asset = path; } });
+    [RelayCommand] private void UseOriginalAsset() { UseReplacement=false; }
     [RelayCommand] private Task ChooseOwnIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) OwnAsset = path; });
 
 

@@ -491,6 +491,7 @@ std::string RuleStamp(const IconRule* rule, int visibility) {
     if (!rule) return "native:" + std::to_string(visibility);
     auto policy = RuleJson(*rule);
     policy["selector"].erase("legacyRole");
+    policy.erase("replacementAsset"); policy.erase("replacementAssetIndex");
     return policy.dump() + ":" + std::to_string(visibility);
 }
 void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
@@ -842,6 +843,18 @@ std::string Bytes64(const uint32_t* pixels, size_t count) {
     }
     return out;
 }
+const Frame& OwnOriginalPreview() {
+    static std::filesystem::path loadedPath;
+    static Frame preview;
+    auto path = root / L"Assets" / L"AppIcon.ico";
+    if (loadedPath != path || preview.pixels.empty()) {
+        loadedPath = path;
+        auto image = LoadAsset(path);
+        if (!image) image = CopyIcon(LoadIconW(nullptr, IDI_APPLICATION));
+        if (image) { preview = RasterizeIcon(image, FrameOrigin::CachedOriginal).frame; DestroyIcon(image); }
+    }
+    return preview;
+}
 Json CatalogJson() {
     Json icons = Json::array();
     for (auto& row : rows) {
@@ -870,6 +883,8 @@ Json CatalogJson() {
         j["stableKey"] = StableIconKey(row);
         if (owned) {
             j["asset"] = settings["ownIcon"].value("asset", std::string{});
+            j["replacementAsset"] = j["asset"].get_ref<const std::string&>().empty()
+                ? settings["ownIcon"].value("replacementAsset", std::string{}) : j["asset"].get<std::string>();
             j["tip"] = settings["ownIcon"].value("tip", std::string("托盘图标助手"));
         }
         j["key"] = key;
@@ -905,6 +920,11 @@ Json CatalogJson() {
         j["originalWidth"] = row.originalWidth;
         j["originalHeight"] = row.originalHeight;
         j["originalPixels"] = Bytes64(row.originalPixels, row.originalWidth * row.originalHeight);
+        if (owned) {
+            const auto& original = OwnOriginalPreview();
+            j["originalWidth"] = original.width; j["originalHeight"] = original.height;
+            j["originalPixels"] = Bytes64(original.pixels.data(), original.pixels.size());
+        }
         j["outcome"] = outcomes.contains(key) ? outcomes[key] : Result(true, "原生状态");
         auto stable = DisplayBase(record);
         auto history = activityHistory.value(stable, Json::object());

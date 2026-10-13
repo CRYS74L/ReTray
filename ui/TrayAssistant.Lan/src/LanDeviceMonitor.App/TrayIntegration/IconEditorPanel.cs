@@ -3,6 +3,7 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Globalization;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using LanDeviceMonitor.Controls;
 using TrayAssistant_App.Models;
 using TrayAssistant_App.ViewModels;
@@ -33,7 +34,10 @@ public sealed class IconEditorPanel : UserControl
         glyph.SetResourceReference(TextBlock.FontFamilyProperty, "AppIconFont");
         glyph.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(Button.Foreground)) { Source = dismiss });
         GlyphInkAlignment.SetEnabled(glyph, true);
-        dismiss.Content = glyph;
+        var closeVisual = new Grid { Width = 24, Height = 24 };
+        glyph.HorizontalAlignment = HorizontalAlignment.Center; glyph.VerticalAlignment = VerticalAlignment.Center;
+        closeVisual.Children.Add(glyph); dismiss.Content = closeVisual;
+        AddQuarterTurn(dismiss, closeVisual);
         dismiss.Click += async (_, _) => await close();
         System.Windows.Automation.AutomationProperties.SetAutomationId(dismiss, "IconEditorClose");
         System.Windows.Automation.AutomationProperties.SetName(dismiss, Localization.Text("关闭"));
@@ -43,33 +47,125 @@ public sealed class IconEditorPanel : UserControl
         dismiss.SizeChanged += (_, _) => AlignHeaderInk(title, dismiss);
         var content = new StackPanel { Margin = new Thickness(4) };
         var previews = new Grid { Margin = new Thickness(0, 4, 0, 18) };
-        Grid.SetIsSharedSizeScope(previews, true);
         previews.ColumnDefinitions.Add(new ColumnDefinition()); previews.ColumnDefinitions.Add(new ColumnDefinition());
-        void Preview(int column, string caption, string property, string buttonText, System.Windows.Input.ICommand command)
+        StackPanel Preview(int column, string caption, FrameworkElement visual)
         {
             var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
-            var image = new Image { Width = 44, Height = 44, Stretch = System.Windows.Media.Stretch.Uniform,
-                Margin = new Thickness(0, 0, 0, 8) };
-            image.SetBinding(Image.SourceProperty, new Binding(property) { Source = vm });
-            System.Windows.Media.RenderOptions.SetBitmapScalingMode(image, System.Windows.Media.BitmapScalingMode.HighQuality);
-            stack.Children.Add(image); stack.Children.Add(new TextBlock { Text = caption,
+            visual.Margin = new Thickness(0, 0, 0, 8);
+            visual.HorizontalAlignment = HorizontalAlignment.Center;
+            stack.Children.Add(visual); stack.Children.Add(new TextBlock { Text = caption,
                 HorizontalAlignment = HorizontalAlignment.Center, FontSize = 12 });
-            var actionHost = new Grid { Margin = new Thickness(0, 14, 0, 0) };
-            actionHost.ColumnDefinitions.Add(new ColumnDefinition
-                { Width = GridLength.Auto, SharedSizeGroup = "IconEditorAction" });
-            var action = new Button { Content = buttonText, Command = command,
-                Height = 36, MinHeight = 36, MinWidth = 0, Padding = new Thickness(10, 0, 10, 0),
-                HorizontalAlignment = HorizontalAlignment.Stretch };
-            action.SetResourceReference(StyleProperty, "StudioActionButtonStyle");
-            System.Windows.Automation.AutomationProperties.SetAutomationId(action,
-                column == 0 ? "UseOriginalIcon" : "ChooseReplacementIcon");
-            actionHost.Children.Add(action); stack.Children.Add(actionHost);
             Grid.SetColumn(stack, column); previews.Children.Add(stack);
+            return stack;
         }
-        Preview(0, "原图标", "Selected.Original", "使用原图标", vm.UseOriginalAssetCommand);
-        Preview(1, "替代图标", nameof(vm.AssetPreview), "选择替代图标", vm.ChooseIconCommand);
+        var originalImage = new Image { Width = 44, Height = 44, Stretch = Stretch.Uniform };
+        originalImage.SetBinding(Image.SourceProperty, new Binding("Selected.Original") { Source = vm });
+        RenderOptions.SetBitmapScalingMode(originalImage, BitmapScalingMode.HighQuality);
+        System.Windows.Automation.AutomationProperties.SetAutomationId(originalImage, "OriginalIconPreview");
+        var originalCanvas = new Grid { Width = 56, Height = 56 };
+        originalImage.HorizontalAlignment = HorizontalAlignment.Center; originalImage.VerticalAlignment = VerticalAlignment.Center;
+        originalCanvas.Children.Add(originalImage);
+        var original = Preview(0, "原始图标", originalCanvas);
+        var choose = new Button { Width = 56, Height = 56, MinWidth = 0, MinHeight = 0,
+            Command = vm.ChooseIconCommand };
+        choose.SetResourceReference(StyleProperty, "ReplacementIconButtonStyle");
+        System.Windows.Automation.AutomationProperties.SetAutomationId(choose, "ChooseReplacementIcon");
+        System.Windows.Automation.AutomationProperties.SetName(choose, Localization.Text("选择替代图标"));
+        var choiceVisual = new Grid();
+        var replacementImage = new Image { Width = 44, Height = 44, Stretch = Stretch.Uniform,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        System.Windows.Automation.AutomationProperties.SetAutomationId(replacementImage, "ReplacementIconPreview");
+        replacementImage.SetBinding(Image.SourceProperty, new Binding(nameof(vm.AssetPreview)) { Source = vm });
+        RenderOptions.SetBitmapScalingMode(replacementImage, BitmapScalingMode.HighQuality);
+        choiceVisual.Children.Add(replacementImage);
+        var plus = new TextBlock { Text = "\uE710", FontSize = 18,
+            HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        plus.SetResourceReference(TextBlock.FontFamilyProperty, "AppIconFont");
+        GlyphInkAlignment.SetEnabled(plus, true);
+        System.Windows.Automation.AutomationProperties.SetAutomationId(plus, "ReplacementIconAdd");
+        var plusVisual = new Grid { Width = 24, Height = 24, HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center };
+        plusVisual.Children.Add(plus); choiceVisual.Children.Add(plusVisual); choose.Content = choiceVisual;
+        AddQuarterTurn(choose, plusVisual);
+        choose.ToolTip = Localization.Text("点击更换替代图标");
+        void UpdateChoice(bool animate)
+        {
+            var hasImage = vm.AssetPreview != null;
+            var hover = choose.IsMouseOver;
+            var duration = TimeSpan.FromMilliseconds(animate && SystemParameters.ClientAreaAnimation ? 240 : 0);
+            replacementImage.BeginAnimation(OpacityProperty, new DoubleAnimation(hasImage && hover ? .2 : 1, duration)
+                { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            plusVisual.BeginAnimation(OpacityProperty, new DoubleAnimation(!hasImage || hover ? 1 : 0, duration)
+                { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        }
+        choose.MouseEnter += (_, _) => UpdateChoice(true); choose.MouseLeave += (_, _) => UpdateChoice(true);
+        System.ComponentModel.PropertyChangedEventHandler previewChanged = (_, args) =>
+        { if (args.PropertyName == nameof(vm.AssetPreview)) UpdateChoice(true); };
+        Loaded += (_, _) => { vm.PropertyChanged += previewChanged; UpdateChoice(false); };
+        Unloaded += (_, _) => vm.PropertyChanged -= previewChanged;
+        var replacement = Preview(1, "替代图标", choose);
         content.Children.Add(previews);
+        var mode = new SegmentedControl { Height = 36, MinHeight = 36,
+            HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 18),
+            FontSize = 14, AnimationMilliseconds = 480 };
+        SegmentItem ModeItem(string caption)
+        {
+            var item = new SegmentItem();
+            var text = new TextBlock { Text = caption };
+            text.SetBinding(TextBlock.ForegroundProperty, new Binding(nameof(SegmentItem.Foreground)) { Source = item });
+            item.Content = text; return item;
+        }
+        var originalMode = ModeItem("使用原始图标");
+        var replacementMode = ModeItem("使用替代图标");
+        System.Windows.Automation.AutomationProperties.SetAutomationId(mode, "IconImageMode");
+        System.Windows.Automation.AutomationProperties.SetAutomationId(originalMode, "IconModeOriginal");
+        System.Windows.Automation.AutomationProperties.SetAutomationId(replacementMode, "IconModeReplacement");
+        mode.Items.Add(originalMode); mode.Items.Add(replacementMode);
+        var originalMove = new TranslateTransform(); original.RenderTransform = originalMove;
+        var replacementMove = new TranslateTransform(); replacement.RenderTransform = replacementMove;
+        int generation = 0;
+        void ShowMode(bool animate)
+        {
+            var currentGeneration = ++generation;
+            var custom = mode.SelectedIndex == 1;
+            var wasVisible = replacement.Visibility == Visibility.Visible && replacement.Opacity > 0;
+            var replacementX = custom && !wasVisible ? 8 : replacementMove.X;
+            var previous = original.TranslatePoint(new Point(), previews).X;
+            originalMove.BeginAnimation(TranslateTransform.XProperty, null); originalMove.X = 0;
+            Grid.SetColumnSpan(original, custom ? 1 : 2);
+            if (!animate || !IsLoaded || !SystemParameters.ClientAreaAnimation)
+            {
+                replacement.BeginAnimation(OpacityProperty, null);
+                replacementMove.BeginAnimation(TranslateTransform.XProperty, null); replacementMove.X = 0;
+                replacement.Opacity = custom ? 1 : 0;
+                replacement.Visibility = custom ? Visibility.Visible : Visibility.Collapsed;
+                return;
+            }
+            replacement.Visibility = Visibility.Visible;
+            previews.UpdateLayout();
+            var target = original.TranslatePoint(new Point(), previews).X;
+            var duration = TimeSpan.FromMilliseconds(animate && IsLoaded && SystemParameters.ClientAreaAnimation ? mode.AnimationMilliseconds : 0);
+            originalMove.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(previous - target, 0, duration)
+                { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+            var fade = new DoubleAnimation(custom ? 1 : 0, duration)
+                { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+            fade.Completed += (_, _) => { if (currentGeneration == generation && !custom) replacement.Visibility = Visibility.Collapsed; };
+            replacement.BeginAnimation(OpacityProperty, fade);
+            replacementMove.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(replacementX, custom ? 0 : 8, duration)
+                { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        }
+        mode.SelectedIndex = vm.UseReplacement ? 1 : 0;
+        ShowMode(false);
+        mode.SelectionChanged += (_, args) =>
+        {
+            if (!ReferenceEquals(args.Source, mode)) return;
+            vm.UseReplacement = mode.SelectedIndex == 1;
+            ShowMode(true);
+        };
+        content.Children.Add(mode);
         var tip = new TextBox { MaxLength = 127, Height = 36, MinHeight = 36, Margin = new Thickness(0, 8, 0, 0) };
+        InputPlaceholder.SetText(tip, Localization.Text("留空时使用原始悬停提示内容"));
+        tip.Loaded += (_, _) => { tip.ApplyTemplate(); if (tip.Template.FindName("Placeholder", tip) is TextBlock hint) hint.Opacity = .4; };
         tip.SetBinding(TextBox.TextProperty, new Binding(nameof(vm.Tip))
             { Mode = BindingMode.TwoWay, UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged });
         System.Windows.Automation.AutomationProperties.SetAutomationId(tip, "IconTip");
@@ -90,6 +186,16 @@ public sealed class IconEditorPanel : UserControl
         Content = root;
         System.Windows.Automation.AutomationProperties.SetAutomationId(this, "IconEditorPanel");
         Loaded += (_, _) => { Localization.Apply(this); Focus(); };
+    }
+
+    private static void AddQuarterTurn(Button owner, FrameworkElement visual)
+    {
+        var rotation = new RotateTransform(); visual.RenderTransform = rotation; visual.RenderTransformOrigin = new Point(.5, .5);
+        void Rotate(double target, int milliseconds) => rotation.BeginAnimation(RotateTransform.AngleProperty,
+            new DoubleAnimation(target, TimeSpan.FromMilliseconds(SystemParameters.ClientAreaAnimation ? milliseconds : 0))
+            { EasingFunction = new QuinticEase { EasingMode = EasingMode.EaseOut } });
+        owner.MouseEnter += (_, _) => Rotate(90, 420);
+        owner.MouseLeave += (_, _) => Rotate(0, 280);
     }
 
     private static void AlignHeaderInk(TextBlock title, Button dismiss)

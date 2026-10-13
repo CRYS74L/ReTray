@@ -146,6 +146,16 @@ int wmain(int argc, wchar_t** argv) {
         captured.selector.legacy.dynamicImage = true;
         auto encoded = RuleJson(captured);
         CHECK(RuleJson(ParseRule(encoded)) == encoded);
+        auto remembered = encoded;
+        remembered["asset"] = "";
+        remembered["replacementAsset"] = "C:\\Synthetic\\Remembered.dll";
+        remembered["replacementAssetIndex"] = 4;
+        auto inactive = ParseRule(remembered);
+        CHECK(inactive.asset.empty() && inactive.replacementAsset == L"C:\\Synthetic\\Remembered.dll");
+        CHECK(inactive.replacementAssetIndex == 4 && RuleJson(inactive) == remembered);
+        auto oldActive = RuleJson(rule); oldActive.erase("replacementAsset"); oldActive.erase("replacementAssetIndex");
+        auto compatible = ParseRule(oldActive);
+        CHECK(compatible.replacementAsset == compatible.asset);
         auto wideBaseline = encoded;
         wideBaseline["baselineWidth"] = 4096; wideBaseline["baselineHeight"] = 1024;
         CHECK(ParseRule(wideBaseline).baselineWidth == 4096);

@@ -36,6 +36,8 @@ Json RuleJson(const IconRule& r) {
             {"location", -1},
             {"order", -1},
             {"asset", Utf8(r.asset)},
+            {"replacementAsset", Utf8(r.replacementAsset.empty() ? r.asset : r.replacementAsset)},
+            {"replacementAssetIndex", r.replacementAsset.empty() ? r.assetIndex : r.replacementAssetIndex},
             {"tip", Utf8(r.tip)},
             {"enabled", r.enabled},
             {"menuVisible", true},
@@ -107,7 +109,10 @@ IconRule ParseRule(const Json& j) {
     r.baselineWidth = j.value("baselineWidth", 0u);
     r.baselineHeight = j.value("baselineHeight", 0u);
     r.assetIndex = j.value("assetIndex", 0u);
+    r.replacementAsset = r.asset.empty() ? Wide(j.value("replacementAsset", std::string{})) : r.asset;
+    r.replacementAssetIndex = r.asset.empty() ? j.value("replacementAssetIndex", 0u) : r.assetIndex;
     if (r.selector.executable.empty() || r.selector.executable.size() > 32767 ||
+        r.asset.size() > 32767 || r.replacementAsset.size() > 32767 || r.replacementAssetIndex > 10000 ||
         r.tip.size() > 127 || r.visibility < -1 || r.visibility > 1 ||
         r.selector.tipMode > 3 || r.selector.tipPattern.size() > 127 ||
         r.selector.windowClass.size() > 255 ||
@@ -232,6 +237,8 @@ bool ValidateSettings(const Json& j) {
                     return false;
         }
         const auto& own = j.at("ownIcon");
+        if (own.contains("replacementAsset") && (!own.at("replacementAsset").is_string() ||
+            own.at("replacementAsset").get_ref<const std::string&>().size() > 32767)) return false;
         if (!own.at("visible").is_boolean() || !own.value("showInList", Json(true)).is_boolean() ||
             !own.value("asset", Json("")).is_string() ||
             own.value("tip", std::string{}).size() > 512)

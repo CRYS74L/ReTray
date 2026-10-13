@@ -25,7 +25,8 @@ struct RuleSelector {
 struct IconRule {
     RuleSelector selector;
     int visibility{-1}, location{-1}, order{-1};
-    std::wstring asset, tip;
+    std::wstring asset, replacementAsset, tip;
+    uint32_t replacementAssetIndex{};
     bool enabled{true}, menuVisible{true}, alwaysShow{};
     uint32_t inactiveSeconds{}, unusedDays{}, hotkey{}, hotkeyAction{1};
     int newState{-1};

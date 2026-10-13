@@ -678,6 +678,23 @@ void IdentityLearningDoesNotReplayVisualPolicy() {
     CHECK(Call("icon.visibility", {{"key", key}, {"visibility", 1}}).value("success", false));
     CHECK(IconCommands().size() == 1); CHECK(Target().placement == 2);
 }
+void OwnOriginalPreviewDoesNotFollowReplacementPixels() {
+    ResetFixture(); auto& own = bridge.shared->icons[bridge.shared->count++]; own = Target();
+    own.identity.ownerPid = GetCurrentProcessId(); own.identity.uid = 1;
+    own.originalWidth = own.originalHeight = 1; own.originalPixels[0] = 0xff123456;
+    bridge.shared->snapshotSequence += 2; Refresh();
+    auto first = CatalogJson()["icons"];
+    auto findOwn = [](const Json& list) {
+        for (const auto& item : list) if (item.value("owned", false)) return item;
+        throw std::runtime_error("Owned catalog row missing");
+    };
+    auto original = findOwn(first); CHECK(original["originalWidth"] > 0);
+    own.originalPixels[0] = 0xffabcdef;
+    bridge.shared->snapshotSequence += 2; Refresh();
+    auto replacement = findOwn(CatalogJson()["icons"]);
+    CHECK(original["originalPixels"] == replacement["originalPixels"]);
+    CHECK(original["originalWidth"] == replacement["originalWidth"]);
+}
 void ProvisionalAssociationCannotTrainIdentityAndDelayedUidRestores() {
     ResetFixture(); auto& row = bridge.shared->icons[0];
     row.custom = row.managed = false; row.placement = 1; row.identity.uid = 99;
@@ -792,6 +809,7 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"Run retirement failure restores startup task", StartupRunDeleteFailureRestoresTask},
                             std::pair{"generic recreated UID inherits saved hiding without touching peer", GenericUidChangeRestoresHiddenPolicy},
                             std::pair{"identity metadata learning does not replay visual policy", IdentityLearningDoesNotReplayVisualPolicy},
+                            std::pair{"own original preview is independent of replacement pixels", OwnOriginalPreviewDoesNotFollowReplacementPixels},
                             std::pair{"provisional identity cannot train and delayed UID restores secondary", ProvisionalAssociationCannotTrainIdentityAndDelayedUidRestores},
                             std::pair{"explicit row confirmation survives dynamic image and delayed old UID", ConfirmedRowKeepsItsOwnRuleWhenOldUidArrives},
                             std::pair{"explicit batch reapply retries changed UID", ExplicitBatchReapplyRetriesReassociatedRegistration},

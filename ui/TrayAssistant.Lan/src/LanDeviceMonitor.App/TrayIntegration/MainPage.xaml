@@ -32,6 +32,30 @@
       <Setter Property="Padding" Value="20,8" />
       <Setter Property="Margin" Value="0,0,0,12" />
     </Style>
+    <Style x:Key="ReplacementIconButtonStyle" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource FooterButtonBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1.2" />
+      <Setter Property="Padding" Value="6" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid Background="Transparent">
+              <controls:RoundedCardBorder x:Name="ChoiceSurface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" />
+              <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ChoiceSurface" Property="Background" Value="{DynamicResource ControlHoverBrush}" /></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ChoiceSurface" Property="Background" Value="{DynamicResource FooterPressedBrush}" /><Setter Property="Opacity" Value="0.65" /></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
     <Style x:Key="FloatingCloseButtonStyle" TargetType="Button">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />

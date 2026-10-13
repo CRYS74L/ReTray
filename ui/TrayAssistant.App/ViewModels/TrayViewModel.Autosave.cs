@@ -39,7 +39,15 @@ public partial class TrayViewModel
             case nameof(OwnTip):
             case nameof(OwnInList):
                 var own = new JsonObject { ["visible"] = OwnVisible, ["asset"] = OwnAsset, ["tip"] = OwnTip, ["showInList"] = OwnInList };
-                QueueEdit("ownIcon", async () => { await Call("ownIcon.apply", own); await RefreshAsync(); });
+                QueueEdit("ownIcon", async () =>
+                {
+                    var read = await Call("settings.read");
+                    var merged = (JsonObject)read["data"]!["ownIcon"]!.DeepClone();
+                    foreach (var entry in own) merged[entry.Key] = entry.Value?.DeepClone();
+                    if (!string.IsNullOrEmpty(own["asset"]!.GetValue<string>()))
+                        merged["replacementAsset"] = own["asset"]!.DeepClone();
+                    await Call("ownIcon.apply", merged); await RefreshAsync();
+                });
                 break;
             case nameof(UiTopmost):
             case nameof(UiOpacity):
@@ -58,6 +66,7 @@ public partial class TrayViewModel
                 QueueMenuPreferences();
                 break;
             case nameof(Asset):
+            case nameof(UseReplacement):
             case nameof(AssetIndex):
             case nameof(Tip):
             case nameof(SwapButtons):
@@ -113,12 +122,12 @@ public partial class TrayViewModel
         if (Selected is not IconRow row || !double.IsFinite(AssetIndex) || !double.IsFinite(InactiveSeconds) || HotkeyAction is < 0 or > 3) return;
         if (row.Owned)
         {
-            var asset = Asset; var tip = Tip.Length > 0 ? Tip : "托盘图标助手";
+            var remembered = Asset; var asset = UseReplacement ? Asset : ""; var tip = Tip.Length > 0 ? Tip : "托盘图标助手";
             QueueEdit("ownIcon", async () =>
             {
                 var read = await Call("settings.read");
                 var own = (JsonObject)read["data"]!["ownIcon"]!.DeepClone();
-                own["asset"] = asset; own["tip"] = tip;
+                own["asset"] = asset; own["replacementAsset"] = remembered; own["tip"] = tip;
                 await Call("ownIcon.apply", own);
                 readingEditor = true;
                 try { OwnAsset = asset; OwnTip = tip; }
@@ -139,7 +148,7 @@ public partial class TrayViewModel
     private JsonObject BuildEditorRule(IconRow row)
     {
         var rule = EditableRule(row);
-        if (Asset.Length > 0 && (Asset != row.Rule["asset"]!.GetValue<string>() || row.Rule["baselineWidth"]?.GetValue<int>() == 0))
+        if (UseReplacement && Asset.Length > 0 && (Asset != row.Rule["asset"]!.GetValue<string>() || row.Rule["baselineWidth"]?.GetValue<int>() == 0))
         {
             rule["baselineFingerprint"] = row.Rule["sourceFingerprint"]!.DeepClone();
             rule["baselineWidth"] = row.Rule["sourceWidth"]!.DeepClone();
@@ -150,7 +159,8 @@ public partial class TrayViewModel
         rule["selector"]!["tipMode"] = MatchTipMode;
         rule["selector"]!["ownerPid"] = CurrentInstance ? row.Rule["pid"]!.DeepClone() : JsonValue.Create(0);
         rule["selector"]!["ownerCreatedAt"] = CurrentInstance ? row.Rule["created"]!.DeepClone() : JsonValue.Create(0);
-        rule["asset"] = Asset; rule["assetIndex"] = (int)AssetIndex; rule["tip"] = Tip;
+        rule["asset"] = UseReplacement ? Asset : ""; rule["assetIndex"] = UseReplacement ? (int)AssetIndex : 0;
+        rule["replacementAsset"] = Asset; rule["replacementAssetIndex"] = (int)AssetIndex; rule["tip"] = Tip;
         rule["swapButtons"] = SwapButtons; rule["visibility"] = VisibilityIndex - 1;
         rule["order"] = (int)Order;
         rule["inactiveSeconds"] = (int)InactiveSeconds; rule["unusedDays"] = (int)UnusedDays;

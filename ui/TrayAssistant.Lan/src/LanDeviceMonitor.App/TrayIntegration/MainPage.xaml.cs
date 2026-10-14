@@ -24,7 +24,7 @@ public partial class MainPage : UserControl
     public TrayViewModel Vm { get; } = new();
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly SemaphoreSlim systemSaveGate = new(1, 1);
-    private static readonly string[] SystemNames = ["网络", "音量", "电源", "输入法", "时钟", "通知", "隐私指示器", "开始", "快速设置", "语言"];
+    private static readonly string[] SystemNames = ["网络", "音量", "电池", "输入法", "时间", "通知", "隐私指示器", "开始", "快速设置", "语言栏"];
     private readonly ToggleButton?[] systemToggles = new ToggleButton?[SystemNames.Length];
     private readonly SystemGlyphImage?[] systemGlyphs = new SystemGlyphImage?[SystemNames.Length];
     private readonly bool[] systemAvailable = new bool[SystemNames.Length];
@@ -388,7 +388,7 @@ public partial class MainPage : UserControl
     public async Task<bool> FlushChangesAsync() { await systemSaveGate.WaitAsync(); systemSaveGate.Release(); if(inputMethodEditor!=null && !await inputMethodEditor.FlushAsync())return false; return await Vm.FlushChangesAsync(); }
     private void CreateSystemRows()
     {
-        foreach (var id in new[] { 0, 1, 2, 3, 9, 4, 6 })
+        foreach (var id in new[] { 6, 9, 3, 0, 1, 2, 4 })
         {
             if (id == 5 || id == 8) continue;
             var row = new Grid { Height = 34 };
@@ -427,7 +427,7 @@ public partial class MainPage : UserControl
             System.Windows.Automation.AutomationProperties.SetAutomationId(toggle, "System" + id);
             System.Windows.Automation.AutomationProperties.SetName(toggle, SystemNames[id]);
             toggle.Click += SystemVisibilityClick; Grid.SetColumn(toggle, 3); row.Children.Add(toggle); SystemList.Children.Add(row); systemToggles[id] = toggle;
-            if (id != 6)
+            if (id != 4)
             {
                 var divider = new Border { Height = .5, Margin = new Thickness(36, 0, 0, 0) };
                 divider.SetResourceReference(Border.BackgroundProperty, "BorderBrush"); SystemList.Children.Add(divider);

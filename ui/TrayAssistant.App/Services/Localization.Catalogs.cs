@@ -2,8 +2,8 @@ using System.Collections.Generic;
 namespace TrayAssistant_App.Services;
 public static partial class Localization
 {
-    public static readonly string[] LanguageCodes = ["zh", "en", "zh-Hant", "ja"];
-    public static readonly string[] LanguageNames = ["简体中文", "English", "繁體中文", "日本語"];
+    public static readonly string[] LanguageCodes = ["zh", "zh-Hant", "ja", "en"];
+    public static readonly string[] LanguageNames = ["简体中文", "繁體中文", "日本語", "English"];
     private static string currentLanguage = "zh";
     public static string CurrentLanguage
     {
@@ -68,6 +68,9 @@ EXE / DLL 图标序号|EXE / DLL 圖示編號|EXE / DLL のアイコン番号
 批量可见性已应用|已批次套用顯示設定|表示設定を適用しました
 已撤销上次规则操作|已復原上次規則操作|前のルール変更を元に戻しました
 语言|語言|言語
+语言栏|語言列|言語バー
+电池|電池|バッテリー
+时间|時間|時刻
 退出软件|退出軟體|終了
 退出|退出|終了
 设置|設定|設定

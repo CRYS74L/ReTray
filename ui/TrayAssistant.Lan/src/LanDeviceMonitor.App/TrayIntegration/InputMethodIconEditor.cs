@@ -127,7 +127,9 @@ public sealed class InputMethodIconEditor : UserControl
     {
         Focusable = true; System.Windows.Input.KeyboardNavigation.SetIsTabStop(this, false);
         var root = new Grid();
-        var content = new StackPanel();
+        root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        root.RowDefinitions.Add(new RowDefinition());
+        var content = new StackPanel { Margin = new Thickness(0,4,0,0) };
         for (int i = 0; i < model.Rows.Count; i++)
         {
             var row = model.Rows[i];
@@ -135,19 +137,20 @@ public sealed class InputMethodIconEditor : UserControl
             // Only the first row exposes the dialog's close action.
             var header=IconEditorPanel.CreateHeader(row.Name,close,i==0?"InputMethodEditorClose":"",showClose:i==0);
             foreach(var text in header.Children.OfType<TextBlock>())text.FontWeight=FontWeights.Normal;
-            content.Children.Add(header);
+            if(i==0)root.Children.Add(header);else content.Children.Add(header);
             var choice = new IconChoiceRow(row, nameof(row.Original), () => row.AssetPreview,
                 () => row.UseReplacement, value => row.UseReplacement = value, row.ChooseIconCommand, $"InputMethod{i}.",0)
                 { Margin=new Thickness(4,0,4,i+1==model.Rows.Count?4:0) };
             System.Windows.Automation.AutomationProperties.SetAutomationId(choice, "InputMethodRow." + row.Key);
             content.Children.Add(choice);
+            IconEditorPanel.BalanceHeaderSpacing(header,choice,i==0?content.Margin.Top:0);
             if (i + 1 < model.Rows.Count)
             {
                 var divider = new Border { Height = .5, Margin = new Thickness(4,16,4,16) };
                 divider.SetResourceReference(Border.BackgroundProperty, "BorderBrush"); content.Children.Add(divider);
             }
         }
-        if (model.Rows.Count == 0)content.Children.Add(IconEditorPanel.CreateHeader("没有可编辑的输入法标志",close,"InputMethodEditorClose"));
+        if (model.Rows.Count == 0)root.Children.Add(IconEditorPanel.CreateHeader("没有可编辑的输入法标志",close,"InputMethodEditorClose"));
         var error = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12,Margin=new Thickness(4,10,4,4) };
         error.SetResourceReference(TextBlock.ForegroundProperty, "DangerTextBrush");
         var errorStyle=new Style(typeof(TextBlock),TryFindResource(typeof(TextBlock)) as Style);
@@ -157,7 +160,7 @@ public sealed class InputMethodIconEditor : UserControl
         var scroll = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         scroll.SetResourceReference(StyleProperty, "IconEditorScrollViewerStyle"); DeviceListViewport.SetEnabled(scroll, true);
-        root.Children.Add(scroll); Content = root;
+        Grid.SetRow(scroll,1); root.Children.Add(scroll); Content = root;
         System.Windows.Automation.AutomationProperties.SetAutomationId(this, "InputMethodIconEditor");
         Loaded += (_, _) => { Localization.Apply(this); Focus(); }; Unloaded += (_, _) => model.Stop();
     }

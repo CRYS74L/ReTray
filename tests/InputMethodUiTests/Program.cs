@@ -15,7 +15,8 @@ internal static class Program
             ("input method rows switch independently and retain selection",IndependentRows),
             ("selected replacement synchronizes the visible slider",SelectedFileUpdatesMode),
             ("locale switching preserves source labels and user bindings",LocaleRoundtrip),
-            ("every input method uses equal heading to icon spacing",EqualHeadingSpacing)})
+            ("every input method balances heading and slider gaps",EqualHeadingSpacing),
+            ("language order and saved codes stay independent",LanguageOrder)})
             try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e.Message);}
         return failed==0?0:1;
     }
@@ -65,25 +66,49 @@ internal static class Program
         foreach(int count in new[]{0,1,2,5}) {
             var model=new InputMethodIconEditorModel(new TrayAssistant_App.Services.PipeClient());
             for(int i=0;i<count;i++)model.Rows.Add((InputMethodIconRow)Activator.CreateInstance(typeof(InputMethodIconRow),System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic,null,new object[]{model,new System.Text.Json.Nodes.JsonObject {
-                ["key"]="test-"+i,["name"]="输入法 "+i,["policy"]=new System.Text.Json.Nodes.JsonObject {
+                ["original"]=new System.Text.Json.Nodes.JsonObject { ["width"]=1,["height"]=1,["pixels"]="AAAA/w==" },
+                ["key"]="test-"+i,["name"]=i%3==0?"微信输入法":i%3==1?"Google Japanese Input":"日本語入力",["policy"]=new System.Text.Json.Nodes.JsonObject {
                     ["asset"]="",["index"]=0,["useReplacement"]=false }
             }},null)!);
             var editor=new InputMethodIconEditor(model,()=>System.Threading.Tasks.Task.CompletedTask);
-            editor.Measure(new Size(400,double.PositiveInfinity));editor.Arrange(new Rect(0,0,400,editor.DesiredSize.Height));
-            var content=(StackPanel)((ScrollViewer)((Grid)editor.Content).Children[0]).Content;
-            var titles=content.Children.OfType<Grid>().ToArray();
+            var window=new Window{Content=editor,Width=400,SizeToContent=SizeToContent.Height,ShowActivated=false,ShowInTaskbar=false,Opacity=0};window.Show();window.UpdateLayout();
+            var root=(Grid)editor.Content;
+            var scroll=root.Children.OfType<ScrollViewer>().Single();
+            var content=(StackPanel)scroll.Content;
+            var fixedHeader=root.Children.OfType<Grid>().SingleOrDefault();
+            Require(fixedHeader!=null,"Close header is still inside the clipped scrolling viewport");
+            var titles=new[]{fixedHeader!}.Concat(content.Children.OfType<Grid>()).ToArray();
             var choices=content.Children.OfType<IconChoiceRow>().ToArray();
             Require(choices.Length==count,"Editor did not represent every input method");
             Require(titles.Length==Math.Max(1,count),"Input methods did not share the heading component");
-            double? gap=null;
             for(int i=0;i<count;i++) {
                 var title=titles[i].Children.OfType<TextBlock>().Single();
                 title.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
-                double current=choices[i].TranslatePoint(new Point(),content).Y-title.TranslatePoint(new Point(0,title.ActualHeight),content).Y;
-                if(gap.HasValue)Require(Math.Abs(gap.Value-current)<.01,"Heading to icon spacing depends on row position");
-                gap=current;
+                for(int pass=0;pass<3;pass++){editor.Measure(new Size(400,double.PositiveInfinity));editor.Arrange(new Rect(0,0,400,editor.DesiredSize.Height));editor.UpdateLayout();}
+                var image=Find<Image>(choices[i]).First();
+                var mode=Slider(choices[i]);
+                var ink=new System.Windows.Media.FormattedText(title.Text,System.Globalization.CultureInfo.CurrentCulture,title.FlowDirection,
+                    new Typeface(title.FontFamily,title.FontStyle,title.FontWeight,title.FontStretch),title.FontSize,Brushes.Black,VisualTreeHelper.GetDpi(title).PixelsPerDip) {MaxTextWidth=title.ActualWidth,MaxLineCount=1,Trimming=TextTrimming.CharacterEllipsis}.BuildGeometry(new Point()).Bounds;
+                double top=image.TranslatePoint(new Point(),root).Y-title.TranslatePoint(new Point(ink.Left,ink.Bottom),root).Y;
+                double bottom=mode.TranslatePoint(new Point(),root).Y-image.TranslatePoint(new Point(0,image.ActualHeight),root).Y;
+                Require(Math.Abs(top-bottom)<.5,"Heading and slider gaps differ in row "+i+": "+top+" vs "+bottom);
             }
-            Require(content.Children.OfType<Grid>().SelectMany(h=>h.Children.OfType<Button>()).Count(b=>b.Visibility==Visibility.Visible)==1,"Editor needs exactly one close button");
+            Require(titles.SelectMany(h=>h.Children.OfType<Button>()).Count(b=>b.Visibility==Visibility.Visible)==1,"Editor needs exactly one close button");window.Close();
         }
+    }
+    private static IEnumerable<T> Find<T>(DependencyObject root) where T:DependencyObject
+    {
+        for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++) {
+            var child=VisualTreeHelper.GetChild(root,i);if(child is T typed)yield return typed;
+            foreach(var nested in Find<T>(child))yield return nested;
+        }
+    }
+    private static void LanguageOrder()
+    {
+        var names=TrayAssistant_App.Services.Localization.LanguageNames;
+        Require(names.SequenceEqual(new[]{"简体中文","繁體中文","日本語","English"}),"Language dropdown order differs");
+        foreach(var code in new[]{"zh","zh-Hant","ja","en"})
+            Require(TrayAssistant_App.Services.Localization.LanguageCodes[TrayAssistant_App.Services.Localization.LanguageIndex(code)]==code,"Saved language code changed meaning");
+        Require(TrayAssistant_App.Services.Localization.LanguageIndex(null)==0,"Default language must be simplified Chinese");
     }
 }

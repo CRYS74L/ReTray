@@ -107,9 +107,9 @@
                 </controls:BelowComboBox>
                 <controls:BelowComboBox AutomationProperties.AutomationId="LanguageChoice" Header="语言" HorizontalAlignment="Stretch" SelectedIndex="{x:Bind Vm.LanguageIndex, Mode=TwoWay}">
                   <x:String>简体中文</x:String>
-                  <x:String>English</x:String>
                   <x:String>繁體中文</x:String>
                   <x:String>日本語</x:String>
+                  <x:String>English</x:String>
                 </controls:BelowComboBox>
               </StackPanel>
             </Border>

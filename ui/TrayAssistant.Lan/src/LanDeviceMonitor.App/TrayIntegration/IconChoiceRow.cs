@@ -12,6 +12,8 @@ namespace TrayAssistant_App;
 // Shared by tray and input-method editors so their canvases, slider and motion stay identical.
 public sealed class IconChoiceRow : UserControl
 {
+    internal Image OriginalPreview { get; private set; } = null!;
+    internal SegmentedControl ImageMode { get; private set; } = null!;
     public IconChoiceRow(object source, string originalPath, Func<ImageSource?> preview,
         Func<bool> getMode, Action<bool> setMode, ICommand chooseCommand, string prefix = "", double bottomSpacing = 18)
     {
@@ -30,6 +32,7 @@ public sealed class IconChoiceRow : UserControl
             return stack;
         }
         var originalImage = new Image { Width = 44, Height = 44, Stretch = Stretch.Uniform };
+        OriginalPreview = originalImage;
         originalImage.SetBinding(Image.SourceProperty, new Binding(originalPath) { Source = source });
         RenderOptions.SetBitmapScalingMode(originalImage, BitmapScalingMode.HighQuality);
         System.Windows.Automation.AutomationProperties.SetAutomationId(originalImage, prefix + "OriginalIconPreview");
@@ -75,6 +78,7 @@ public sealed class IconChoiceRow : UserControl
         var mode = new SegmentedControl { Height = 36, MinHeight = 36,
             HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, bottomSpacing),
             FontSize = 14, AnimationMilliseconds = 480 };
+        ImageMode = mode;
         SegmentItem ModeItem(string caption)
         {
             var item = new SegmentItem();

@@ -21,10 +21,13 @@ public sealed class IconEditorPanel : UserControl
         var root = new Grid();
         root.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         root.RowDefinitions.Add(new RowDefinition());
-        root.Children.Add(CreateHeader(row.Name, close));
+        var header = CreateHeader(row.Name, close);
+        root.Children.Add(header);
         var content = new StackPanel { Margin = new Thickness(4) };
-        content.Children.Add(new IconChoiceRow(vm, "Selected.Original", () => vm.AssetPreview,
-            () => vm.UseReplacement, value => vm.UseReplacement = value, vm.ChooseIconCommand));
+        var choice = new IconChoiceRow(vm, "Selected.Original", () => vm.AssetPreview,
+            () => vm.UseReplacement, value => vm.UseReplacement = value, vm.ChooseIconCommand);
+        content.Children.Add(choice);
+        BalanceHeaderSpacing(header, choice, content.Margin.Top);
         var tip = new TextBox { MaxLength = 127, Height = 36, MinHeight = 36, Margin = new Thickness(0, 8, 0, 0) };
         InputPlaceholder.SetText(tip, Localization.Text("留空时使用原始悬停提示内容"));
         tip.Loaded += (_, _) => { tip.ApplyTemplate(); if (tip.Template.FindName("Placeholder", tip) is TextBlock hint) hint.Opacity = .4; };
@@ -90,17 +93,47 @@ public sealed class IconEditorPanel : UserControl
         owner.MouseLeave += (_, _) => Rotate(0, 280);
     }
 
-    private static void AlignHeaderInk(TextBlock title, Button dismiss)
+    internal static void BalanceHeaderSpacing(Grid header, IconChoiceRow choice, double contentTopInset)
     {
-        if (title.ActualWidth <= 0 || title.ActualHeight <= 0 || dismiss.ActualHeight <= 0 ||
-            string.IsNullOrEmpty(title.Text)) return;
+        var title = header.Children.OfType<TextBlock>().Single();
+        void Balance()
+        {
+            var image = choice.OriginalPreview;
+            var mode = choice.ImageMode;
+            if (header.ActualHeight <= 0 || image.ActualHeight <= 0 || mode.ActualHeight <= 0 || title.ActualWidth <= 0) return;
+            var ink = TitleInk(title);
+            if (ink.IsEmpty) return;
+            // Keep the space below the visible title equal to the space from the
+            // image to the mode slider, including the image caption in that space.
+            var gap = mode.TranslatePoint(new Point(), choice).Y - image.TranslatePoint(new Point(0, image.ActualHeight), choice).Y;
+            var titleBottom = title.TranslatePoint(new Point(ink.Left, ink.Bottom), header).Y;
+            var iconTop = image.TranslatePoint(new Point(), choice).Y;
+            var bottom = Math.Max(0, titleBottom + gap - header.ActualHeight - iconTop - contentTopInset);
+            if (Math.Abs(header.Margin.Bottom - bottom) > .01)
+                header.Margin = new Thickness(header.Margin.Left, header.Margin.Top, header.Margin.Right, bottom);
+        }
+        header.LayoutUpdated += (_, _) => Balance();
+        title.Loaded += (_, _) => Balance();
+        title.SizeChanged += (_, _) => Balance();
+        choice.SizeChanged += (_, _) => Balance();
+    }
+
+    private static Rect TitleInk(TextBlock title)
+    {
         var formatted = new FormattedText(title.Text, CultureInfo.CurrentCulture, title.FlowDirection,
             new Typeface(title.FontFamily, title.FontStyle, title.FontWeight, title.FontStretch),
             title.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(title).PixelsPerDip)
         {
             MaxTextWidth = title.ActualWidth, MaxLineCount = 1, Trimming = TextTrimming.CharacterEllipsis
         };
-        var ink = formatted.BuildGeometry(new Point()).Bounds;
+        return formatted.BuildGeometry(new Point()).Bounds;
+    }
+
+    private static void AlignHeaderInk(TextBlock title, Button dismiss)
+    {
+        if (title.ActualWidth <= 0 || title.ActualHeight <= 0 || dismiss.ActualHeight <= 0 ||
+            string.IsNullOrEmpty(title.Text)) return;
+        var ink = TitleInk(title);
         // Match the visible glyph edges to the content inset, excluding font line bearings.
         if (ink.IsEmpty) return;
         title.RenderTransform = new TranslateTransform(-ink.Left, -ink.Top);

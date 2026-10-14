@@ -25,6 +25,7 @@ public partial class MainPage : UserControl
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly SemaphoreSlim systemSaveGate = new(1, 1);
     private static readonly string[] SystemNames = ["网络", "音量", "电池", "输入法", "时间", "通知", "隐私指示器", "开始", "快速设置", "语言栏"];
+    private static readonly int[] SystemIds = [6,9,3,0,1,2,4];
     private readonly ToggleButton?[] systemToggles = new ToggleButton?[SystemNames.Length];
     private readonly SystemGlyphImage?[] systemGlyphs = new SystemGlyphImage?[SystemNames.Length];
     private readonly bool[] systemAvailable = new bool[SystemNames.Length];
@@ -53,6 +54,7 @@ public partial class MainPage : UserControl
             var root=(FrameworkElement?)Window.GetWindow(this) ?? this;
             root.Language=System.Windows.Markup.XmlLanguage.GetLanguage(Localization.CurrentLanguage switch {"zh-Hant"=>"zh-TW","ja"=>"ja-JP","en"=>"en-US",_=>"zh-CN"});
             Localization.Apply(root);
+            CreateLoadingRows();
         };
         timer.Tick += async (_, _) =>
         {
@@ -61,6 +63,7 @@ public partial class MainPage : UserControl
         };
         Loaded += PageLoaded; Unloaded += (_, _) => { timer.Stop(); finishPageTransition?.Invoke(); };
         SizeChanged += (_, _) => FloatingCard.MaxHeight = Math.Max(0, ActualHeight - 32);
+        PagesHost.SizeChanged += (_, _) => UpdateTrayLoadingRows();
         PreviewKeyDown += async (_, args) =>
         {
             if (args.Key != Key.Escape || FloatingLayer.Visibility != Visibility.Visible) return;
@@ -155,7 +158,16 @@ public partial class MainPage : UserControl
         LoadingList.Visibility = tab == "icons" && Vm.IsLoading ? Visibility.Visible : Visibility.Collapsed;
         SettingsView.Visibility = tab == "settings" ? Visibility.Visible : Visibility.Collapsed;
         SystemView.Visibility = tab == "system" ? Visibility.Visible : Visibility.Collapsed;
+        UpdateLoadingContents();
         ErrorNotice.Visibility = Vm.Error.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+    private void UpdateLoadingContents()
+    {
+        var systemPlaceholder=Vm.IsLoading || (systemLoading && !systemLoaded);
+        SystemLoadingRows.Visibility=systemPlaceholder?Visibility.Visible:Visibility.Collapsed;
+        SystemList.Visibility=systemPlaceholder?Visibility.Collapsed:Visibility.Visible;
+        SettingsLoadingRows.Visibility=Vm.IsLoading?Visibility.Visible:Visibility.Collapsed;
+        SettingsRows.Visibility=Vm.IsLoading?Visibility.Collapsed:Visibility.Visible;
     }
     private void Navigate(object sender, SelectionChangedEventArgs args)
     {
@@ -245,17 +257,16 @@ public partial class MainPage : UserControl
     }
     private void CreateLoadingRows()
     {
-        for (var index = 0; index < 10; index++)
-        {
-            var row = new Grid { Height = 34, Opacity = 0.45 };
-            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26) }); row.ColumnDefinitions.Add(new ColumnDefinition()); row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(76) });
-            var icon = new Border { Width = 20, Height = 20, CornerRadius = new CornerRadius(4), VerticalAlignment = VerticalAlignment.Center };
-            icon.SetResourceReference(Border.BackgroundProperty, "ControlHoverBrush"); row.Children.Add(icon);
-            var label = new Border { Height = 10, Width = 90 + index % 3 * 22, Margin = new Thickness(8, 0, 0, 0), CornerRadius = new CornerRadius(4), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center };
-            label.SetResourceReference(Border.BackgroundProperty, "ControlHoverBrush"); Grid.SetColumn(label, 1); row.Children.Add(label);
-            var toggle = new Border { Width = 38, Height = 23, CornerRadius = new CornerRadius(11.5), VerticalAlignment = VerticalAlignment.Center };
-            toggle.SetResourceReference(Border.BackgroundProperty, "ControlHoverBrush"); Grid.SetColumn(toggle, 2); row.Children.Add(toggle); LoadingRows.Children.Add(row);
-        }
+        PagePlaceholders.FillSystem(SystemLoadingRows,SystemIds.Select(id=>(id,SystemNames[id])));
+        PagePlaceholders.FillSettings(SettingsLoadingRows);
+        UpdateTrayLoadingRows();
+    }
+    private void UpdateTrayLoadingRows()
+    {
+        var count=PagesHost.ActualHeight>0?Math.Clamp((int)Math.Ceiling(PagesHost.ActualHeight/34),1,256):10;
+        if(LoadingRows.Children.Count==count)return;
+        LoadingRows.Children.Clear();
+        for(var index=0;index<count;index++)LoadingRows.Children.Add(PagePlaceholders.TrayRow(index));
     }
     private async void IconNativeAction(object sender, TrayIconActionEventArgs args)
     {
@@ -453,7 +464,7 @@ public partial class MainPage : UserControl
     public async Task<bool> FlushChangesAsync() { await systemSaveGate.WaitAsync(); systemSaveGate.Release(); if(inputMethodEditor!=null && !await inputMethodEditor.FlushAsync())return false; return await Vm.FlushChangesAsync(); }
     private void CreateSystemRows()
     {
-        foreach (var id in new[] { 6, 9, 3, 0, 1, 2, 4 })
+        foreach (var id in SystemIds)
         {
             if (id == 5 || id == 8) continue;
             var row = new Grid { Height = 34 };
@@ -505,6 +516,8 @@ public partial class MainPage : UserControl
         if (systemLoading) { systemRefreshPending |= refresh; return; }
         if (systemLoaded && !refresh) return;
         systemLoading = true;
+        var initialLoad=!systemLoaded;
+        if(initialLoad)UpdateLoadingContents();
         if (!systemLoaded) foreach (var toggle in systemToggles.OfType<ToggleButton>()) toggle.IsEnabled = false;
         await systemSaveGate.WaitAsync();
         try
@@ -532,6 +545,7 @@ public partial class MainPage : UserControl
         finally
         {
             systemSaveGate.Release(); systemLoading = false;
+            if(initialLoad)UpdateLoadingContents();
             for (var id = 0; id < systemToggles.Length; id++)
             {
                 if (systemToggles[id] is not { } toggle) continue;

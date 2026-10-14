@@ -19,7 +19,8 @@ internal static class Program
             ("language order and saved codes stay independent",LanguageOrder),
             ("editor scrollbar preserves content width and positions",ScrollbarPreservesLayout),
             ("settings glyph ink is centered with a uniform thin outline",SettingsGlyphInk),
-            ("P3 power matches approved proportions and has an unbroken arc",PowerMatchesPreview)})
+            ("P3 power matches approved proportions and has an unbroken arc",PowerMatchesPreview),
+            ("page placeholders match controls and loading visibility",PagePlaceholders)})
             try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e);}
         return failed==0?0:1;
     }
@@ -170,6 +171,97 @@ internal static class Program
                 Require(Math.Abs(coverage-1)<.15,"Power stem outline differs from one DIP: "+coverage);
             }
         }
+    }
+    private static void PagePlaceholders()
+    {
+        var x=System.Xml.Linq.XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml");
+        var source=System.Xml.Linq.XDocument.Load(System.IO.Path.Combine(AppContext.BaseDirectory,"WindowTemplates.xaml"));
+        var dictionary=new System.Xml.Linq.XElement(source.Root!.Name.Namespace+"ResourceDictionary",
+            source.Root.Attributes().Where(a=>a.IsNamespaceDeclaration).Select(a=>new System.Xml.Linq.XAttribute(a.Name,
+                a.Value.StartsWith("clr-namespace:") && !a.Value.Contains(";assembly=")?a.Value+";assembly=TrayAssistant.App":a.Value)),
+            source.Descendants().Where(e=>e.Name.LocalName=="Style" &&
+                new[]{"DeviceListScrollViewerStyle","DeviceListBoxStyle","FooterCircleButtonStyle"}.Contains((string?)e.Attribute(x+"Key"))));
+        // MainPage supplies its own item container, so omit the LAN-specific one.
+        dictionary.Elements().Single(e=>(string?)e.Attribute(x+"Key")=="DeviceListBoxStyle")
+            .Elements().Where(e=>(string?)e.Attribute("Property") is "ItemContainerStyle" or "ItemTemplate").ToList().ForEach(e=>e.Remove());
+        Application.Current.Resources.MergedDictionaries.Add((ResourceDictionary)System.Windows.Markup.XamlReader.Parse(dictionary.ToString()));
+        var page=new MainPage();
+        FrameworkElement Element(string name)=>(FrameworkElement)page.FindName(name);
+        void Layout(double height=640){page.Measure(new Size(364,height));page.Arrange(new Rect(0,0,364,height));page.UpdateLayout();}
+        var navigation=(SegmentedControl)Element("Navigation");
+        Layout();
+        var tray=(StackPanel)Element("LoadingRows");
+        var first=(Grid)tray.Children[0];
+        Require(first.ColumnDefinitions[0].ActualWidth==28,"Tray skeleton uses an obsolete icon column");
+        Require(Find<Border>(first).Any(b=>Equals(b.Tag,"PlaceholderMore")),"Tray skeleton omits more action");
+        Require(tray.Children.Count>=Math.Ceiling(Element("PagesHost").ActualHeight/34),"Tray skeleton leaves an empty lower viewport");
+        navigation.SelectedIndex=1;Layout();
+        Require(Element("SystemLoadingRows").Visibility==Visibility.Visible,"System loading state exposes unfinished controls");
+        var system=(StackPanel)Element("SystemLoadingRows");
+        Require(system.Children.OfType<Grid>().Count()==7,"System skeleton has an obsolete row count");
+        Require(Find<Border>(system).Count(b=>Equals(b.Tag,"PlaceholderMore"))==1,"Only the input method should have a more placeholder");
+        Require(Element("SystemList").Visibility==Visibility.Collapsed,"Real system controls overlap skeletons");
+        navigation.SelectedIndex=2;Layout();
+        var settings=(StackPanel)Element("SettingsLoadingRows");
+        Require(settings.Visibility==Visibility.Visible && settings.Children.OfType<Grid>().Count()==4,"Settings skeleton does not match four rows");
+        Require(Find<Border>(settings).Count(b=>Equals(b.Tag,"PlaceholderSelector"))==2,"Theme/language selector placeholders missing");
+        Require(Find<Border>(settings).Count(b=>Equals(b.Tag,"PlaceholderExport") || Equals(b.Tag,"PlaceholderImport"))==2,"Configuration capsules missing");
+        var buttonPlaceholder=Find<Border>(settings).Single(b=>Equals(b.Tag,"PlaceholderImport"));
+        var expected=buttonPlaceholder.TranslatePoint(new Point(),page);
+        var expectedSize=buttonPlaceholder.RenderSize;
+        page.Vm.IsLoading=false;Layout();
+        Require(settings.Visibility==Visibility.Collapsed && Element("SettingsRows").Visibility==Visibility.Visible,"Loading completion leaves skeletons over real controls");
+        var button=Element("ImportConfigurationButton");
+        Require((button.TranslatePoint(new Point(),page)-expected).Length<.1 && Math.Abs(button.ActualWidth-expectedSize.Width)<.1 && Math.Abs(button.ActualHeight-expectedSize.Height)<.1,"Configuration skeleton and real capsule do not align");
+        page.Vm.Error="Synthetic connection error";Layout();
+        Require(Element("ErrorNotice").Visibility==Visibility.Visible && settings.Visibility==Visibility.Collapsed,"Connection error is hidden behind permanent placeholders");
+        page.Vm.Error="";page.Vm.IsLoading=true;Layout();
+        Require(settings.Visibility==Visibility.Visible && !settings.IsHitTestVisible,"Reconnect skeleton exposes interactive controls");
+        // Periodic system reads retain completed rows; only the first read uses silhouettes.
+        page.Vm.IsLoading=false;navigation.SelectedIndex=1;
+        var fields=System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic;
+        typeof(MainPage).GetField("systemLoading",fields)!.SetValue(page,true);
+        typeof(MainPage).GetMethod("UpdatePresentation",fields)!.Invoke(page,null);Layout();
+        Require(Element("SystemLoadingRows").Visibility==Visibility.Visible,"First system read skips its loading placeholders");
+        typeof(MainPage).GetField("systemLoaded",fields)!.SetValue(page,true);
+        typeof(MainPage).GetMethod("UpdatePresentation",fields)!.Invoke(page,null);Layout();
+        Require(Element("SystemLoadingRows").Visibility==Visibility.Collapsed && Element("SystemList").Visibility==Visibility.Visible,"Periodic system reads flicker back to placeholders");
+        typeof(MainPage).GetField("systemLoading",fields)!.SetValue(page,false);
+        foreach(var language in new[]{"zh","zh-Hant","ja","en"}) {
+            TrayAssistant_App.Services.Localization.CurrentLanguage=language;
+            TrayAssistant_App.Services.Localization.Apply(page);
+            typeof(MainPage).GetMethod("CreateLoadingRows",fields)!.Invoke(page,null);
+            page.Vm.IsLoading=true;navigation.SelectedIndex=2;Layout();
+            var silhouette=Find<Border>(settings).Single(b=>Equals(b.Tag,"PlaceholderImport"));
+            var position=silhouette.TranslatePoint(new Point(),page);var size=silhouette.RenderSize;
+            page.Vm.IsLoading=false;Layout();
+            Require((button.TranslatePoint(new Point(),page)-position).Length<.1 && Math.Abs(button.ActualWidth-size.Width)<.1,"Localized capsule size differs from loading silhouette: "+language);
+        }
+        TrayAssistant_App.Services.Localization.CurrentLanguage="zh";TrayAssistant_App.Services.Localization.Apply(page);
+        typeof(MainPage).GetMethod("CreateLoadingRows",fields)!.Invoke(page,null);
+        if(Environment.GetEnvironmentVariable("TRAY_PLACEHOLDER_SNAPSHOTS") is {Length:>0} output) {
+            System.IO.Directory.CreateDirectory(output);page.Vm.IsLoading=true;
+            foreach(var theme in new[]{"Light","Dark"}) {
+                LanDeviceMonitor.Services.ThemeService.Apply(theme);
+                // Build a fresh, unloaded page in the palette. Pumping the app
+                // dispatcher would run its production startup, outside this harness.
+                var visualPage=new MainPage();
+                var visualNavigation=(SegmentedControl)visualPage.FindName("Navigation");
+                foreach(int index in new[]{0,1,2}) {
+                    visualNavigation.SelectedIndex=index;
+                    visualPage.Measure(new Size(364,640));visualPage.Arrange(new Rect(0,0,364,640));visualPage.UpdateLayout();
+                    var color=((SolidColorBrush)Find<Border>((StackPanel)visualPage.FindName("SettingsLoadingRows")).First(b=>Equals(b.Tag,"PlaceholderIcon")).Background).Color;
+                    Require(theme=="Dark"?color.R>200:color.R<100,"Placeholder palette is invisible in "+theme);
+                    var bitmap=new RenderTargetBitmap(455,800,120,120,PixelFormats.Pbgra32);
+                    var background=new DrawingVisual();using(var draw=background.RenderOpen())draw.DrawRectangle(
+                        new SolidColorBrush((Color)ColorConverter.ConvertFromString(theme=="Light"?"#F8F8FA":"#242424")),null,new Rect(0,0,364,640));
+                    bitmap.Render(background);bitmap.Render(visualPage);
+                    var encoder=new PngBitmapEncoder();encoder.Frames.Add(BitmapFrame.Create(bitmap));
+                    using var file=System.IO.File.Create(System.IO.Path.Combine(output,$"{theme.ToLowerInvariant()}-{index}.png"));encoder.Save(file);
+                }
+            }
+        }
+        LanDeviceMonitor.Services.ThemeService.Apply("Light");
     }
     private static void PowerMatchesPreview()
     {

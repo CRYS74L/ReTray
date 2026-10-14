@@ -210,11 +210,14 @@
               </Style>
             </ListBox.ItemContainerStyle>
           </ListBox>
-          <ScrollViewer x:Name="LoadingList" Style="{StaticResource DeviceListScrollViewerStyle}" IsHitTestVisible="False" AutomationProperties.AutomationId="TrayLoadingPlaceholders">
+          <ScrollViewer x:Name="LoadingList" Style="{StaticResource DeviceListScrollViewerStyle}" controls:DeviceListViewport.Enabled="True" IsHitTestVisible="False" AutomationProperties.AutomationId="TrayLoadingPlaceholders">
             <StackPanel x:Name="LoadingRows" />
           </ScrollViewer>
           <ScrollViewer x:Name="SystemView" Visibility="Collapsed" Style="{StaticResource FadingDetailScrollViewerStyle}" controls:DeviceListViewport.Enabled="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.AutomationId="SystemScroll">
-            <StackPanel x:Name="SystemList" />
+            <Grid>
+              <StackPanel x:Name="SystemList" />
+              <StackPanel x:Name="SystemLoadingRows" IsHitTestVisible="False" AutomationProperties.AutomationId="SystemLoadingPlaceholders" />
+            </Grid>
           </ScrollViewer>
           <ScrollViewer x:Name="SettingsView" Visibility="Collapsed" Style="{StaticResource FadingDetailScrollViewerStyle}" controls:DeviceListViewport.Enabled="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.AutomationId="SettingsScroll">
             <Grid MinHeight="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
@@ -223,7 +226,8 @@
                 <RowDefinition Height="*" />
                 <RowDefinition Height="Auto" />
               </Grid.RowDefinitions>
-              <StackPanel>
+              <StackPanel x:Name="SettingsLoadingRows" IsHitTestVisible="False" AutomationProperties.AutomationId="SettingsLoadingPlaceholders" />
+              <StackPanel x:Name="SettingsRows">
                 <Grid Margin="0,0,4,0" Height="34">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition />

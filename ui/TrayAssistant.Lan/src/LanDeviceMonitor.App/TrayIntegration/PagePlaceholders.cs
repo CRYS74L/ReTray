@@ -19,7 +19,7 @@ internal static class PagePlaceholders
     }
     private static Border Divider()
     {
-        var line=new Border {Height=.5,Margin=new Thickness(36,0,0,0),Opacity=.6};
+        var line=new PixelAlignedDivider {Height=.5,Margin=new Thickness(36,0,0,0),Opacity=.6};
         line.SetResourceReference(Border.BackgroundProperty,"ListDividerBrush");return line;
     }
     private static Grid Toggle()

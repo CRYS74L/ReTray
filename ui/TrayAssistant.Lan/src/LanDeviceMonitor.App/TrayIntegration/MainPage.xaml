@@ -176,7 +176,7 @@
         <Button Grid.Column="2" Style="{StaticResource TrayMoreButtonStyle}" Margin="0,0,8,0" Tag="{Binding}" Click="IconSettingsClick" VerticalAlignment="Center" AutomationProperties.AutomationId="IconSettings" AutomationProperties.Name="图标设置">
           <TextBlock Text="" FontFamily="{StaticResource AppIconFont}" FontSize="12" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" controls:GlyphInkAlignment.Enabled="True" />
         </Button>
-        <Border Grid.Column="1" Grid.ColumnSpan="3" Height="0.5" Margin="8,0,0,0" Background="{DynamicResource ListDividerBrush}" VerticalAlignment="Bottom" IsHitTestVisible="False" />
+        <local:PixelAlignedDivider Grid.Column="1" Grid.ColumnSpan="3" Height="0.5" Margin="8,0,0,0" Background="{DynamicResource ListDividerBrush}" VerticalAlignment="Bottom" IsHitTestVisible="False" />
       </Grid>
     </DataTemplate>
   </UserControl.Resources>
@@ -240,7 +240,7 @@
                   </Grid>
                   <controls:SwitchControl Grid.Column="1" IsChecked="{Binding Startup,Mode=TwoWay}" AutomationProperties.AutomationId="StartupToggle" Style="{StaticResource TrayRowToggle}" />
                 </Grid>
-                <Border Height="0.5" Background="{DynamicResource ListDividerBrush}" Margin="36,0,0,0" />
+                <local:PixelAlignedDivider Height="0.5" Background="{DynamicResource ListDividerBrush}" Margin="36,0,0,0" />
                 <Grid Margin="0,0,4,0" Height="34">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition />
@@ -253,7 +253,7 @@
                   </Grid>
                   <ComboBox x:Name="ThemeChoice" Grid.Column="1" Width="132" SelectedIndex="{Binding ThemeIndex,Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.AutomationId="ThemeChoice" Height="28" MinHeight="28" />
                 </Grid>
-                <Border Height="0.5" Background="{DynamicResource ListDividerBrush}" Margin="36,0,0,0" />
+                <local:PixelAlignedDivider Height="0.5" Background="{DynamicResource ListDividerBrush}" Margin="36,0,0,0" />
                 <Grid Margin="0,0,4,0" Height="34">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition />
@@ -266,7 +266,7 @@
                   </Grid>
                   <ComboBox x:Name="LanguageChoice" Grid.Column="1" Width="132" SelectedIndex="{Binding LanguageIndex,Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.AutomationId="LanguageChoice" Height="28" MinHeight="28" />
                 </Grid>
-                <Border Height="0.5" Background="{DynamicResource ListDividerBrush}" Margin="36,0,0,0" />
+                <local:PixelAlignedDivider Height="0.5" Background="{DynamicResource ListDividerBrush}" Margin="36,0,0,0" />
                 <Grid Margin="0,0,4,0" Height="34">
                   <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                   <Grid VerticalAlignment="Center" Margin="0,0,12,0">

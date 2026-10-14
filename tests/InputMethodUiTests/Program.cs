@@ -20,7 +20,8 @@ internal static class Program
             ("editor scrollbar preserves content width and positions",ScrollbarPreservesLayout),
             ("settings glyph ink is centered with a uniform thin outline",SettingsGlyphInk),
             ("P3 power matches approved proportions and has an unbroken arc",PowerMatchesPreview),
-            ("page placeholders match controls and loading visibility",PagePlaceholders)})
+            ("page placeholders match controls and loading visibility",PagePlaceholders),
+            ("list dividers keep constant coverage through fractional scrolling",DividerScrollStability)})
             try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e);}
         return failed==0?0:1;
     }
@@ -262,6 +263,42 @@ internal static class Program
             }
         }
         LanDeviceMonitor.Services.ThemeService.Apply("Light");
+    }
+    private static void DividerScrollStability()
+    {
+        var source=System.Xml.Linq.XDocument.Load(System.IO.Path.Combine(AppContext.BaseDirectory,"EditorTemplates.xaml"));
+        var xml=new System.Xml.Linq.XElement(source.Descendants().Single(e=>(string?)e.Attribute("Grid.ColumnSpan")=="3" && (string?)e.Attribute("Height")=="0.5"));
+        if(xml.Name.NamespaceName.StartsWith("clr-namespace:"))
+            xml.Name=System.Xml.Linq.XNamespace.Get(xml.Name.NamespaceName+";assembly=TrayAssistant.App")+xml.Name.LocalName;
+        var wrapper=new System.Xml.Linq.XElement(source.Root!.Name.Namespace+"Grid",
+            source.Root.Attributes().Where(a=>a.IsNamespaceDeclaration).Select(a=>new System.Xml.Linq.XAttribute(a.Name,
+                a.Value.StartsWith("clr-namespace:")?a.Value+";assembly=TrayAssistant.App":a.Value)),xml);
+        xml.SetAttributeValue("Background","White");
+        foreach(double scale in new[]{1d,1.25,1.5,2d})foreach(byte alpha in new byte[]{176,48}) {
+            var parsed=(Grid)System.Windows.Markup.XamlReader.Parse(wrapper.ToString());
+            var line=(Border)parsed.Children[0];parsed.Children.Remove(line);
+            line.Width=200;line.Background=new SolidColorBrush(Color.FromArgb(alpha,168,168,168));
+            var mask=new LinearGradientBrush();mask.GradientStops.Add(new GradientStop(Colors.Transparent,0));
+            mask.GradientStops.Add(new GradientStop(Colors.White,.2));mask.GradientStops.Add(new GradientStop(Colors.White,.8));
+            mask.GradientStops.Add(new GradientStop(Colors.Transparent,1));
+            var viewport=new Canvas{Width=240,Height=40,OpacityMask=mask};viewport.Children.Add(line);
+            VisualTreeHelper.SetRootDpi(viewport,new DpiScale(scale,scale));
+            double min=double.MaxValue,max=0,minPeak=double.MaxValue,maxPeak=0;
+            for(int phase=0;phase<24;phase++) {
+                Canvas.SetTop(line,16+phase*.1/scale);
+                viewport.Measure(new Size(240,40));viewport.Arrange(new Rect(0,0,240,40));viewport.UpdateLayout();
+                Require(Math.Abs(VisualTreeHelper.GetDpi(line).DpiScaleY-scale)<.001,"Test DPI did not propagate");
+                int width=(int)Math.Ceiling(240*scale),height=(int)Math.Ceiling(40*scale);
+                var bitmap=new RenderTargetBitmap(width,height,96*scale,96*scale,PixelFormats.Pbgra32);bitmap.Render(viewport);
+                var pixels=new byte[width*height*4];bitmap.CopyPixels(pixels,width*4,0);
+                double coverage=0,peak=0;int x=(int)(80*scale);
+                for(int y=0;y<height;y++){var a=pixels[(y*width+x)*4+3];coverage+=a;peak=Math.Max(peak,a);}
+                min=Math.Min(min,coverage);max=Math.Max(max,coverage);minPeak=Math.Min(minPeak,peak);maxPeak=Math.Max(maxPeak,peak);
+                Require(line.ActualHeight==.5,"Divider repair changed layout spacing");
+            }
+            Console.WriteLine($"Divider {scale*100}% alpha {alpha}: coverage {min}-{max}, peak {minPeak}-{maxPeak}");
+            Require(min>0 && max-min<=2 && maxPeak-minPeak<=2,"Divider disappears or flashes with subpixel scroll offsets");
+        }
     }
     private static void PowerMatchesPreview()
     {

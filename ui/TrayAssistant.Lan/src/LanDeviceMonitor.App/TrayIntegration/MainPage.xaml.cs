@@ -505,7 +505,7 @@ public partial class MainPage : UserControl
             toggle.Click += SystemVisibilityClick; Grid.SetColumn(toggle, 3); row.Children.Add(toggle); SystemList.Children.Add(row); systemToggles[id] = toggle;
             if (id != 4)
             {
-                var divider = new Border { Height = .5, Margin = new Thickness(36, 0, 0, 0) };
+                var divider = new PixelAlignedDivider { Height = .5, Margin = new Thickness(36, 0, 0, 0) };
                 divider.SetResourceReference(Border.BackgroundProperty, "ListDividerBrush"); SystemList.Children.Add(divider);
             }
         }

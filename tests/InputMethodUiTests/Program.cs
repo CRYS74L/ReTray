@@ -17,7 +17,8 @@ internal static class Program
             ("locale switching preserves source labels and user bindings",LocaleRoundtrip),
             ("every input method balances heading and slider gaps",EqualHeadingSpacing),
             ("language order and saved codes stay independent",LanguageOrder),
-            ("editor scrollbar preserves content width and positions",ScrollbarPreservesLayout)})
+            ("editor scrollbar preserves content width and positions",ScrollbarPreservesLayout),
+            ("settings glyph ink is centered with a uniform thin outline",SettingsGlyphInk)})
             try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e);}
         return failed==0?0:1;
     }
@@ -148,5 +149,23 @@ internal static class Program
             Require(hit==bar,"Scrollbar cannot be operated in the card inset");
         }
         finally{window.Close();}
+    }
+    private static void SettingsGlyphInk()
+    {
+        foreach(var kind in Enum.GetValues<SettingsIconKind>()) {
+            var icon=new SettingsIcon{Kind=kind,Width=28,Height=28,Foreground=Brushes.Black};
+            icon.Measure(new Size(28,28));icon.Arrange(new Rect(0,0,28,28));
+            var bitmap=new RenderTargetBitmap(280,280,960,960,PixelFormats.Pbgra32);bitmap.Render(icon);
+            var pixels=new byte[280*280*4];bitmap.CopyPixels(pixels,280*4,0);
+            int left=280,right=-1,top=280,bottom=-1;
+            for(int y=0;y<280;y++)for(int x=0;x<280;x++)if(pixels[(y*280+x)*4+3]>20){left=Math.Min(left,x);right=Math.Max(right,x);top=Math.Min(top,y);bottom=Math.Max(bottom,y);}
+            Require(right>left,"Missing settings glyph "+kind);
+            Require(Math.Abs((left+right)/2d-139.5)<=.5,"Settings glyph not horizontally centered: "+kind);
+            Require(Math.Abs((top+bottom)/2d-139.5)<=.5,"Settings glyph not vertically centered: "+kind);
+            if(kind==SettingsIconKind.Theme) {
+                double coverage=0;for(int x=0;x<100;x++)coverage+=pixels[(90*280+x)*4+3]/255d/10;
+                Require(Math.Abs(coverage-1)<.12,"Paint brush outline differs from one DIP: "+coverage);
+            }
+        }
     }
 }

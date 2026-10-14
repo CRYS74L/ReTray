@@ -94,4 +94,8 @@
 
 
   <ItemGroup><Content Include="ThirdParty\lucide\LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\SettingsIcons\*.svg" />
+    <Content Include="Assets\SettingsIcons\LICENSE;Assets\SettingsIcons\NOTICE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

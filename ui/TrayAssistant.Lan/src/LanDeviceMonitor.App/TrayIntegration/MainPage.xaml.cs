@@ -495,7 +495,7 @@ public partial class MainPage : UserControl
             if (id != 4)
             {
                 var divider = new Border { Height = .5, Margin = new Thickness(36, 0, 0, 0) };
-                divider.SetResourceReference(Border.BackgroundProperty, "BorderBrush"); SystemList.Children.Add(divider);
+                divider.SetResourceReference(Border.BackgroundProperty, "ListDividerBrush"); SystemList.Children.Add(divider);
             }
         }
     }

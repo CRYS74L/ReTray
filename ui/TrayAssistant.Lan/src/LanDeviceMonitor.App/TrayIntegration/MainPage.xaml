@@ -113,6 +113,8 @@
     </Style>
     <Style x:Key="ConfigurationButtonStyle" TargetType="Button" BasedOn="{StaticResource StudioActionButtonStyle}">
       <Setter Property="controls:StudioControlMotion.UseSelectorSurface" Value="True" />
+      <!-- Match plain ComboBox text inset: 13 DIP padding + 2 DIP presenter margin. -->
+      <Setter Property="Padding" Value="15,0" />
     </Style>
     <Style x:Key="TrayMoreButtonStyle" TargetType="Button" BasedOn="{StaticResource FooterCircleButtonStyle}">
       <Setter Property="Width" Value="{x:Static local:TrayRowMetrics.ActionDiameter}" />
@@ -269,8 +271,8 @@
                     <TextBlock Grid.Column="1" Text="配置文件" Margin="8,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                   </Grid>
                   <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="ExportConfigurationButton" Style="{StaticResource ConfigurationButtonStyle}" Content="导出配置" FontSize="{Binding FontSize,ElementName=LanguageChoice}" Padding="18,0" MinWidth="0" MinHeight="28" Height="28" Click="ExportConfigurationClick" AutomationProperties.AutomationId="ExportConfiguration" />
-                    <Button x:Name="ImportConfigurationButton" Style="{StaticResource ConfigurationButtonStyle}" Content="导入配置" FontSize="{Binding FontSize,ElementName=LanguageChoice}" Padding="18,0" MinWidth="0" MinHeight="28" Height="28" Margin="8,0,0,0" Click="ImportConfigurationClick" AutomationProperties.AutomationId="ImportConfiguration" />
+                    <Button x:Name="ExportConfigurationButton" Style="{StaticResource ConfigurationButtonStyle}" Content="导出配置" FontSize="{Binding FontSize,ElementName=LanguageChoice}" MinWidth="0" MinHeight="28" Height="28" Click="ExportConfigurationClick" AutomationProperties.AutomationId="ExportConfiguration" />
+                    <Button x:Name="ImportConfigurationButton" Style="{StaticResource ConfigurationButtonStyle}" Content="导入配置" FontSize="{Binding FontSize,ElementName=LanguageChoice}" MinWidth="0" MinHeight="28" Height="28" Margin="8,0,0,0" Click="ImportConfigurationClick" AutomationProperties.AutomationId="ImportConfiguration" />
                   </StackPanel>
                 </Grid>
                 <TextBlock Text="{Binding ConfigurationStatus}" ToolTip="{Binding ConfigurationBackupPath}" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" Margin="4,5,4,4" AutomationProperties.AutomationId="ConfigurationStatus">

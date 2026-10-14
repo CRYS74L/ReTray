@@ -61,6 +61,14 @@ public sealed class SettingsIcon : FrameworkElement
                 group.Children.Add(geometry.GetWidenedPathGeometry(pen,.005,ToleranceType.Absolute));
             }
         }
+        if(kind==SettingsIconKind.Startup) {
+            // P3 preserves its SVG viewport margins. Construct the stroke at
+            // its final width; boolean erosion can break the arc at its joins.
+            var viewportScale=21.5/Math.Max(Number(viewBox[2]),Number(viewBox[3]));
+            group.Transform=new MatrixTransform(viewportScale,0,0,viewportScale,
+                -Number(viewBox[0])*viewportScale,-Number(viewBox[1])*viewportScale);
+            group.Freeze();geometries[kind]=group;return group;
+        }
         var bounds=group.Bounds;
         var scale=20/Math.Max(bounds.Width,bounds.Height);
         group.Transform=new MatrixTransform(scale,0,0,scale,-bounds.X*scale,-bounds.Y*scale);

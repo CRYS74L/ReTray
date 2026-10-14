@@ -7,4 +7,5 @@
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../../ui/TrayAssistant.Lan/src/LanDeviceMonitor.App/LanDeviceMonitor.App.csproj" /></ItemGroup>
   <ItemGroup><None Include="../../ui/TrayAssistant.Lan/src/LanDeviceMonitor.App/TrayIntegration/MainPage.xaml" Link="EditorTemplates.xaml" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><Resource Remove="Fixtures/p3-power-preview.png" /><None Include="Fixtures/p3-power-preview.png" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

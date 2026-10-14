@@ -18,7 +18,8 @@ internal static class Program
             ("every input method balances heading and slider gaps",EqualHeadingSpacing),
             ("language order and saved codes stay independent",LanguageOrder),
             ("editor scrollbar preserves content width and positions",ScrollbarPreservesLayout),
-            ("settings glyph ink is centered with a uniform thin outline",SettingsGlyphInk)})
+            ("settings glyph ink is centered with a uniform thin outline",SettingsGlyphInk),
+            ("P3 power matches approved proportions and has an unbroken arc",PowerMatchesPreview)})
             try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e);}
         return failed==0?0:1;
     }
@@ -163,11 +164,49 @@ internal static class Program
             Require(Math.Abs((left+right)/2d-139.5)<=.5,"Settings glyph not horizontally centered: "+kind);
             Require(Math.Abs((top+bottom)/2d-139.5)<=.5,"Settings glyph not vertically centered: "+kind);
             if(kind==SettingsIconKind.Startup) {
-                for(int y=55;y<=115;y+=10)
+                for(int y=75;y<=125;y+=10)
                     Require(pixels[(y*280+139)*4+3]>180,"Startup must show the selected long vertical power stem");
                 double coverage=0;for(int x=120;x<160;x++)coverage+=pixels[(80*280+x)*4+3]/255d/10;
                 Require(Math.Abs(coverage-1)<.15,"Power stem outline differs from one DIP: "+coverage);
             }
+        }
+    }
+    private static void PowerMatchesPreview()
+    {
+        var reference=new BitmapImage(new Uri(System.IO.Path.Combine(AppContext.BaseDirectory,"Fixtures/p3-power-preview.png")));
+        var rgba=new FormatConvertedBitmap(reference,PixelFormats.Bgra32,null,0);
+        var expected=new byte[rgba.PixelWidth*rgba.PixelHeight*4];rgba.CopyPixels(expected,rgba.PixelWidth*4,0);
+        (int left,int right,int top,int bottom) Bounds(byte[] pixels,int width,int height) {
+            int l=width,r=-1,t=height,b=-1;
+            for(int y=0;y<height;y++)for(int x=0;x<width;x++)if(pixels[(y*width+x)*4+3]>16){l=Math.Min(l,x);r=Math.Max(r,x);t=Math.Min(t,y);b=Math.Max(b,y);}
+            return(l,r,t,b);
+        }
+        var target=Bounds(expected,rgba.PixelWidth,rgba.PixelHeight);
+        foreach(double dpiScale in new[]{1d,1.25,1.5,2,10}) {
+            var icon=new SettingsIcon{Kind=SettingsIconKind.Startup,Width=28,Height=28,Foreground=Brushes.Black};
+            icon.Measure(new Size(28,28));icon.Arrange(new Rect(0,0,28,28));
+            int size=(int)Math.Round(28*dpiScale);
+            var bitmap=new RenderTargetBitmap(size,size,96*dpiScale,96*dpiScale,PixelFormats.Pbgra32);bitmap.Render(icon);
+            var pixels=new byte[size*size*4];bitmap.CopyPixels(pixels,size*4,0);
+            var actual=Bounds(pixels,size,size);
+            // The user requested a small enlargement of the faithful P3 size.
+            double wantedWidth=(target.right-target.left+1)*21.5/rgba.PixelWidth;
+            Console.WriteLine($"P3 DPI {dpiScale}: width {(actual.right-actual.left+1)/dpiScale:F2}, expected {wantedWidth:F2}");
+            // Alpha bounds include the antialias fringe at each edge.
+            double rasterTolerance=1.5/dpiScale+.12;
+            double wantedHeight=(target.bottom-target.top+1)*21.5/rgba.PixelHeight;
+            var visited=new bool[size*size];int components=0;
+            for(int index=0;index<visited.Length;index++) {
+                if(visited[index]||pixels[index*4+3]<=16)continue;
+                components++;var queue=new Queue<int>();queue.Enqueue(index);visited[index]=true;
+                while(queue.Count>0){int p=queue.Dequeue(),x=p%size,y=p/size;
+                    for(int dy=-1;dy<=1;dy++)for(int dx=-1;dx<=1;dx++){int xx=x+dx,yy=y+dy;if(xx<0||xx>=size||yy<0||yy>=size)continue;int n=yy*size+xx;if(!visited[n]&&pixels[n*4+3]>16){visited[n]=true;queue.Enqueue(n);}}
+                }
+            }
+            Console.WriteLine($"P3 DPI {dpiScale}: connected parts {components}");
+            Require(components==2,"Power arc is cut into extra pieces at DPI "+dpiScale+": "+components);
+            Require(Math.Abs((actual.right-actual.left+1)/dpiScale-wantedWidth)<rasterTolerance,"P3 footprint does not match selected preview at DPI "+dpiScale);
+            Require(Math.Abs((actual.bottom-actual.top+1)/dpiScale-wantedHeight)<rasterTolerance,"P3 height does not match selected preview at DPI "+dpiScale);
         }
     }
 }

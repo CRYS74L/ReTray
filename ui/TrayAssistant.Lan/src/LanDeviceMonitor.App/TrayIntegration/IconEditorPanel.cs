@@ -125,7 +125,7 @@ public sealed class IconEditorPanel : UserControl
 
     internal static Border CreateDivider(Thickness margin)
     {
-        var divider = new Border { Height=1,Margin=margin,Opacity=.20 };
+        var divider = new Border { Height=1,Margin=margin,Opacity=.14 };
         divider.SetResourceReference(Border.BackgroundProperty,"TextBrush");
         System.Windows.Automation.AutomationProperties.SetAutomationId(divider,"IconEditorDivider");
         return divider;

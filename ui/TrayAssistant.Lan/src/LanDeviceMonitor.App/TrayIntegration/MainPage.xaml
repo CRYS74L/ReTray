@@ -258,8 +258,8 @@
                   <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                   <TextBlock Text="配置文件" VerticalAlignment="Center" Margin="0,0,12,0" />
                   <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="ExportConfigurationButton" Style="{StaticResource ConfigurationButtonStyle}" Content="导出配置" FontSize="12" Padding="10,0" MinWidth="0" MinHeight="28" Height="28" Click="ExportConfigurationClick" AutomationProperties.AutomationId="ExportConfiguration" />
-                    <Button x:Name="ImportConfigurationButton" Style="{StaticResource ConfigurationButtonStyle}" Content="导入配置" FontSize="12" Padding="10,0" MinWidth="0" MinHeight="28" Height="28" Margin="8,0,0,0" Click="ImportConfigurationClick" AutomationProperties.AutomationId="ImportConfiguration" />
+                    <Button x:Name="ExportConfigurationButton" Style="{StaticResource ConfigurationButtonStyle}" Content="导出配置" FontSize="{Binding FontSize,ElementName=LanguageChoice}" Padding="10,0" MinWidth="0" MinHeight="28" Height="28" Click="ExportConfigurationClick" AutomationProperties.AutomationId="ExportConfiguration" />
+                    <Button x:Name="ImportConfigurationButton" Style="{StaticResource ConfigurationButtonStyle}" Content="导入配置" FontSize="{Binding FontSize,ElementName=LanguageChoice}" Padding="10,0" MinWidth="0" MinHeight="28" Height="28" Margin="8,0,0,0" Click="ImportConfigurationClick" AutomationProperties.AutomationId="ImportConfiguration" />
                   </StackPanel>
                 </Grid>
                 <TextBlock Text="{Binding ConfigurationStatus}" ToolTip="{Binding ConfigurationBackupPath}" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" Margin="4,5,4,4" AutomationProperties.AutomationId="ConfigurationStatus">

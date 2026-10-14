@@ -162,9 +162,11 @@ internal static class Program
             Require(right>left,"Missing settings glyph "+kind);
             Require(Math.Abs((left+right)/2d-139.5)<=.5,"Settings glyph not horizontally centered: "+kind);
             Require(Math.Abs((top+bottom)/2d-139.5)<=.5,"Settings glyph not vertically centered: "+kind);
-            if(kind==SettingsIconKind.Theme) {
-                double coverage=0;for(int x=0;x<100;x++)coverage+=pixels[(90*280+x)*4+3]/255d/10;
-                Require(Math.Abs(coverage-1)<.12,"Paint brush outline differs from one DIP: "+coverage);
+            if(kind==SettingsIconKind.Startup) {
+                for(int y=55;y<=115;y+=10)
+                    Require(pixels[(y*280+139)*4+3]>180,"Startup must show the selected long vertical power stem");
+                double coverage=0;for(int x=120;x<160;x++)coverage+=pixels[(80*280+x)*4+3]/255d/10;
+                Require(Math.Abs(coverage-1)<.15,"Power stem outline differs from one DIP: "+coverage);
             }
         }
     }

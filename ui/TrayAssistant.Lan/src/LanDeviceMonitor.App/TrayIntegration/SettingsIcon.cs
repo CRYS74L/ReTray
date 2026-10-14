@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Media;
 using System.Xml.Linq;
+using System.Globalization;
 
 namespace TrayAssistant_App;
 
@@ -17,6 +18,17 @@ public sealed class SettingsIcon : FrameworkElement
     public Brush Foreground { get => (Brush)GetValue(ForegroundProperty); set => SetValue(ForegroundProperty,value); }
 
     private static readonly Dictionary<SettingsIconKind, Geometry> geometries = new();
+    private static string? Attribute(XElement element,string name)
+    {
+        // SVG inline style overrides presentation attributes (Ionicons uses it).
+        string? styled=null;
+        foreach(var declaration in ((string?)element.Attribute("style")??"").Split(';')) {
+            var colon=declaration.IndexOf(':');
+            if(colon>0 && declaration[..colon].Trim()==name)styled=declaration[(colon+1)..].Trim();
+        }
+        return styled??(string?)element.Attribute(name);
+    }
+    private static double Number(string value) => double.Parse(value.EndsWith("px",StringComparison.Ordinal)?value[..^2]:value,CultureInfo.InvariantCulture);
     private static Geometry GeometryFor(SettingsIconKind kind)
     {
         if(geometries.TryGetValue(kind,out var cached))return cached;
@@ -24,18 +36,40 @@ public sealed class SettingsIcon : FrameworkElement
         var uri=new Uri($"/TrayAssistant.App;component/Assets/SettingsIcons/{name}.svg",UriKind.Relative);
         using var stream=Application.GetResourceStream(uri)!.Stream;
         var svg=XDocument.Load(stream);
+        var root=svg.Root!;
         var group=new GeometryGroup { FillRule=FillRule.Nonzero };
-        foreach(var path in svg.Descendants().Where(e=>e.Name.LocalName=="path"))
-            group.Children.Add(Geometry.Parse(((string?)path.Attribute("fill-rule")=="evenodd"?"F0 ":"F1 ")+(string)path.Attribute("d")!));
+        var viewBox=((string)root.Attribute("viewBox")!).Split(' ',StringSplitOptions.RemoveEmptyEntries);
+        // Phosphor Light's filled outline has a 12-unit stroke on a 256 grid.
+        var nominalOutline=double.Parse(viewBox[2],CultureInfo.InvariantCulture)>100?12d:1d;
+        foreach(var path in svg.Descendants().Where(e=>e.Name.LocalName is "path" or "line")) {
+            Geometry geometry=path.Name.LocalName=="line"
+                ? new LineGeometry(new Point(Number((string)path.Attribute("x1")!),Number((string)path.Attribute("y1")!)),
+                    new Point(Number((string)path.Attribute("x2")!),Number((string)path.Attribute("y2")!)))
+                : Geometry.Parse((Attribute(path,"fill-rule")=="evenodd"?"F0 ":"F1 ")+(string)path.Attribute("d")!);
+            var fill=Attribute(path,"fill")??Attribute(root,"fill")??"black";
+            if(fill!="none" && path.Name.LocalName!="line")group.Children.Add(geometry);
+            var stroke=Attribute(path,"stroke")??Attribute(root,"stroke")??"none";
+            if(stroke!="none") {
+                var width=Number(Attribute(path,"stroke-width")??Attribute(root,"stroke-width")??"1");
+                nominalOutline=width;
+                var cap=Attribute(path,"stroke-linecap")??Attribute(root,"stroke-linecap");
+                var join=Attribute(path,"stroke-linejoin")??Attribute(root,"stroke-linejoin");
+                var pen=new Pen(Brushes.Black,width) {
+                    StartLineCap=cap=="round"?PenLineCap.Round:PenLineCap.Flat,
+                    EndLineCap=cap=="round"?PenLineCap.Round:PenLineCap.Flat,
+                    LineJoin=join=="round"?PenLineJoin.Round:PenLineJoin.Miter };
+                group.Children.Add(geometry.GetWidenedPathGeometry(pen,.005,ToleranceType.Absolute));
+            }
+        }
         var bounds=group.Bounds;
         var scale=20/Math.Max(bounds.Width,bounds.Height);
         group.Transform=new MatrixTransform(scale,0,0,scale,-bounds.X*scale,-bounds.Y*scale);
-        // The 20px Fluent paths have a nominal one-unit outline. Normalizing
-        // their ink bounds enlarged that outline by a different amount per icon.
-        // Keep the normalized size but bring every outline back to one DIP.
+        // Keep the chosen contours and long power stem, while matching the
+        // other page icons' outline width after normalizing their visible size.
         Geometry ink=group;
-        if(scale>1) {
-            var outline=group.GetWidenedPathGeometry(new Pen(Brushes.Black,scale-1),.005,ToleranceType.Absolute);
+        var correction=nominalOutline*scale-1;
+        if(correction>0) {
+            var outline=group.GetWidenedPathGeometry(new Pen(Brushes.Black,correction),.005,ToleranceType.Absolute);
             ink=Geometry.Combine(group,outline,GeometryCombineMode.Exclude,null,.005,ToleranceType.Absolute);
         }
         ink.Freeze();geometries[kind]=ink;return ink;

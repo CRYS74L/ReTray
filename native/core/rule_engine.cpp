@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <cwctype>
 #include <objbase.h>
+#include <appmodel.h>
 #include <unordered_set>
 namespace tray {
 static std::wstring Normalize(std::wstring text) {
@@ -11,6 +12,49 @@ static std::wstring Normalize(std::wstring text) {
         c = static_cast<wchar_t>(towlower(c));
     }
     return text;
+}
+static std::wstring PackageExecutableIdentity(const std::wstring& path) {
+    // Recognize only rooted Store installation paths, never arbitrary version
+    // directories or a same-named executable elsewhere on the computer.
+    if (path.size() < 4 || path.find(L'\0') != std::wstring::npos ||
+        path[0] < L'a' || path[0] > L'z' || path[1] != L':') return {};
+    size_t begin{};
+    for (const auto prefix : {L"\\program files\\windowsapps\\", L"\\windowsapps\\"})
+        if (path.substr(2).starts_with(prefix)) { begin = 2 + wcslen(prefix); break; }
+    if (!begin) return {};
+    auto end = path.find(L'\\', begin);
+    if (end == std::wstring::npos || end == begin || end + 1 == path.size()) return {};
+    auto relative = path.substr(end + 1);
+    for (size_t at = 0; at < relative.size();) {
+        auto next = relative.find(L'\\', at);
+        auto part = relative.substr(at, next == std::wstring::npos ? next : next - at);
+        if (part.empty() || part == L"." || part == L".." || part.find_first_of(L":|") != std::wstring::npos) return {};
+        if (next == std::wstring::npos) break;
+        at = next + 1;
+        if (at == relative.size()) return {};
+    }
+    auto fullName = path.substr(begin, end - begin);
+    // BASIC validates the entire full name without requiring the old version to
+    // remain installed. Family retains application name and publisher identity.
+    UINT32 size{};
+    if (PackageIdFromFullName(fullName.c_str(), PACKAGE_INFORMATION_BASIC, &size, nullptr) != ERROR_INSUFFICIENT_BUFFER ||
+        size < sizeof(PACKAGE_ID) || size > 4096) return {};
+    std::vector<BYTE> bytes(size);
+    if (PackageIdFromFullName(fullName.c_str(), PACKAGE_INFORMATION_BASIC, &size, bytes.data()) != ERROR_SUCCESS) return {};
+    auto id = reinterpret_cast<const PACKAGE_ID*>(bytes.data());
+    UINT32 length{};
+    if (PackageFamilyNameFromFullName(fullName.c_str(), &length, nullptr) != ERROR_INSUFFICIENT_BUFFER ||
+        !length || length > 512) return {};
+    std::wstring family(length, L'\0');
+    if (PackageFamilyNameFromFullName(fullName.c_str(), &length, family.data()) != ERROR_SUCCESS) return {};
+    family.resize(length - 1);
+    return family + L"|" + (id->resourceId ? id->resourceId : L"") + L"|" + relative;
+}
+static bool SameExecutable(const std::wstring& a, const std::wstring& b) {
+    auto first = Normalize(a), second = Normalize(b);
+    if (first == second) return true;
+    auto identity = PackageExecutableIdentity(first);
+    return !identity.empty() && identity == PackageExecutableIdentity(second);
 }
 RuleSelector SelectorFor(const NativeIconRecord& r) {
     RuleSelector s;
@@ -31,7 +75,7 @@ static bool PublicRole(const NativeIconRecord& r) {
 static size_t LegacyCount(const NativeIconRecord& r, const std::vector<NativeIconRecord>& context) {
     return std::count_if(context.begin(), context.end(), [&](const auto& peer) {
         return SameOwner(peer, r) && !peer.identity.hasGuid && PublicRole(peer) &&
-               Normalize(peer.executable) == Normalize(r.executable);
+               SameExecutable(peer.executable, r.executable);
     });
 }
 LegacyRole DescribeLegacyRole(const NativeIconRecord& r,
@@ -70,7 +114,7 @@ std::string PersistentKey(const RuleSelector& s) {
     return key;
 }
 bool Matches(const RuleSelector& s, const NativeIconRecord& r) {
-    if (s.executable.empty() || Normalize(s.executable) != Normalize(r.executable) ||
+    if (s.executable.empty() || !SameExecutable(s.executable, r.executable) ||
         (!s.windowClass.empty() && s.windowClass != r.windowClass) ||
         s.hasGuid != r.identity.hasGuid ||
         !(s.hasGuid ? IsEqualGUID(s.guid, r.identity.guid)
@@ -170,7 +214,7 @@ static int Specificity(const RuleSelector& s) {
            (s.tipMode == 1 ? 8 : s.tipMode == 2 ? 4 : s.tipMode == 3 ? 2 : 0);
 }
 static bool SemanticScope(const RuleSelector& s, const NativeIconRecord& r) {
-    if (s.executable.empty() || Normalize(s.executable) != Normalize(r.executable) ||
+    if (s.executable.empty() || !SameExecutable(s.executable, r.executable) ||
         s.hasGuid != r.identity.hasGuid ||
         (!s.windowClass.empty() && !s.windowClassIsIdentity && s.windowClass != r.windowClass))
         return false;
@@ -193,7 +237,7 @@ static bool PriorUidPresent(const RuleSelector& s, const NativeIconRecord& recor
     // Hidden registrations also reserve their native UID; they may be an image bank.
     return std::any_of(context.begin(), context.end(), [&](const auto& peer) {
         return SameOwner(peer, record) && !peer.identity.hasGuid && peer.identity.uid == uid &&
-               Normalize(peer.executable) == Normalize(s.executable);
+               SameExecutable(peer.executable, s.executable);
     });
 }
 static int RoleScore(const RuleSelector& s, const NativeIconRecord& r,

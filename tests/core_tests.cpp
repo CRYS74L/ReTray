@@ -384,6 +384,75 @@ int main(int argc, char** argv) {
         REQUIRE(!Matches(legacy, r));
         REQUIRE(Matches(guid, r));
     });
+    test("Rule.PackageUpgradePreservesSavedGuidPolicy", [] {
+        NativeIconRecord r;
+        r.executable = L"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1007.2314.0_x64__2p2nqsd0c76g0\\app\\ChatGPT.exe";
+        r.identity.hasGuid = true; r.identity.guid.Data1 = 123;
+        IconRule saved; saved.selector = SelectorFor(r);
+        saved.asset = L"C:\\Assets\\replacement.ico"; saved.visibility = 1; saved.tip = L"Saved hover";
+        auto savedKey = PersistentKey(saved.selector);
+        std::unordered_map<std::string, IconRule> rules{{savedKey, saved}};
+        r.executable = L"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1007.9446.0_x64__2p2nqsd0c76g0\\app\\ChatGPT.exe";
+        REQUIRE(Matches(saved.selector, r));
+        for (auto result : {ResolveRule(rules, r), ResolveRule(rules, r, {r})}) {
+            REQUIRE(result.rule && !result.ambiguous);
+            REQUIRE(result.rule->asset == saved.asset && result.rule->tip == saved.tip);
+            REQUIRE(result.rule->visibility == saved.visibility);
+            REQUIRE(PersistentKey(result.rule->selector) == savedKey);
+        }
+        // Moving a Store installation or changing architecture keeps its app identity.
+        r.executable = L"D:/WindowsApps/OpenAI.Codex_27.1.2.3_arm64__2p2nqsd0c76g0/app/CHATGPT.EXE";
+        REQUIRE(Matches(saved.selector, r));
+        r.identity.guid.Data1 = 124;
+        REQUIRE(!Matches(saved.selector, r));
+    });
+    test("Rule.PackageUpgradeDoesNotMergeOtherApplicationsOrRoles", [] {
+        NativeIconRecord r;
+        r.executable = L"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1007.2314.0_x64__2p2nqsd0c76g0\\app\\ChatGPT.exe";
+        r.identity.hasGuid = true; r.identity.guid.Data1 = 123;
+        auto saved = SelectorFor(r);
+        r.executable = L"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1007.2314.0_x64__2p2nqsd0c76g0" +
+            std::wstring(1, L'\0') + L"garbage\\app\\ChatGPT.exe";
+        REQUIRE(!Matches(saved, r));
+        for (auto path : {
+            L"C:\\Program Files\\WindowsApps\\Other.App_26.1007.9446.0_x64__2p2nqsd0c76g0\\app\\ChatGPT.exe",
+            L"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1007.9446.0_x64__8wekyb3d8bbwe\\app\\ChatGPT.exe",
+            L"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1007.9446.0_x64_extra_2p2nqsd0c76g0\\app\\ChatGPT.exe",
+            L"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1007.9446.0_x64__2p2nqsd0c76g0\\helper\\ChatGPT.exe",
+            L"C:\\Fake\\WindowsApps\\OpenAI.Codex_26.1007.9446.0_x64__2p2nqsd0c76g0\\app\\ChatGPT.exe",
+            L"C:\\Program Files\\WindowsApps\\OpenAI.Codex_invalid_x64__2p2nqsd0c76g0\\app\\ChatGPT.exe",
+            L"C:\\Program Files\\WindowsApps\\OpenAI.Codex_26.1007.9446.0_x64__2p2nqsd0c76g0\\..\\app\\ChatGPT.exe",
+            L"C:\\Other\\ChatGPT.exe"}) {
+            r.executable = path; REQUIRE(!Matches(saved, r));
+        }
+        // An ordinary version-looking directory is not a package identity.
+        r.executable = L"C:\\Apps\\Example_1.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
+        saved = SelectorFor(r);
+        r.executable = L"C:\\Apps\\Example_2.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
+        REQUIRE(!Matches(saved, r));
+    });
+    test("Rule.PackageUpgradeRetainsLegacyRoleSafetyAndConflicts", [] {
+        NativeIconRecord r;
+        r.executable = L"C:\\Program Files\\WindowsApps\\Example.App_1.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
+        r.identity = {1, 10, 100, 7, 7, false, {}};
+        r.windowClass = L"TrayHost"; r.callbackMessage = WM_APP + 9;
+        r.tip = L"Primary role"; r.cachedOriginal.fingerprint = 111;
+        IconRule saved; saved.selector = SelectorFor(r, {r}); saved.asset = L"C:\\Assets\\one.ico";
+        std::unordered_map<std::string, IconRule> rules{{PersistentKey(saved.selector), saved}};
+        r.executable = L"C:\\Program Files\\WindowsApps\\Example.App_2.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
+        r.identity = {2, 20, 200, 8, 8, false, {}};
+        auto resolved = ResolveRule(rules, r, {r});
+        REQUIRE(resolved.rule && resolved.reassociated && !resolved.ambiguous && !resolved.provisional);
+        auto secondary = r; secondary.identity.uid = 9; secondary.identity.ownerHwnd++;
+        REQUIRE(ResolveRule(rules, r, {r, secondary}).ambiguous);
+        // Independent saved policies from different versions must not silently overwrite.
+        r.identity.hasGuid = true; r.identity.guid.Data1 = 123;
+        saved.selector = SelectorFor(r); rules.clear(); rules[PersistentKey(saved.selector)] = saved;
+        auto other = saved;
+        other.selector.executable = L"C:\\Program Files\\WindowsApps\\Example.App_3.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
+        other.asset = L"C:\\Assets\\two.ico"; rules[PersistentKey(other.selector)] = other;
+        REQUIRE(ResolveRule(rules, r, {r}).ambiguous);
+    });
     test("Rule.MatchesRestartWithoutTooltipOrHandles", [] {
         NativeIconRecord r;
         r.executable = L"C:\\Example.exe";

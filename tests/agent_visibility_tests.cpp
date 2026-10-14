@@ -255,6 +255,46 @@ void ResetFixture() {
     CHECK(SaveSettings(settingsPath, settings));
     LoadRules(); Refresh(); bridge.commands.clear();
 }
+void StoreUpgradeReappliesExistingPolicyWithoutRewritingSettings() {
+    ResetFixture();
+    auto& row = bridge.shared->icons[0];
+    row.identity.hasGuid = true; row.identity.guid.Data1 = 0x12345678;
+    wcscpy_s(row.executable, L"C:\\Program Files\\WindowsApps\\Example.App_1.0.0.0_x64__8wekyb3d8bbwe\\App.exe");
+    auto rule = ParseRule(settings["rules"][0]);
+    rule.selector = SelectorFor(Record(row)); settings["rules"][0] = RuleJson(rule);
+    const auto original = settings["rules"];
+    LoadRules();
+    for (auto path : {
+        L"C:\\Program Files\\WindowsApps\\Example.App_2.0.0.0_x64__8wekyb3d8bbwe\\App.exe",
+        L"D:\\WindowsApps\\Example.App_3.0.0.0_arm64__8wekyb3d8bbwe\\App.exe"}) {
+        wcscpy_s(row.executable, path); row.identity.ownerCreatedAt++; row.registration++;
+        row.custom = row.managed = false; bridge.commands.clear();
+        bridge.shared->snapshotSequence += 2; Refresh();
+        CHECK(row.custom && row.managed && settings["rules"] == original);
+        bool image = false, tip = false;
+        for (const auto& command : bridge.commands) {
+            if (command.operation == BridgeOperation::Apply) {
+                CHECK(command.identity.ownerPid == row.identity.ownerPid);
+                CHECK(command.baselineFingerprint == rule.baselineFingerprint);
+                image = true;
+            }
+            if (command.operation == BridgeOperation::Tip && command.identity.ownerPid == row.identity.ownerPid) {
+                CHECK(command.tip == rule.tip); tip = true;
+            }
+        }
+        CHECK(image && tip);
+        // Read the post-apply native snapshot, as the next runtime refresh does.
+        Refresh();
+        auto catalog = CatalogJson();
+        bool visiblePolicy = false;
+        for (const auto& item : catalog["icons"])
+            if (item["pid"] == row.identity.ownerPid) {
+                CHECK(item["custom"] == true && item["asset"] == Utf8(rule.asset));
+                CHECK(item["identityAmbiguous"] == false); visiblePolicy = true;
+            }
+        CHECK(visiblePolicy);
+    }
+}
 void ImmediateVisibility() {
     ResetFixture(); auto original = settings["rules"][0];
     auto response = Call("icon.visibility", {{"key", TargetKey()}, {"visibility", 1}});
@@ -1047,6 +1087,7 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"configuration import rejects oversized persisted pretty file before backup", ImportPrettyFileTooLargeCannotCreateBackupOrCommit},
                             std::pair{"configuration import defers own policy and retries only needed changes", ImportOwnPolicyIsDeferredAndRetriesOnlyWhenNeeded},
                             std::pair{"configuration import and explicit request wait limits are bounded", ImportAndExplicitRequestTimeoutsRemainBounded},
+                            std::pair{"Store upgrades reapply existing policy without rewriting settings", StoreUpgradeReappliesExistingPolicyWithoutRewritingSettings},
                             std::pair{"immediate visibility and no replay", ImmediateVisibility},
                             std::pair{"unrelated saves do not replay", UnrelatedSavesKeepRulesApplied},
                             std::pair{"explicit rule reapply retries selected icon", ExplicitRuleReapplyRetriesOnlySelectedIcon},

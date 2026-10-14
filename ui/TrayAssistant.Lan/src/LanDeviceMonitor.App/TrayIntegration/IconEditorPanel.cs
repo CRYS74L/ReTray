@@ -50,7 +50,7 @@ public sealed class IconEditorPanel : UserControl
         Loaded += (_, _) => { Localization.Apply(this); Focus(); };
     }
 
-    internal static Grid CreateHeader(string caption, Func<Task> close, string automationId = "IconEditorClose")
+    internal static Grid CreateHeader(string caption, Func<Task> close, string automationId = "IconEditorClose", bool showClose = true)
     {
         var header = new Grid { Margin = new Thickness(4, 4, 4, 14) };
         header.ColumnDefinitions.Add(new ColumnDefinition());
@@ -59,7 +59,8 @@ public sealed class IconEditorPanel : UserControl
             VerticalAlignment = VerticalAlignment.Top, TextTrimming = TextTrimming.CharacterEllipsis };
         header.Children.Add(title);
         var dismiss = new Button { Width = 32, Height = 32, MinWidth = 0, MinHeight = 0,
-            VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(12, 0, 0, 0) };
+            VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(12, 0, 0, 0),
+            Visibility = showClose ? Visibility.Visible : Visibility.Hidden };
         dismiss.SetResourceReference(StyleProperty, "FloatingCloseButtonStyle");
         var glyph = new TextBlock { Text = "\uE8BB", FontSize = 14 };
         glyph.SetResourceReference(TextBlock.FontFamilyProperty, "AppIconFont");

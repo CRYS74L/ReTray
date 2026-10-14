@@ -28,6 +28,14 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(systemPath.empty());
         auto settings = DefaultSettings();
         CHECK(ValidateSettings(settings));
+        for(const auto language:{"zh-Hant","ja"}) {
+            auto localized=settings;localized["language"]=language;
+            CHECK(SaveSettings(path,localized));bool restored{};
+            CHECK(LoadSettings(path,restored)["language"]==language && !restored);
+        }
+        auto retiredStart=settings;retiredStart["systemControls"]={{{"id",7},{"hidden",true}},{{"id",3},{"hidden",true}}};
+        auto normalizedStart=NormalizeSettings(retiredStart);
+        CHECK(normalizedStart["systemControls"].size()==1 && normalizedStart["systemControls"][0]["id"]==3);
         // Inactive input methods retain their selected replacement while original mode
         // is selected. Duplicate/malformed identities must never target another logo.
         const std::string inputKey = "tsf:0804:{86598FB9-66A2-463E-B9C2-AEB906D477AD}:{607FDF85-FCC8-4DBD-A365-41296F980C9C}";

@@ -13,7 +13,9 @@ internal static class Program
         int failed=0;
         foreach(var (name,test) in new (string,Action)[]{
             ("input method rows switch independently and retain selection",IndependentRows),
-            ("selected replacement synchronizes the visible slider",SelectedFileUpdatesMode)})
+            ("selected replacement synchronizes the visible slider",SelectedFileUpdatesMode),
+            ("locale switching preserves source labels and user bindings",LocaleRoundtrip),
+            ("every input method uses equal heading to icon spacing",EqualHeadingSpacing)})
             try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e.Message);}
         return failed==0?0:1;
     }
@@ -45,5 +47,43 @@ internal static class Program
         state.UseReplacement=true;
         Require(Slider(row).SelectedIndex==1,"Model selected a custom file but slider still shows original mode");
         row.RaiseEvent(new RoutedEventArgs(FrameworkElement.UnloadedEvent));
+    }
+    private static void LocaleRoundtrip()
+    {
+        var label=new TextBlock{Text="系统图标"};
+        var user=new TextBlock();user.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding{Source="系统图标"});
+        var root=new StackPanel();root.Children.Add(label);root.Children.Add(user);
+        foreach(var pair in new[]{("zh-Hant","系統圖示"),("ja","システムアイコン"),("en","System icons"),("zh","系统图标")}) {
+            TrayAssistant_App.Services.Localization.CurrentLanguage=pair.Item1;
+            TrayAssistant_App.Services.Localization.Apply(root);
+            Require(label.Text==pair.Item2,"Locale label did not roundtrip: "+pair.Item1);
+            Require(user.Text=="系统图标" && System.Windows.Data.BindingOperations.IsDataBound(user,TextBlock.TextProperty),"Locale replaced user binding");
+        }
+    }
+    private static void EqualHeadingSpacing()
+    {
+        foreach(int count in new[]{0,1,2,5}) {
+            var model=new InputMethodIconEditorModel(new TrayAssistant_App.Services.PipeClient());
+            for(int i=0;i<count;i++)model.Rows.Add((InputMethodIconRow)Activator.CreateInstance(typeof(InputMethodIconRow),System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic,null,new object[]{model,new System.Text.Json.Nodes.JsonObject {
+                ["key"]="test-"+i,["name"]="输入法 "+i,["policy"]=new System.Text.Json.Nodes.JsonObject {
+                    ["asset"]="",["index"]=0,["useReplacement"]=false }
+            }},null)!);
+            var editor=new InputMethodIconEditor(model,()=>System.Threading.Tasks.Task.CompletedTask);
+            editor.Measure(new Size(400,double.PositiveInfinity));editor.Arrange(new Rect(0,0,400,editor.DesiredSize.Height));
+            var content=(StackPanel)((ScrollViewer)((Grid)editor.Content).Children[0]).Content;
+            var titles=content.Children.OfType<Grid>().ToArray();
+            var choices=content.Children.OfType<IconChoiceRow>().ToArray();
+            Require(choices.Length==count,"Editor did not represent every input method");
+            Require(titles.Length==Math.Max(1,count),"Input methods did not share the heading component");
+            double? gap=null;
+            for(int i=0;i<count;i++) {
+                var title=titles[i].Children.OfType<TextBlock>().Single();
+                title.RaiseEvent(new RoutedEventArgs(FrameworkElement.LoadedEvent));
+                double current=choices[i].TranslatePoint(new Point(),content).Y-title.TranslatePoint(new Point(0,title.ActualHeight),content).Y;
+                if(gap.HasValue)Require(Math.Abs(gap.Value-current)<.01,"Heading to icon spacing depends on row position");
+                gap=current;
+            }
+            Require(content.Children.OfType<Grid>().SelectMany(h=>h.Children.OfType<Button>()).Count(b=>b.Visibility==Visibility.Visible)==1,"Editor needs exactly one close button");
+        }
     }
 }

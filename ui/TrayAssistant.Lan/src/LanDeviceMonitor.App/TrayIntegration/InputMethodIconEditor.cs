@@ -126,32 +126,38 @@ public sealed class InputMethodIconEditor : UserControl
     public InputMethodIconEditor(InputMethodIconEditorModel model, Func<Task> close)
     {
         Focusable = true; System.Windows.Input.KeyboardNavigation.SetIsTabStop(this, false);
-        var root = new Grid(); root.RowDefinitions.Add(new() { Height = GridLength.Auto }); root.RowDefinitions.Add(new());
-        root.Children.Add(IconEditorPanel.CreateHeader("输入法", close, "InputMethodEditorClose"));
-        var content = new StackPanel { Margin = new Thickness(4) };
+        var root = new Grid();
+        var content = new StackPanel();
         for (int i = 0; i < model.Rows.Count; i++)
         {
             var row = model.Rows[i];
-            var name = new TextBlock { Text = row.Name, Margin = new Thickness(0, 4, 0, 10), TextTrimming = TextTrimming.CharacterEllipsis };
-            content.Children.Add(name);
+            // Reserve the same heading height and align title ink in every row.
+            // Only the first row exposes the dialog's close action.
+            var header=IconEditorPanel.CreateHeader(row.Name,close,i==0?"InputMethodEditorClose":"",showClose:i==0);
+            foreach(var text in header.Children.OfType<TextBlock>())text.FontWeight=FontWeights.Normal;
+            content.Children.Add(header);
             var choice = new IconChoiceRow(row, nameof(row.Original), () => row.AssetPreview,
-                () => row.UseReplacement, value => row.UseReplacement = value, row.ChooseIconCommand, $"InputMethod{i}.");
+                () => row.UseReplacement, value => row.UseReplacement = value, row.ChooseIconCommand, $"InputMethod{i}.",0)
+                { Margin=new Thickness(4,0,4,i+1==model.Rows.Count?4:0) };
             System.Windows.Automation.AutomationProperties.SetAutomationId(choice, "InputMethodRow." + row.Key);
             content.Children.Add(choice);
             if (i + 1 < model.Rows.Count)
             {
-                var divider = new Border { Height = .5, Margin = new Thickness(0, 0, 0, 14) };
+                var divider = new Border { Height = .5, Margin = new Thickness(4,16,4,16) };
                 divider.SetResourceReference(Border.BackgroundProperty, "BorderBrush"); content.Children.Add(divider);
             }
         }
-        if (model.Rows.Count == 0) content.Children.Add(new TextBlock { Text = "没有可编辑的输入法标志", TextWrapping = TextWrapping.Wrap });
-        var error = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+        if (model.Rows.Count == 0)content.Children.Add(IconEditorPanel.CreateHeader("没有可编辑的输入法标志",close,"InputMethodEditorClose"));
+        var error = new TextBlock { TextWrapping = TextWrapping.Wrap, FontSize = 12,Margin=new Thickness(4,10,4,4) };
         error.SetResourceReference(TextBlock.ForegroundProperty, "DangerTextBrush");
+        var errorStyle=new Style(typeof(TextBlock),TryFindResource(typeof(TextBlock)) as Style);
+        var emptyError=new DataTrigger {Binding=new Binding(nameof(model.Error)){Source=model},Value=""};
+        emptyError.Setters.Add(new Setter(VisibilityProperty,Visibility.Collapsed));errorStyle.Triggers.Add(emptyError);error.Style=errorStyle;
         error.SetBinding(TextBlock.TextProperty, new Binding(nameof(model.Error)) { Source = model }); content.Children.Add(error);
         var scroll = new ScrollViewer { Content = content, VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
             HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
         scroll.SetResourceReference(StyleProperty, "IconEditorScrollViewerStyle"); DeviceListViewport.SetEnabled(scroll, true);
-        Grid.SetRow(scroll, 1); root.Children.Add(scroll); Content = root;
+        root.Children.Add(scroll); Content = root;
         System.Windows.Automation.AutomationProperties.SetAutomationId(this, "InputMethodIconEditor");
         Loaded += (_, _) => { Localization.Apply(this); Focus(); }; Unloaded += (_, _) => model.Stop();
     }

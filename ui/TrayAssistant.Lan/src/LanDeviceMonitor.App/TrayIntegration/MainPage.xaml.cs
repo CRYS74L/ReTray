@@ -44,11 +44,15 @@ public partial class MainPage : UserControl
         InitializeComponent(); DataContext = Vm;
         VersionText.Text = $"v{typeof(MainPage).Assembly.GetName().Version!.ToString(3)}";
         ThemeChoice.Items.Add("跟随系统"); ThemeChoice.Items.Add("浅色"); ThemeChoice.Items.Add("深色"); ThemeChoice.SelectedIndex = 0;
-        LanguageChoice.Items.Add("简体中文"); LanguageChoice.Items.Add("English"); LanguageChoice.SelectedIndex = 0;
+        foreach(var name in Localization.LanguageNames)LanguageChoice.Items.Add(name); LanguageChoice.SelectedIndex = 0;
         CreateSystemRows(); CreateLoadingRows();
         Vm.PropertyChanged += PresentationChanged;
         Vm.ThemeChanged += index => App.Window.ApplyTrayTheme(index);
-        Vm.LanguageChanged += () => Localization.Apply(this);
+        Vm.LanguageChanged += () => {
+            var root=(FrameworkElement?)Window.GetWindow(this) ?? this;
+            root.Language=System.Windows.Markup.XmlLanguage.GetLanguage(Localization.CurrentLanguage switch {"zh-Hant"=>"zh-TW","ja"=>"ja-JP","en"=>"en-US",_=>"zh-CN"});
+            Localization.Apply(root);
+        };
         timer.Tick += async (_, _) =>
         {
             await Vm.RefreshAsync();
@@ -384,7 +388,7 @@ public partial class MainPage : UserControl
     public async Task<bool> FlushChangesAsync() { await systemSaveGate.WaitAsync(); systemSaveGate.Release(); if(inputMethodEditor!=null && !await inputMethodEditor.FlushAsync())return false; return await Vm.FlushChangesAsync(); }
     private void CreateSystemRows()
     {
-        foreach (var id in new[] { 0, 1, 2, 3, 9, 4, 6, 7 })
+        foreach (var id in new[] { 0, 1, 2, 3, 9, 4, 6 })
         {
             if (id == 5 || id == 8) continue;
             var row = new Grid { Height = 34 };
@@ -409,7 +413,7 @@ public partial class MainPage : UserControl
             var label = new TextBlock { Text = SystemNames[id], Margin = new Thickness(8, 0, 12, 0), VerticalAlignment = VerticalAlignment.Center };
             Grid.SetColumn(label, 1); row.Children.Add(label);
             if(id==3) {
-                var more=new Button { Width=28,Height=28,MinWidth=0,MinHeight=0,Margin=new Thickness(0,0,8,0),
+                var more=new Button { Margin=new Thickness(0,0,8,0),
                     VerticalAlignment=VerticalAlignment.Center,Style=(Style)Resources["TrayMoreButtonStyle"] };
                 var dots=new TextBlock { Text="\uE712",FontSize=12 };dots.SetResourceReference(TextBlock.FontFamilyProperty,"AppIconFont");
                 dots.SetBinding(TextBlock.ForegroundProperty,new System.Windows.Data.Binding(nameof(Button.Foreground)){Source=more});
@@ -423,7 +427,7 @@ public partial class MainPage : UserControl
             System.Windows.Automation.AutomationProperties.SetAutomationId(toggle, "System" + id);
             System.Windows.Automation.AutomationProperties.SetName(toggle, SystemNames[id]);
             toggle.Click += SystemVisibilityClick; Grid.SetColumn(toggle, 3); row.Children.Add(toggle); SystemList.Children.Add(row); systemToggles[id] = toggle;
-            if (id != 7)
+            if (id != 6)
             {
                 var divider = new Border { Height = .5, Margin = new Thickness(36, 0, 0, 0) };
                 divider.SetResourceReference(Border.BackgroundProperty, "BorderBrush"); SystemList.Children.Add(divider);
@@ -467,7 +471,7 @@ public partial class MainPage : UserControl
             {
                 if (systemToggles[id] is not { } toggle) continue;
                 toggle.IsEnabled = systemAvailable[id] && !systemSaving[id];
-                toggle.ToolTip = systemAvailable[id] ? null : "当前系统没有可单独控制的图标";
+                toggle.ToolTip = systemAvailable[id] ? null : Localization.Text("当前系统没有可单独控制的图标");
             }
             if (systemRefreshPending) { systemRefreshPending = false; _ = LoadSystemAsync(true); }
         }

@@ -16,7 +16,12 @@ struct Typeface {
     }
 };
 inline Typeface typeface;
+inline std::string language="zh";
+inline void SetLanguage(const std::string& value){language=value;}
 inline const wchar_t* Label(UINT id) {
+    if(language=="en")switch(id){case 1:return L"Open assistant";case 2:return L"Restart";case 3:return L"Exit";default:return L"";}
+    if(language=="zh-Hant")switch(id){case 1:return L"開啟助手";case 2:return L"重新啟動";case 3:return L"退出";default:return L"";}
+    if(language=="ja")switch(id){case 1:return L"アシスタントを開く";case 2:return L"再起動";case 3:return L"終了";default:return L"";}
     switch (id) {
         case 1: return L"打开助手";
         case 2: return L"重新启动";
@@ -28,7 +33,10 @@ inline MSAAMENUINFO menuNames[] = {
     {MSAA_MENU_SIG, 4, const_cast<wchar_t*>(L"打开助手")},
     {MSAA_MENU_SIG, 4, const_cast<wchar_t*>(L"重新启动")},
     {MSAA_MENU_SIG, 2, const_cast<wchar_t*>(L"退出")}};
-inline const wchar_t* Data(UINT id) { return reinterpret_cast<const wchar_t*>(&menuNames[id - 1]); }
+inline const wchar_t* Data(UINT id) {
+    auto& name=menuNames[id-1];name.pszWText=const_cast<wchar_t*>(Label(id));name.cchWText=static_cast<DWORD>(wcslen(name.pszWText));
+    return reinterpret_cast<const wchar_t*>(&name);
+}
 inline int Scale(int value) { return MulDiv(value, typeface.dpi, 96); }
 inline void Prepare(const std::filesystem::path& root, POINT point) {
     if (!typeface.privateLoaded) {

@@ -6,6 +6,7 @@ using Microsoft.UI.Xaml;
 using System.ComponentModel;
 using System.Text.Json.Nodes;
 using TrayAssistant_App.Models;
+using Localization = TrayAssistant_App.Services.Localization;
 
 namespace TrayAssistant_App.ViewModels;
 
@@ -27,11 +28,11 @@ public partial class TrayViewModel
             case nameof(Startup):
             case nameof(ThemeIndex):
             case nameof(LanguageIndex):
-                if (ThemeIndex is < 0 or > 2 || LanguageIndex is < 0 or > 1) return;
+                if (ThemeIndex is < 0 or > 2 || LanguageIndex<0 || LanguageIndex>=Localization.LanguageCodes.Length) return;
                 var preferences = new JsonObject();
                 if (e.PropertyName == nameof(Startup)) preferences["startup"] = Startup;
                 else if (e.PropertyName == nameof(ThemeIndex)) preferences["theme"] = new[] { "system", "light", "dark" }[ThemeIndex];
-                else preferences["language"] = LanguageIndex == 1 ? "en" : "zh";
+                else preferences["language"] = Localization.LanguageCodes[LanguageIndex];
                 QueueEdit("preference:" + e.PropertyName, async () => await Call("settings.apply", preferences));
                 break;
             case nameof(OwnVisible):

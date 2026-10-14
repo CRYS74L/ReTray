@@ -79,7 +79,7 @@ public partial class TrayViewModel : ObservableObject
     [ObservableProperty] public partial int ThemeIndex { get; set; }
     [ObservableProperty] public partial int LanguageIndex { get; set; }
     public event Action? LanguageChanged;
-    partial void OnLanguageIndexChanged(int value){if(value is <0 or >1)return;Localization.English=value==1;LanguageChanged?.Invoke();}
+    partial void OnLanguageIndexChanged(int value){if(value<0 || value>=Localization.LanguageCodes.Length)return;Localization.CurrentLanguage=Localization.LanguageCodes[value];Status=Localization.Text(Status);Error=Localization.Text(Error);LanguageChanged?.Invoke();}
     partial void OnStatusChanged(string value){var translated=Localization.Text(value);if(translated!=value)Status=translated;}
     [ObservableProperty] public partial double TaskbarOpacity { get; set; } = 255;
     [ObservableProperty] public partial bool HideStart { get; set; }
@@ -139,7 +139,8 @@ public partial class TrayViewModel : ObservableObject
             AutoSort=Settings["autoSort"]?.GetValue<bool>()??false;
             ReviewInterval=Settings["reviewIntervalSeconds"]?.GetValue<int>()??0;
             ThemeIndex = Settings["theme"]!.GetValue<string>() switch { "light" => 1, "dark" => 2, _ => 0 }; ThemeChanged?.Invoke(ThemeIndex);
-            LanguageIndex=Settings["language"]?.GetValue<string>()=="en"?1:0;
+            LanguageIndex=Localization.LanguageIndex(Settings["language"]?.GetValue<string>());
+            Localization.CurrentLanguage=Localization.LanguageCodes[LanguageIndex];LanguageChanged?.Invoke();
             TaskbarOpacity=Settings["taskbar"]?["opacity"]?.GetValue<int>()??255;HideStart=Settings["taskbar"]?["hideStart"]?.GetValue<bool>()??false;UiTopmost=Settings["uiTopmost"]?.GetValue<bool>()??false;UiOpacity=Settings["uiOpacity"]?.GetValue<int>()??255;WindowStyleChanged?.Invoke(UiTopmost,(byte)UiOpacity);
 #if TRAY_WPF
             var aumid = App.UiActivationId;
@@ -193,7 +194,7 @@ public partial class TrayViewModel : ObservableObject
     {
         var result = await Pipe.RequestAsync(method, data); if (result["success"]?.GetValue<bool>() != true) throw new IOException((result["saved"]?.GetValue<bool>() == true ? "已保存，但未生效：" : "") + (result["detail"]?.GetValue<string>() ?? "操作失败")); return result;
     }
-    public void ReportError(Exception ex,bool connection=false){Status=ex.Message;Error=ex.Message;connectionError=connection;}
+    public void ReportError(Exception ex,bool connection=false){Status=Localization.Text(ex.Message);Error=Localization.Text(ex.Message);connectionError=connection;}
     private async Task Execute(Func<Task> action) { try { Error="";connectionError=false;await action(); } catch (Exception ex) { ReportError(ex); } }
     [RelayCommand] private async Task ReconnectAsync(){Pipe.AllowStart();if(!await FlushChangesAsync())return;IsReady=false;IsLoading=true;Error="";await InitializeAsync();}
     public static async Task<string?> ChooseAssetAsync()
@@ -202,7 +203,7 @@ public partial class TrayViewModel : ObservableObject
         var picker = new OpenFileDialog
         {
             Title = Localization.Text("选择图标…"),
-            Filter = Localization.English ? "Icon resources|*.ico;*.png;*.bmp;*.jpg;*.exe;*.dll" : "图标资源|*.ico;*.png;*.bmp;*.jpg;*.exe;*.dll",
+            Filter = Localization.Text("图标资源")+"|*.ico;*.png;*.bmp;*.jpg;*.exe;*.dll",
             CheckFileExists = true,
             Multiselect = false
         };

@@ -41,6 +41,7 @@ Json settings;
 bool recovered{}, ownAdded{};
 std::atomic<bool> stopping{};
 std::atomic<bool> ownOpenQueued{};
+std::atomic<unsigned> menuLanguageIndex{};
 HICON ownImage{};
 std::string ownIdentityKey;
 uint64_t ownIdentityEpoch{};
@@ -219,6 +220,10 @@ Json Result(bool ok, const std::string& detail = {}, DWORD error = 0) {
     return {
         {"success", ok}, {"detail", detail}, {"errorCode", error}, {"revision", configRevision}};
 }
+void UpdateMenuLanguageSnapshot() {
+    const auto language = settings.value("language", std::string("zh"));
+    menuLanguageIndex.store(language == "en" ? 1u : language == "zh-Hant" ? 2u : language == "ja" ? 3u : 0u);
+}
 bool Persist() {
     try {
         auto candidate = NormalizeSettings(settings);
@@ -226,6 +231,7 @@ bool Persist() {
         if (!SaveSettings(settingsPath, candidate)) return false;
         settings = std::move(candidate);
         ++configRevision;
+        UpdateMenuLanguageSnapshot();
         return true;
     } catch (...) { return false; }
 }
@@ -1780,6 +1786,8 @@ void TrayMenu() {
     POINT point{};
     GetCursorPos(&point);
     tray_menu_typography::Prepare(root, point);
+    constexpr const char* languages[]{"zh", "en", "zh-Hant", "ja"};
+    tray_menu_typography::SetLanguage(languages[menuLanguageIndex.load()]);
     AppendMenuW(menu, MF_OWNERDRAW, 1, tray_menu_typography::Data(1));
     AppendMenuW(menu, MF_OWNERDRAW, 2, tray_menu_typography::Data(2));
     AppendMenuW(menu, MF_OWNERDRAW, 3, tray_menu_typography::Data(3));
@@ -1964,6 +1972,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             }
         }
         configRevision = settings.value("revision", uint64_t{});
+        UpdateMenuLanguageSnapshot();
         if (legacyAutomaticLaunch && !settings.value("startup", false)) {
             CloseHandle(singleton);
             CoUninitialize();

@@ -12,12 +12,14 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 #endif
 namespace TrayAssistant_App.Services;
-public static class Localization
+public static partial class Localization
 {
-    public static bool English { get; set; }
+    public static bool English { get => CurrentLanguage == "en"; set => CurrentLanguage = value ? "en" : "zh"; }
     private static readonly Dictionary<string,string> map = new()
     {
         ["托盘图标助手"]="Tray Icon Assistant",
+        ["图标资源"]="Icon files",
+        ["当前系统没有可单独控制的图标"]="No separately controllable icon is available",
         ["托盘图标"]="Tray icons",
         ["已隐藏"]="Hidden",
         ["图标已退出"]="The icon is no longer registered",
@@ -108,7 +110,17 @@ public static class Localization
         ["开始"]="Start",
         ["快速设置"]="Quick settings",
     };
-    public static string Text(string text) => English ? map.GetValueOrDefault(text,text) : map.FirstOrDefault(pair=>pair.Value==text).Key??text;
+    public static string Text(string text)
+    {
+        var key = map.ContainsKey(text) || traditional.ContainsKey(text) || japanese.ContainsKey(text)
+            ? text : canonical.GetValueOrDefault(text, text);
+        return CurrentLanguage switch {
+            "en" => map.GetValueOrDefault(key,key),
+            "zh-Hant" => traditional.GetValueOrDefault(key,key),
+            "ja" => japanese.GetValueOrDefault(key,key),
+            _ => key
+        };
+    }
     private static object? Translate(object? value) => value is string text ? Text(text) : value;
     private static bool applying;
     public static void Apply(DependencyObject root)
@@ -199,6 +211,7 @@ public static class Localization
     private static void ApplyWpfCore(DependencyObject root, HashSet<DependencyObject> visited, HashSet<ResourceDictionary> visitedResources)
     {
         if (!visited.Add(root)) return;
+        TranslateProperty(root, System.Windows.Automation.AutomationProperties.NameProperty);
         if (root is TextBlock) TranslateProperty(root, TextBlock.TextProperty);
         if (root is ContentControl) TranslateProperty(root, ContentControl.ContentProperty);
         if (root is HeaderedContentControl) TranslateProperty(root, HeaderedContentControl.HeaderProperty);

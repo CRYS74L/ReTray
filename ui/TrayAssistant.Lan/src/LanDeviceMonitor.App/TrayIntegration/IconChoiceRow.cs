@@ -13,7 +13,7 @@ namespace TrayAssistant_App;
 public sealed class IconChoiceRow : UserControl
 {
     public IconChoiceRow(object source, string originalPath, Func<ImageSource?> preview,
-        Func<bool> getMode, Action<bool> setMode, ICommand chooseCommand, string prefix = "")
+        Func<bool> getMode, Action<bool> setMode, ICommand chooseCommand, string prefix = "", double bottomSpacing = 18)
     {
         var updates = (INotifyPropertyChanged)source;
         var content = new StackPanel();
@@ -73,7 +73,7 @@ public sealed class IconChoiceRow : UserControl
         var replacement = Preview(1, "替代图标", choose);
         content.Children.Add(previews);
         var mode = new SegmentedControl { Height = 36, MinHeight = 36,
-            HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, 18),
+            HorizontalAlignment = HorizontalAlignment.Stretch, Margin = new Thickness(0, 0, 0, bottomSpacing),
             FontSize = 14, AnimationMilliseconds = 480 };
         SegmentItem ModeItem(string caption)
         {

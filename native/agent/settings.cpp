@@ -351,6 +351,8 @@ Json NormalizeSettings(Json value) {
         if(combined!=controls.end()&&!separate) controls.push_back({{"id",9},{"hidden",combined->at("hidden")}});
     }
     result["splitInputIndicators"]=true;
+    auto& controls=result["systemControls"];
+    controls.erase(std::remove_if(controls.begin(),controls.end(),[](const auto& p){return p.at("id")==7;}),controls.end());
     for (const char* key : {"ownIcon"}) {
         auto merged = DefaultSettings().at(key);
         if (value.contains(key))

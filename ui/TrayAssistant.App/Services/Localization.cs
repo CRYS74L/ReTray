@@ -19,6 +19,51 @@ public static partial class Localization
     {
         ["托盘图标助手"]="Tray Icon Assistant",
         ["图标资源"]="Icon files",
+        ["导入结果尚未确认"]="Import result has not been confirmed",
+        ["未收到导入确认，配置可能已保存，请检查当前配置。"]="Import confirmation was not received. Settings may already be saved; check the current configuration.",
+        ["导入配置无效"]="Invalid configuration to import",
+        ["配置校验通过"]="Configuration validated",
+        ["导入版本参数无效"]="Invalid import revision",
+        ["配置已改变，请重新导入"]="Configuration changed; please import again",
+        ["配置版本无法递增"]="The configuration revision cannot be incremented",
+        ["导入图标资源无法读取"]="Unable to read imported icon assets",
+        ["导入前备份失败，配置未改变"]="Backup failed; current configuration was preserved",
+        ["配置保存失败，配置未改变"]="Save failed; current configuration was preserved",
+        ["配置已导入"]="Configuration imported",
+        ["配置文件"]="Configuration",
+        ["导出配置"]="Export",
+        ["导入配置"]="Import",
+        ["助手配置文件"]="Assistant configuration",
+        ["配置已导出"]="Configuration exported",
+        ["配置已导入，原配置已备份"]="Configuration imported; previous settings backed up",
+        ["导入将替换当前配置，并自动备份原配置。是否继续？"]="Import will replace the current configuration and back up the previous settings. Continue?",
+        ["配置 JSON 不能超过 2 MB。"]="Configuration JSON must not exceed 2 MB.",
+        ["配置包超过大小限制。"]="The configuration package exceeds the size limit.",
+        ["配置包格式或版本不受支持。"]="Unsupported configuration package format or version.",
+        ["图标资源或配置文件超过大小限制。"]="The icon or configuration file exceeds the size limit.",
+        ["配置包缺少格式标记或 settings.json。"]="The configuration package is missing its manifest or settings.json.",
+        ["配置包中的文件数量超过限制。"]="The configuration package has too many files.",
+        ["配置中的图标资源总量超过限制。"]="The icons in this configuration exceed the total size limit.",
+        ["配置引用的图标资源不存在"]="An icon referenced by the configuration is missing",
+        ["不支持此图标资源类型"]="Unsupported icon file type",
+        ["图标资源校验失败"]="Icon integrity check failed",
+        ["配置包包含非法、重复或多余的文件名称"]="The package contains an invalid, duplicate or unexpected file name",
+        ["配置包中的文件超过大小限制"]="A file in the package exceeds the size limit",
+        ["配置包缺少引用的图标资源或引用非法"]="A referenced icon is missing or invalid",
+        ["配置包包含未被配置引用的文件。"]="The package contains an unreferenced file.",
+        ["配置包的图标资源总量不能超过 256 MB。"]="The total icon size must not exceed 256 MB.",
+        ["JSON 配置引用了未打包的图标资源，请导入完整 .trayconfig 文件。"]="The JSON configuration references packaged assets. Import the complete .trayconfig file.",
+        ["配置 JSON 根节点必须为对象。"]="The configuration JSON root must be an object.",
+        ["配置 JSON 包含重复字段"]="The configuration JSON contains a duplicate field",
+        ["配置字段必须为数组"]="The configuration field must be an array",
+        ["配置图标条目必须为对象。"]="An icon configuration entry must be an object.",
+        ["ownIcon 必须为对象。"]="ownIcon must be an object.",
+        ["图标资源路径必须为字符串"]="An icon path must be a string",
+        ["配置包文件解压长度超过声明或大小限制。"]="An extracted file exceeds its declared size or the size limit.",
+        ["配置包文件长度与声明不符。"]="A file size does not match its declaration.",
+        ["图标资源目录不能为重解析点。"]="The icon directory must not be a reparse point.",
+        ["现有图标资源不能为重解析点"]="An existing icon must not be a reparse point",
+        ["现有图标资源校验失败，已保留原文件"]="Existing icon integrity check failed; the original file was preserved",
         ["当前系统没有可单独控制的图标"]="No separately controllable icon is available",
         ["托盘图标"]="Tray icons",
         ["已隐藏"]="Hidden",
@@ -115,6 +160,16 @@ public static partial class Localization
     };
     public static string Text(string text)
     {
+        // Translate known error prefixes while retaining file paths and field names.
+        int colon = text.IndexOf('：');
+        int separatorLength = 1;
+        if(colon<0){colon=text.IndexOf(": ",StringComparison.Ordinal);separatorLength=2;}
+        if(colon>0) {
+            var prefix=text[..colon];
+            var source=canonical.GetValueOrDefault(prefix,prefix);
+            if(map.ContainsKey(source)||traditional.ContainsKey(source)||japanese.ContainsKey(source))
+                return Text(source)+(CurrentLanguage=="en"?": ":"：")+text[(colon+separatorLength)..];
+        }
         var key = map.ContainsKey(text) || traditional.ContainsKey(text) || japanese.ContainsKey(text)
             ? text : canonical.GetValueOrDefault(text, text);
         return CurrentLanguage switch {

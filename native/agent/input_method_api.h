@@ -36,7 +36,11 @@ bool ApplyInputMethodIcons() {
         auto key=policy.at("key").get<std::string>();prior.erase(key);appliedInputMethods.insert(key);
         if(!SendInputMethodPolicy(policy))inputMethodApplySuccess=false;
     }
-    for(const auto& key:prior)if(!SendInputMethodPolicy({{"key",key},{"asset",""},{"index",0},{"useReplacement",false}}))inputMethodApplySuccess=false;
+    for(const auto& key:prior)if(!SendInputMethodPolicy({{"key",key},{"asset",""},{"index",0},{"useReplacement",false}})) {
+        // A removed policy still owns its native replacement until restore succeeds.
+        // Retain that key across every retry instead of forgetting it after one failure.
+        appliedInputMethods.insert(key); inputMethodApplySuccess=false;
+    }
     inputMethodRetryAt=inputMethodApplySuccess?0:GetTickCount64()+3000;
     return inputMethodApplySuccess;
 }

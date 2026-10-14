@@ -25,9 +25,10 @@ public sealed class IconEditorPanel : UserControl
         root.Children.Add(header);
         var content = new StackPanel { Margin = new Thickness(4) };
         var choice = new IconChoiceRow(vm, "Selected.Original", () => vm.AssetPreview,
-            () => vm.UseReplacement, value => vm.UseReplacement = value, vm.ChooseIconCommand);
+            () => vm.UseReplacement, value => vm.UseReplacement = value, vm.ChooseIconCommand, bottomSpacing: 0);
         content.Children.Add(choice);
         BalanceHeaderSpacing(header, choice, content.Margin.Top);
+        content.Children.Add(CreateDivider(new Thickness(0,16,0,16)));
         var tip = new TextBox { MaxLength = 127, Height = 36, MinHeight = 36, Margin = new Thickness(0, 8, 0, 0) };
         InputPlaceholder.SetText(tip, Localization.Text("留空时使用原始悬停提示内容"));
         tip.Loaded += (_, _) => { tip.ApplyTemplate(); if (tip.Template.FindName("Placeholder", tip) is TextBlock hint) hint.Opacity = .4; };
@@ -55,14 +56,14 @@ public sealed class IconEditorPanel : UserControl
 
     internal static Grid CreateHeader(string caption, Func<Task> close, string automationId = "IconEditorClose", bool showClose = true)
     {
-        var header = new Grid { Margin = new Thickness(4, 4, 4, 14) };
+        var header = new Grid { Margin = new Thickness(4, 4, 4, 0) };
         header.ColumnDefinitions.Add(new ColumnDefinition());
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         var title = new TextBlock { Text = caption, FontWeight = FontWeights.Medium,
             VerticalAlignment = VerticalAlignment.Top, TextTrimming = TextTrimming.CharacterEllipsis };
         header.Children.Add(title);
         var dismiss = new Button { Width = 32, Height = 32, MinWidth = 0, MinHeight = 0,
-            VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(12, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Top,
             Visibility = showClose ? Visibility.Visible : Visibility.Hidden };
         dismiss.SetResourceReference(StyleProperty, "FloatingCloseButtonStyle");
         var glyph = new TextBlock { Text = "\uE8BB", FontSize = 14 };
@@ -76,7 +77,10 @@ public sealed class IconEditorPanel : UserControl
         dismiss.Click += async (_, _) => await close();
         System.Windows.Automation.AutomationProperties.SetAutomationId(dismiss, automationId);
         System.Windows.Automation.AutomationProperties.SetName(dismiss, Localization.Text("关闭"));
-        Grid.SetColumn(dismiss, 1); header.Children.Add(dismiss);
+        // The close target must not enlarge the title's layout height. Its circle
+        // can render into the card padding without entering the clipped viewport.
+        var closeHost = new Canvas { Width=32,Height=0,Margin=new Thickness(12,0,0,0),VerticalAlignment=VerticalAlignment.Top };
+        closeHost.Children.Add(dismiss); Grid.SetColumn(closeHost,1); header.Children.Add(closeHost);
         title.Loaded += (_, _) => AlignHeaderInk(title, dismiss);
         title.SizeChanged += (_, _) => AlignHeaderInk(title, dismiss);
         dismiss.SizeChanged += (_, _) => AlignHeaderInk(title, dismiss);
@@ -98,17 +102,18 @@ public sealed class IconEditorPanel : UserControl
         var title = header.Children.OfType<TextBlock>().Single();
         void Balance()
         {
-            var image = choice.OriginalPreview;
             var mode = choice.ImageMode;
-            if (header.ActualHeight <= 0 || image.ActualHeight <= 0 || mode.ActualHeight <= 0 || title.ActualWidth <= 0) return;
+            var caption = choice.OriginalCaption;
+            if (header.ActualHeight <= 0 || caption.ActualHeight <= 0 || mode.ActualHeight <= 0 || title.ActualWidth <= 0) return;
             var ink = TitleInk(title);
-            if (ink.IsEmpty) return;
-            // Keep the space below the visible title equal to the space from the
-            // image to the mode slider, including the image caption in that space.
-            var gap = mode.TranslatePoint(new Point(), choice).Y - image.TranslatePoint(new Point(0, image.ActualHeight), choice).Y;
+            var captionInk = TitleInk(caption);
+            if (ink.IsEmpty || captionInk.IsEmpty) return;
+            // Match the two blank gaps marked by the user: title to icon, and
+            // the bottom of the icon caption to the top of the mode slider.
+            var gap = mode.TranslatePoint(new Point(), choice).Y - caption.TranslatePoint(new Point(captionInk.Left, captionInk.Bottom), choice).Y;
             var titleBottom = title.TranslatePoint(new Point(ink.Left, ink.Bottom), header).Y;
-            var iconTop = image.TranslatePoint(new Point(), choice).Y;
-            var bottom = Math.Max(0, titleBottom + gap - header.ActualHeight - iconTop - contentTopInset);
+            var iconTop = choice.OriginalCanvas.TranslatePoint(new Point(), choice).Y + 6;
+            var bottom = titleBottom + gap - header.ActualHeight - iconTop - contentTopInset;
             if (Math.Abs(header.Margin.Bottom - bottom) > .01)
                 header.Margin = new Thickness(header.Margin.Left, header.Margin.Top, header.Margin.Right, bottom);
         }
@@ -116,6 +121,14 @@ public sealed class IconEditorPanel : UserControl
         title.Loaded += (_, _) => Balance();
         title.SizeChanged += (_, _) => Balance();
         choice.SizeChanged += (_, _) => Balance();
+    }
+
+    internal static Border CreateDivider(Thickness margin)
+    {
+        var divider = new Border { Height=1,Margin=margin,Opacity=.24 };
+        divider.SetResourceReference(Border.BackgroundProperty,"TextBrush");
+        System.Windows.Automation.AutomationProperties.SetAutomationId(divider,"IconEditorDivider");
+        return divider;
     }
 
     private static Rect TitleInk(TextBlock title)

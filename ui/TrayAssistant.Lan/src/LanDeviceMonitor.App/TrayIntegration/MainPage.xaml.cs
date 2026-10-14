@@ -33,6 +33,7 @@ public partial class MainPage : UserControl
     private Action? finishPageTransition;
     private bool loaded, systemLoading, systemLoaded, systemRefreshPending, editorOpen;
     private bool closingFloating;
+    private bool configurationTransferBusy;
     private InputMethodIconEditorModel? inputMethodEditor;
     private readonly BlurEffect floatingBlur = new() { Radius = 0, RenderingBias = RenderingBias.Performance };
     private IconRow? dragRow;
@@ -76,6 +77,70 @@ public partial class MainPage : UserControl
             App.Window.Topmost = false;
         }
         Localization.Apply(this); timer.Start();
+    }
+
+    private static void CheckConfigurationReply(JsonObject reply)
+    {
+        if(reply["success"]?.GetValue<bool>()!=true)
+            throw new IOException(reply["detail"]?.GetValue<string>()??"操作失败");
+    }
+    private async Task TransferConfigurationAsync(Func<Task> transfer)
+    {
+        if(configurationTransferBusy)return;
+        configurationTransferBusy=true;ExportConfigurationButton.IsEnabled=ImportConfigurationButton.IsEnabled=false;
+        var pageEnabled=PageContent.IsEnabled;
+        PageContent.IsEnabled=false;timer.Stop();
+        try {
+            Vm.ConfigurationStatus="";Vm.ConfigurationBackupPath="";
+            if(!await FlushChangesAsync())return;
+            await transfer();
+        }
+        catch(Exception ex){Vm.ReportError(ex);}
+        finally{
+            configurationTransferBusy=false;PageContent.IsEnabled=pageEnabled;
+            ExportConfigurationButton.IsEnabled=ImportConfigurationButton.IsEnabled=true;
+            if(loaded && !App.IsExiting)timer.Start();
+        }
+    }
+    private async void ExportConfigurationClick(object sender,RoutedEventArgs args)
+    {
+        await TransferConfigurationAsync(async()=>{
+            var picker=new Microsoft.Win32.SaveFileDialog {
+                Title=Localization.Text("导出配置"),Filter=Localization.Text("助手配置文件")+"|*.trayconfig",DefaultExt=".trayconfig",
+                FileName="TrayAssistant-"+DateTime.Now.ToString("yyyyMMdd-HHmmss")+".trayconfig",AddExtension=true,OverwritePrompt=true };
+            if(picker.ShowDialog(Window.GetWindow(this))!=true)return;
+            if(!await FlushChangesAsync())return;
+            var reply=await Vm.Pipe.RequestAsync("settings.read");CheckConfigurationReply(reply);
+            await ConfigurationArchive.ExportAsync(picker.FileName,reply["data"]!.AsObject());
+            Vm.Error="";Vm.ConfigurationStatus=Localization.Text("配置已导出");
+        });
+    }
+    private async void ImportConfigurationClick(object sender,RoutedEventArgs args)
+    {
+        await TransferConfigurationAsync(async()=>{
+            var picker=new Microsoft.Win32.OpenFileDialog {
+                Title=Localization.Text("导入配置"),Filter=Localization.Text("助手配置文件")+"|*.trayconfig;*.json",CheckFileExists=true,Multiselect=false };
+            if(picker.ShowDialog(Window.GetWindow(this))!=true)return;
+            var package=await ConfigurationArchive.ReadAsync(picker.FileName);
+            var validation=await Vm.Pipe.RequestAsync("settings.validateImport",new(){["settings"]=package.Settings});CheckConfigurationReply(validation);
+            if(MessageBox.Show(Window.GetWindow(this),Localization.Text("导入将替换当前配置，并自动备份原配置。是否继续？"),
+                Localization.Text("导入配置"),MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)!=MessageBoxResult.Yes)return;
+            if(!await FlushChangesAsync())return;
+            var managed=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"TrayIconAssistant","Assets");
+            var candidate=await package.InstallAssetsAsync(managed);
+            var current=await Vm.Pipe.RequestAsync("settings.read");CheckConfigurationReply(current);
+            JsonObject reply;
+            try { reply=await Vm.Pipe.RequestAsync("settings.import",new(){["settings"]=candidate,["expectedRevision"]=current["revision"]!.GetValue<long>()}); }
+            catch(Exception ex) when(ex is OperationCanceledException or IOException) {
+                Vm.ConfigurationStatus=Localization.Text("导入结果尚未确认");
+                throw new IOException(Localization.Text("未收到导入确认，配置可能已保存，请检查当前配置。"),ex);
+            }
+            CheckConfigurationReply(reply);
+            Vm.ConfigurationBackupPath=reply["backupPath"]?.GetValue<string>()??"";
+            Vm.ConfigurationStatus=Localization.Text("配置已导入，原配置已备份");
+            await Vm.InitializeAsync(reply["data"]!.AsObject());
+            systemLoaded=false;await LoadSystemAsync(true);
+        });
     }
     private void PresentationChanged(object? sender, PropertyChangedEventArgs args)
     {

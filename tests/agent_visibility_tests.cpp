@@ -64,6 +64,8 @@ struct AgentTestBridgeClient {
                 row.custom = row.managed = true;
             } else if (command.operation == BridgeOperation::ClearImage) {
                 row.custom = false;
+            } else if (command.operation == BridgeOperation::Restore) {
+                row.custom = row.managed = false;
             }
         }
         shared->snapshotSequence += 2;
@@ -101,11 +103,16 @@ struct AgentTestBridgeClient {
 
 bool startupTaskEnabled{};
 unsigned startupTaskWrites{};
+DWORD startupTaskError{}, startupTaskRollbackError{};
 LONG startupRunOpenError{ERROR_FILE_NOT_FOUND}, startupRunDeleteError{};
 std::wstring startupRunCommand;
 DWORD AgentTestSetLogonStartupResult(const std::filesystem::path&, bool enabled,
                                     const std::wstring&, const std::wstring&) {
-    startupTaskEnabled = enabled; ++startupTaskWrites; return ERROR_SUCCESS;
+    ++startupTaskWrites;
+    auto error = std::exchange(startupTaskError, 0);
+    if (!error && startupTaskWrites > 1) error = std::exchange(startupTaskRollbackError, 0);
+    if (error) return error;
+    startupTaskEnabled = enabled; return ERROR_SUCCESS;
 }
 LSTATUS WINAPI AgentTestRegOpenKeyExW(HKEY, LPCWSTR, DWORD, REGSAM, PHKEY key) {
     if (!startupRunOpenError) *key = reinterpret_cast<HKEY>(uintptr_t(1));
@@ -122,6 +129,7 @@ LSTATUS WINAPI AgentTestRegDeleteValueW(HKEY, LPCWSTR) { return startupRunDelete
 LSTATUS WINAPI AgentTestRegCloseKey(HKEY) { return ERROR_SUCCESS; }
 
 #define CHECK(x) do { if (!(x)) throw std::runtime_error(#x); } while (0)
+constexpr const char* FixtureInputProfileKey = "tsf:0804:{86598FB9-66A2-463E-B9C2-AEB906D477AD}:{607FDF85-FCC8-4DBD-A365-41296F980C9C}";
 BridgeIcon removedOwnIcon;
 UINT menuSelection{}, menuFlags{};
 DPI_AWARENESS_CONTEXT menuDpi{};
@@ -131,6 +139,8 @@ std::vector<std::wstring> restartArguments;
 bool restartWaitHandlesValid{};
 DWORD restartCreationFlags{};
 BOOL restartInherits{};
+unsigned ownPolicyWrites{};
+DWORD ownPolicyNextError{};
 BOOL WINAPI AgentTestTrackPopupMenu(HMENU menu, UINT flags, int, int, int, HWND, const RECT*) {
     menuFlags = flags; menuDpi = GetThreadDpiAwarenessContext(); menuLabels.clear();
     for (int index = 0; index < GetMenuItemCount(menu); ++index) {
@@ -170,6 +180,10 @@ BOOL WINAPI AgentTestCreateProcessW(LPCWSTR, LPWSTR command, LPSECURITY_ATTRIBUT
 }
 int WINAPI AgentTestMessageBoxW(HWND, LPCWSTR, LPCWSTR, UINT) { ++restartErrors; return IDOK; }
 BOOL WINAPI AgentTestNotifyIcon(DWORD operation, PNOTIFYICONDATAW data) {
+    if (operation == NIM_ADD || operation == NIM_MODIFY || operation == NIM_DELETE) {
+        ++ownPolicyWrites;
+        if (auto error = std::exchange(ownPolicyNextError, 0)) { SetLastError(error); return FALSE; }
+    }
     if (operation == NIM_DELETE) {
         for (uint32_t i = 0; i < bridge.shared->count; ++i)
             if (bridge.shared->icons[i].identity.ownerPid == GetCurrentProcessId() &&
@@ -221,9 +235,14 @@ void ResetFixture() {
     registrations.clear();
     roleBindings.clear(); roleObservations.clear(); ruleContext.clear();
     identityRetryAt = 0; identityOutcome = Json::object();
-    environmentStamp.clear(); environmentEpoch = lastEnvironmentCheck = 0;
+    environmentStamp.clear(); environmentEpoch = lastEnvironmentCheck = environmentRetryAt = 0;
     activityHistory = Json::object(); activityDirty = false; ownAdded = false;
+    importOwnPending = false; importOwnRetryAt = 0;
+    ownPolicyWrites = ownPolicyNextError = 0;
     startupTaskEnabled = false; startupTaskWrites = 0;
+    startupTaskError = startupTaskRollbackError = 0;
+    inputMethodStamp.clear(); inputMethodEpoch = 0; appliedInputMethods.clear();
+    inputMethodApplySuccess = true; inputMethodRetryAt = 0; inputMethodRollback = nullptr;
     startupRunOpenError = ERROR_FILE_NOT_FOUND; startupRunDeleteError = 0; startupRunCommand.clear();
     wchar_t systemPath[MAX_PATH]{}; GetSystemDirectoryW(systemPath, MAX_PATH);
     IconRule target, peer;
@@ -477,13 +496,201 @@ void BlinkPresentationHasCustomImageBeforeFirstVisibleSnapshot() {
     RememberPresentationFrame(row);
     CHECK(presentationFrames.at(key).pixels == expected);
 }
-void RemovedImportCannotChangeSettings() {
-    ResetFixture(); auto before = settings;
-    auto response = Call("settings.import", {{"settings", DefaultSettings()}});
-    CHECK(!response.value("success", true));
-    CHECK(response["errorCode"] == ERROR_NOT_SUPPORTED);
-    CHECK(!response.value("saved", true));
-    CHECK(settings == before);
+void MalformedImportCannotChangeSettings() {
+    ResetFixture(); auto before = settings; auto revision = configRevision;
+    for (auto field : {"schema", "secret", "asset", "remembered", "own", "ownRemembered", "input", "index", "oversize"}) {
+        auto candidate = before;
+        if (std::string(field) == "schema") candidate["schema"] = 2;
+        if (std::string(field) == "secret") candidate["extra"] = {{"password", "secret"}};
+        if (std::string(field) == "asset") candidate["rules"][0]["asset"] = "missing-icon.ico";
+        if (std::string(field) == "remembered") { candidate["rules"][0]["asset"] = ""; candidate["rules"][0]["replacementAsset"] = "missing-icon.ico"; }
+        if (std::string(field) == "own") candidate["ownIcon"]["asset"] = "missing-icon.ico";
+        if (std::string(field) == "ownRemembered") candidate["ownIcon"]["replacementAsset"] = "missing-icon.ico";
+        if (std::string(field) == "input") candidate["inputMethodIcons"] = {{{"key", FixtureInputProfileKey}, {"asset", "missing-icon.ico"}, {"index", 0}, {"useReplacement", false}}};
+        if (std::string(field) == "index") candidate["rules"][0]["assetIndex"] = -1;
+        if (std::string(field) == "oversize") candidate["extra"] = std::string(2 * 1024 * 1024, 'a');
+        auto response = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+        CHECK(!response.value("success", true)); CHECK(!response.value("saved", true));
+        CHECK(settings == before); CHECK(configRevision == revision); CHECK(bridge.commands.empty());
+        CHECK(startupTaskWrites == 0);
+    }
+}
+void ValidateImportDoesNotMutateOrRequireInstalledAssets() {
+    ResetFixture(); auto before = settings; auto candidate = before; auto revision = configRevision;
+    candidate["rules"][0]["asset"] = "archive-assets/not-installed.ico";
+    candidate["uiActivation"] = "foreign-session"; candidate["revision"] = 555;
+    candidate["newIconLocation"] = "retired";
+    auto reply = Call("settings.validateImport", {{"settings", candidate}});
+    CHECK(reply.value("success", false)); CHECK(!reply.value("saved", true));
+    CHECK(!reply["data"].contains("newIconLocation"));
+    CHECK(reply["data"]["rules"][0]["asset"] == candidate["rules"][0]["asset"]);
+    CHECK(settings == before); CHECK(configRevision == revision); CHECK(bridge.commands.empty());
+}
+void ConfigurationImportRoundtripPreservesSessionAndBackups() {
+    ResetFixture(); settings["uiActivation"] = "live-session"; CHECK(SaveSettings(settingsPath, settings));
+    auto before = LoadSettings(settingsPath, recovered); auto candidate = settings;
+    candidate["rules"][0]["asset"] = "";
+    candidate["rules"][0]["replacementAsset"] = settings["rules"][0]["asset"];
+    candidate["rules"][0]["replacementAssetIndex"] = 0;
+    candidate["language"] = "ja"; candidate["theme"] = "dark";
+    candidate["uiActivation"] = "foreign-session"; candidate["revision"] = 555;
+    auto frames = presentationFrames; auto records = catalog.items.size();
+    auto revision = configRevision;
+    auto reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(reply.value("success", false)); CHECK(reply.value("saved", false));
+    CHECK(bridge.commands.empty()); CHECK(reply["runtime"]["state"] == "pending");
+    CHECK(settings["uiActivation"] == "live-session"); CHECK(settings["revision"] == revision + 1);
+    CHECK(reply["revision"] == configRevision); CHECK(configRevision == revision + 1);
+    CHECK(menuLanguageIndex == 3); CHECK(startupTaskWrites == 0);
+    CHECK(settings["rules"][0]["replacementAsset"] == candidate["rules"][0]["replacementAsset"]);
+    CHECK(LoadSettings(settingsPath, recovered) == settings);
+    CHECK(LoadSettings(settingsPath.wstring() + L".bak", recovered) == before);
+    auto backup = std::filesystem::path(Wide(reply.at("backupPath").get<std::string>()));
+    CHECK(backup.parent_path() == dataRoot / L"Backups");
+    CHECK(LoadSettings(backup, recovered) == before);
+    CHECK(Call("settings.apply", {{"uiActivation", "next-live-session"}}).value("success", false));
+    CHECK(configRevision == revision + 2); CHECK(LoadSettings(backup, recovered) == before);
+    CHECK(catalog.items.size() == records);
+    for (const auto& [key, frame] : frames) CHECK(presentationFrames.at(key).pixels == frame.pixels);
+    auto beforeStartup = settings; candidate = settings; candidate["startup"] = true;
+    reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(reply.value("success", false)); CHECK(configRevision == revision + 3);
+    CHECK(startupTaskEnabled); CHECK(startupTaskWrites == 1);
+    auto startupBackup = std::filesystem::path(Wide(reply.at("backupPath").get<std::string>()));
+    CHECK(startupBackup != backup); CHECK(LoadSettings(startupBackup, recovered) == beforeStartup);
+    candidate = settings;
+    reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(reply.value("success", false)); CHECK(configRevision == revision + 4);
+    CHECK(startupTaskWrites == 1); CHECK(LoadSettings(backup, recovered) == before);
+}
+void ImportRemovesPoliciesAndRestoresNativeState() {
+    ResetFixture(); settings["systemControls"] = {{{"id", 6}, {"hidden", true}}};
+    settings["inputMethodIcons"] = {{{"key", FixtureInputProfileKey}, {"asset", ""}, {"index", 0}, {"useReplacement", false}}};
+    ApplyEnvironment(); CHECK(ApplyInputMethodIcons());
+    bridge.commands.clear(); auto candidate = DefaultSettings();
+    auto reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(reply.value("success", false)); CHECK(settings["rules"].empty());
+    CHECK(bridge.commands.empty()); CHECK(reply["runtime"]["state"] == "pending");
+    Refresh(); // Worker applies after the saved confirmation has already returned.
+    bool cleared{}, restored{}, systemRestored{}, inputRestored{};
+    for (const auto& command : bridge.commands) {
+        if (command.identity.ownerPid == 1000 && command.operation == BridgeOperation::Restore) cleared = true;
+        if (command.identity.ownerPid == 1000 && command.operation == BridgeOperation::Visibility && command.visibility == -1) restored = true;
+        if (command.operation == BridgeOperation::SystemPolicy && command.location == 6 && command.visibility == 0) systemRestored = true;
+        if (command.operation == BridgeOperation::InputMethodLogo && !command.replacementIcon) inputRestored = true;
+    }
+    CHECK(cleared); CHECK(restored); CHECK(systemRestored); CHECK(inputRestored);
+    CHECK(!Target().custom); CHECK(!Target().managed);
+}
+void ImportRemovedInputPolicyRetriesUntilRestored() {
+    ResetFixture();
+    settings["inputMethodIcons"] = {{{"key", FixtureInputProfileKey}, {"asset", ""}, {"index", 0}, {"useReplacement", false}}};
+    CHECK(ApplyInputMethodIcons()); bridge.commands.clear(); bridge.nextError = ERROR_BUSY;
+    auto candidate = settings; candidate["inputMethodIcons"] = Json::array();
+    auto reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(reply.value("success", false)); CHECK(reply.value("saved", false));
+    CHECK(reply["runtime"]["state"] == "pending"); CHECK(bridge.commands.empty());
+    CHECK(!ApplyInputMethodIcons());
+    CHECK(appliedInputMethods.contains(FixtureInputProfileKey));
+    bridge.commands.clear(); CHECK(!ApplyInputMethodIcons()); CHECK(bridge.commands.empty());
+    inputMethodRetryAt = 0; bridge.nextError = ERROR_BUSY;
+    CHECK(!ApplyInputMethodIcons()); CHECK(appliedInputMethods.contains(FixtureInputProfileKey));
+    inputMethodRetryAt = 0; bridge.commands.clear();
+    CHECK(ApplyInputMethodIcons()); CHECK(!appliedInputMethods.contains(FixtureInputProfileKey));
+    CHECK(bridge.commands.size() == 1); CHECK(bridge.commands[0].operation == BridgeOperation::InputMethodLogo);
+    CHECK(bridge.commands[0].replacementIcon == 0);
+}
+void ImportRemovedSystemPolicyRetriesAfterReadFailure() {
+    ResetFixture(); settings["systemControls"] = {{{"id", 6}, {"hidden", true}}};
+    CHECK(ApplyEnvironment()); bridge.commands.clear(); bridge.nextError = ERROR_BUSY;
+    auto candidate = settings; candidate["systemControls"] = Json::array();
+    auto reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(reply.value("success", false)); CHECK(reply.value("saved", false));
+    CHECK(reply["runtime"]["state"] == "pending"); CHECK(bridge.commands.empty());
+    CHECK(!ApplyEnvironment());
+    CHECK(environmentPolicies.contains(6)); CHECK(!environmentPolicies.at(6));
+    CHECK(!ApplyEnvironment());
+    // Advance the stored deadline to exercise the worker's ordinary retry path.
+    environmentRetryAt = 1;
+    bridge.commands.clear(); CHECK(ApplyEnvironment());
+    CHECK(!environmentPolicies.contains(6)); CHECK(bridge.commands.size() == 1);
+    CHECK(bridge.commands[0].operation == BridgeOperation::SystemPolicy);
+    CHECK(bridge.commands[0].location == 6); CHECK(bridge.commands[0].visibility == 0);
+}
+void ImportStaleRevisionAndStartupFailuresCannotCommit() {
+    ResetFixture(); auto before = settings; auto candidate = settings; candidate["startup"] = true;
+    auto revision = configRevision;
+    for (auto invalidRevision : {Json(nullptr), Json(-1), Json("0"), Json(configRevision + 1), Json(0.0)}) {
+        auto reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", invalidRevision}});
+        CHECK(!reply.value("success", true)); CHECK(settings == before); CHECK(configRevision == revision);
+        CHECK(startupTaskWrites == 0); CHECK(bridge.commands.empty());
+    }
+    CHECK(!Call("settings.import", {{"settings", candidate}}).value("success", true));
+    startupTaskError = ERROR_ACCESS_DENIED;
+    auto reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(!reply.value("success", true)); CHECK(reply["errorCode"] == ERROR_ACCESS_DENIED);
+    CHECK(settings == before); CHECK(configRevision == revision); CHECK(!startupTaskEnabled);
+    CHECK(bridge.commands.empty());
+    settingsPath = fixtureRoot; startupTaskWrites = 0;
+    reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(!reply.value("success", true)); CHECK(reply["errorCode"] == ERROR_WRITE_FAULT);
+    CHECK(settings == before); CHECK(configRevision == revision); CHECK(!startupTaskEnabled);
+    CHECK(startupTaskWrites == 2); CHECK(bridge.commands.empty());
+    startupTaskWrites = 0; startupTaskRollbackError = ERROR_ACCESS_DENIED;
+    reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(!reply.value("success", true)); CHECK(reply.value("rollbackFailed", false));
+    CHECK(settings == before); CHECK(configRevision == revision); CHECK(bridge.commands.empty());
+}
+void ImportBackupFailureCannotChangeStartupOrSettings() {
+    ResetFixture(); auto before = settings; auto revision = configRevision;
+    auto oldRoot = dataRoot; dataRoot = settingsPath; // A file cannot contain the backup directory.
+    auto candidate = settings; candidate["startup"] = true;
+    auto reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(!reply.value("success", true)); CHECK(!reply.value("saved", true));
+    CHECK(settings == before); CHECK(configRevision == revision); CHECK(bridge.commands.empty());
+    CHECK(startupTaskWrites == 0); dataRoot = oldRoot;
+}
+void ImportPrettyFileTooLargeCannotCreateBackupOrCommit() {
+    ResetFixture(); auto before = settings; auto revision = configRevision;
+    std::unordered_set<std::wstring> backups;
+    auto backupDirectory = dataRoot / L"Backups";
+    if (std::filesystem::exists(backupDirectory))
+        for (const auto& item : std::filesystem::directory_iterator(backupDirectory)) backups.insert(item.path().wstring());
+    auto candidate = settings; Json padding = Json::array();
+    for (int index = 0; index < 40000; ++index) padding.push_back("x");
+    for (int depth = 0; depth < 60; ++depth) padding = {{"nested", std::move(padding)}};
+    candidate["padding"] = std::move(padding);
+    CHECK(candidate.dump().size() < 2 * 1024 * 1024); CHECK(candidate.dump(2).size() > 4 * 1024 * 1024);
+    auto reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(!reply.value("success", true)); CHECK(!reply.value("saved", true));
+    CHECK(settings == before); CHECK(configRevision == revision); CHECK(bridge.commands.empty());
+    std::unordered_set<std::wstring> after;
+    if (std::filesystem::exists(backupDirectory))
+        for (const auto& item : std::filesystem::directory_iterator(backupDirectory)) after.insert(item.path().wstring());
+    CHECK(after == backups); CHECK(startupTaskWrites == 0);
+}
+void ImportOwnPolicyIsDeferredAndRetriesOnlyWhenNeeded() {
+    ResetFixture(); window = reinterpret_cast<HWND>(uintptr_t(12345)); ownAdded = true;
+    settings["ownIcon"]["asset"] = settings["rules"][0]["asset"];
+    auto candidate = settings; candidate["ownIcon"]["tip"] = "Imported own tooltip";
+    auto reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(reply.value("success", false)); CHECK(bridge.commands.empty()); CHECK(ownPolicyWrites == 0);
+    CHECK(importOwnPending); ownPolicyNextError = ERROR_BUSY;
+    Refresh(); CHECK(ownPolicyWrites == 1); CHECK(importOwnPending);
+    Refresh(); CHECK(ownPolicyWrites == 1); // No busy-loop retry before the deadline.
+    importOwnRetryAt = 0; Refresh(); CHECK(ownPolicyWrites == 2); CHECK(!importOwnPending);
+    bridge.commands.clear(); auto writes = ownPolicyWrites; candidate = settings;
+    reply = Call("settings.import", {{"settings", candidate}, {"expectedRevision", configRevision}});
+    CHECK(reply.value("success", false)); CHECK(bridge.commands.empty()); CHECK(!importOwnPending);
+    Refresh(); CHECK(ownPolicyWrites == writes);
+}
+void ImportAndExplicitRequestTimeoutsRemainBounded() {
+    CHECK(RequestWaitTimeout({{"method", "settings.import"}}) == 60000);
+    CHECK(RequestWaitTimeout({{"method", "settings.read"}, {"timeoutMs", 60000}}) == 60000);
+    CHECK(RequestWaitTimeout({{"timeoutMs", UINT64_MAX}}) == 60000);
+    CHECK(RequestWaitTimeout({{"timeoutMs", 1}}) == 1000);
+    for (auto invalid : {Json(nullptr), Json(-1), Json(0), Json("60000"), Json(60000.0)})
+        CHECK(RequestWaitTimeout({{"timeoutMs", invalid}}) == 10000);
 }
 void SilentExitIsRemovedWithoutAnotherNotification() {
     ResetFixture(); auto key = TargetKey(); auto before = settings;
@@ -829,7 +1036,17 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"immediate visibility after GUID recreation restores image", ImmediateVisibilityAfterGuidRecreationRestoresOtherPolicy},
                             std::pair{"blank first snapshot uses original without changing live pixels", BlinkPresentationUsesOriginalWhenFirstSeenBlank},
                             std::pair{"custom blink image available before first visible snapshot", BlinkPresentationHasCustomImageBeforeFirstVisibleSnapshot},
-                            std::pair{"removed import cannot change settings", RemovedImportCannotChangeSettings},
+                            std::pair{"malformed import cannot change settings", MalformedImportCannotChangeSettings},
+                            std::pair{"validate import is read only and permits archive assets", ValidateImportDoesNotMutateOrRequireInstalledAssets},
+                            std::pair{"configuration import roundtrip preserves session and backup", ConfigurationImportRoundtripPreservesSessionAndBackups},
+                            std::pair{"configuration import restores removed native policies", ImportRemovesPoliciesAndRestoresNativeState},
+                            std::pair{"configuration import removed input policy retries until restored", ImportRemovedInputPolicyRetriesUntilRestored},
+                            std::pair{"configuration import removed system policy retries after read failure", ImportRemovedSystemPolicyRetriesAfterReadFailure},
+                            std::pair{"configuration import revision and startup failures do not commit", ImportStaleRevisionAndStartupFailuresCannotCommit},
+                            std::pair{"configuration import backup failure cannot mutate", ImportBackupFailureCannotChangeStartupOrSettings},
+                            std::pair{"configuration import rejects oversized persisted pretty file before backup", ImportPrettyFileTooLargeCannotCreateBackupOrCommit},
+                            std::pair{"configuration import defers own policy and retries only needed changes", ImportOwnPolicyIsDeferredAndRetriesOnlyWhenNeeded},
+                            std::pair{"configuration import and explicit request wait limits are bounded", ImportAndExplicitRequestTimeoutsRemainBounded},
                             std::pair{"immediate visibility and no replay", ImmediateVisibility},
                             std::pair{"unrelated saves do not replay", UnrelatedSavesKeepRulesApplied},
                             std::pair{"explicit rule reapply retries selected icon", ExplicitRuleReapplyRetriesOnlySelectedIcon},

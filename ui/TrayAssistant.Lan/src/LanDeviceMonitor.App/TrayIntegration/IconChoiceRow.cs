@@ -13,6 +13,8 @@ namespace TrayAssistant_App;
 public sealed class IconChoiceRow : UserControl
 {
     internal Image OriginalPreview { get; private set; } = null!;
+    internal Grid OriginalCanvas { get; private set; } = null!;
+    internal TextBlock OriginalCaption { get; private set; } = null!;
     internal SegmentedControl ImageMode { get; private set; } = null!;
     public IconChoiceRow(object source, string originalPath, Func<ImageSource?> preview,
         Func<bool> getMode, Action<bool> setMode, ICommand chooseCommand, string prefix = "", double bottomSpacing = 18)
@@ -26,8 +28,9 @@ public sealed class IconChoiceRow : UserControl
             var stack = new StackPanel { HorizontalAlignment = HorizontalAlignment.Center };
             visual.Margin = new Thickness(0, 0, 0, 8);
             visual.HorizontalAlignment = HorizontalAlignment.Center;
-            stack.Children.Add(visual); stack.Children.Add(new TextBlock { Text = caption,
-                HorizontalAlignment = HorizontalAlignment.Center, FontSize = 12 });
+            var label = new TextBlock { Text = caption, HorizontalAlignment = HorizontalAlignment.Center, FontSize = 12 };
+            if (column == 0) OriginalCaption = label;
+            stack.Children.Add(visual); stack.Children.Add(label);
             Grid.SetColumn(stack, column); previews.Children.Add(stack);
             return stack;
         }
@@ -37,6 +40,7 @@ public sealed class IconChoiceRow : UserControl
         RenderOptions.SetBitmapScalingMode(originalImage, BitmapScalingMode.HighQuality);
         System.Windows.Automation.AutomationProperties.SetAutomationId(originalImage, prefix + "OriginalIconPreview");
         var originalCanvas = new Grid { Width = 56, Height = 56 };
+        OriginalCanvas = originalCanvas;
         originalImage.HorizontalAlignment = HorizontalAlignment.Center; originalImage.VerticalAlignment = VerticalAlignment.Center;
         originalCanvas.Children.Add(originalImage);
         var original = Preview(0, "原始图标", originalCanvas);

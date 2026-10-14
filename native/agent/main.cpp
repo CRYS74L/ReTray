@@ -39,6 +39,8 @@ bool ApplyInputMethodIcons();
 std::filesystem::path root, dataRoot, settingsPath;
 Json settings;
 bool recovered{}, ownAdded{};
+bool importOwnPending{};
+uint64_t importOwnRetryAt{};
 std::atomic<bool> stopping{};
 std::atomic<bool> ownOpenQueued{};
 std::atomic<unsigned> menuLanguageIndex{};
@@ -82,6 +84,7 @@ LONG seenSequence{-1};
 uint64_t lastCatalogRefresh{};
 uint64_t configRevision{};
 uint64_t environmentEpoch{}, lastEnvironmentCheck{};
+uint64_t environmentRetryAt{};
 std::string environmentStamp;
 std::unordered_map<int, bool> environmentPolicies;
 std::array<bool, 10> environmentAvailable{};
@@ -619,11 +622,17 @@ bool RefreshSystemControls() {
         environmentAvailable[policy.at("id").get<int>()] = NativeSystemControlPresent(policy.at("id").get<int>());
     return true;
 }
-bool ApplyEnvironment(bool force = false) {
+bool ApplyEnvironment(bool force = false, bool retryImportFailures = false) {
     if (!bridge.Alive() || !ShouldRecover(lifecycle))
         return false;
     auto stamp = settings.value("systemControls", Json::array()).dump();
     bool shellChanged = environmentEpoch != bridge.shared->epoch;
+    const auto now = GetTickCount64();
+    bool retryImport = retryImportFailures || environmentRetryAt != 0;
+    if (!force && !shellChanged && environmentRetryAt && now < environmentRetryAt)
+        return false;
+    if (!shellChanged && environmentRetryAt && now >= environmentRetryAt)
+        force = true;
     if (!force && !shellChanged && environmentStamp == stamp) {
         bool hasHiddenPolicy = std::any_of(environmentPolicies.begin(), environmentPolicies.end(),
                                            [](const auto& policy) { return policy.second; });
@@ -652,17 +661,22 @@ bool ApplyEnvironment(bool force = false) {
         if (!bridge.Command(command)) {
             ok = false;
             error = bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT;
+            return false;
         }
         environmentAvailable[id] = NativeSystemControlPresent(id);
+        return true;
     };
+    std::vector<int> pendingRestores;
     for (const auto& [id, hidden] : previous)
         if (!environmentPolicies.contains(id))
-            apply(id, false);
+            if (!apply(id, false) && retryImport) pendingRestores.push_back(id);
     for (const auto& [id, hidden] : environmentPolicies)
         if (force || !previous.contains(id) || previous.at(id) != hidden)
             apply(id, hidden);
+    for (auto id : pendingRestores) environmentPolicies[id] = false;
     environmentOutcome =
         Result(ok, ok ? "系统图标设置已生效" : "已保存的系统图标策略当前无法应用", error);
+    environmentRetryAt = !ok && retryImport ? GetTickCount64() + 3000 : 0;
     return ok;
 }
 std::string StableIconKey(const BridgeIcon& row) {
@@ -711,6 +725,10 @@ bool ReconcileNativeCatalog(bool force = false) {
 void Refresh() {
     if (!ShouldRecover(lifecycle) || stopping)
         return;
+    if (importOwnPending && window && GetTickCount64() >= importOwnRetryAt) {
+        if (SetOwnIcon()) { importOwnPending = false; importOwnRetryAt = 0; }
+        else importOwnRetryAt = GetTickCount64() + 3000;
+    }
     if (!bridge.Alive()) {
         SetOperationalState(lifecycle, SessionState::WaitingForShell);
         if (!ExplorerPid())
@@ -1085,6 +1103,7 @@ bool RollbackSettings(const Json& previous) {
     return false;
 }
 #include "input_method_api.h"
+#include "configuration_import.h"
 Json SetIconVisibility(const Json& data) {
     if (!data.contains("key") || !data.at("key").is_string() ||
         data.at("key").get_ref<const std::string&>().empty() ||
@@ -1476,9 +1495,10 @@ Json Handle(const Json& req) {
     } else if (method == "taskbar.apply") {
         result = Result(false, "任务栏高级功能已取消", ERROR_NOT_SUPPORTED);
         result["saved"] = false;
+    } else if (method == "settings.validateImport") {
+        result = ValidateConfigurationImport(d);
     } else if (method == "settings.import") {
-        result = Result(false, "配置导入功能已取消", ERROR_NOT_SUPPORTED);
-        result["saved"] = false;
+        result = ImportConfiguration(d);
     } else if (method == "rules.apply") {
         auto list = d.at("rules");
         if (!list.is_array() || list.size() > 256)
@@ -1669,6 +1689,16 @@ Json Handle(const Json& req) {
     result["requestId"] = req.value("requestId", std::string{});
     return result;
 }
+DWORD RequestWaitTimeout(const Json& request) {
+    if (!request.is_object()) return 10000;
+    if (request.contains("method") && request.at("method") == "settings.import") return 60000;
+    if (!request.contains("timeoutMs")) return 10000;
+    const auto& requested = request.at("timeoutMs");
+    if (!requested.is_number_integer() ||
+        (!requested.is_number_unsigned() && requested.get<int64_t>() <= 0) ||
+        (requested.is_number_unsigned() && requested.get<uint64_t>() == 0)) return 10000;
+    return static_cast<DWORD>(std::clamp<uint64_t>(requested.get<uint64_t>(), 1000, 60000));
+}
 DWORD WINAPI Serve(void*) {
     auto sd = CurrentUserSecurity();
     if (!sd)
@@ -1695,7 +1725,8 @@ DWORD WINAPI Serve(void*) {
                     request->input = Json::parse(input.substr(0, input.find('\n')));
                     Enqueue(request);
                     HANDLE waits[] = {request->event, stopEvent};
-                    if (WaitForMultipleObjects(2, waits, FALSE, 10000) == WAIT_OBJECT_0) {
+                    const DWORD timeout = RequestWaitTimeout(request->input);
+                    if (WaitForMultipleObjects(2, waits, FALSE, timeout) == WAIT_OBJECT_0) {
                         auto output = request->output.dump() + "\n";
                         DWORD written{};
                         WriteFile(pipe, output.data(), static_cast<DWORD>(output.size()), &written,

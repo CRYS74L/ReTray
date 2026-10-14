@@ -109,9 +109,10 @@ void ResetFixture() {
     configRevision = 0; settingsPath = fixtureRoot / L"settings.json"; root = dataRoot = fixtureRoot;
     rows.clear(); catalog = {}; rules.clear(); applied.clear(); failedStamp.clear(); retryAfter.clear();
     outcomes.clear(); seenSequence = -1; environmentStamp.clear();
-    environmentEpoch = lastEnvironmentCheck = 0; environmentOutcome = Result(true);
+    environmentEpoch = lastEnvironmentCheck = environmentRetryAt = 0; environmentOutcome = Result(true);
     requestedHotkeys = registeredHotkeys = hotkeyErrors = Json::array(); hotkeyRegistrations = 0;
     activityHistory = Json::object(); activityDirty = false; ownAdded = false;
+    importOwnPending = false; importOwnRetryAt = 0;
     registrations.clear(); lastCatalogRefresh = 0;
     inputMethodStamp.clear();inputMethodEpoch=inputMethodRetryAt=0;appliedInputMethods.clear();inputMethodApplySuccess=true;inputMethodRollback=nullptr;
     bridge.failLogo=false;

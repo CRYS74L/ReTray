@@ -53,6 +53,8 @@ public partial class TrayViewModel : ObservableObject
     }
     [ObservableProperty] public partial string Status { get; set; } = "";
     [ObservableProperty] public partial string Error { get; set; } = "";
+    [ObservableProperty] public partial string ConfigurationStatus { get; set; } = "";
+    [ObservableProperty] public partial string ConfigurationBackupPath { get; set; } = "";
     [ObservableProperty] public partial bool IsLoading { get; set; } = true;
     [ObservableProperty] public partial bool IsReady { get; set; }
 
@@ -79,7 +81,7 @@ public partial class TrayViewModel : ObservableObject
     [ObservableProperty] public partial int ThemeIndex { get; set; }
     [ObservableProperty] public partial int LanguageIndex { get; set; }
     public event Action? LanguageChanged;
-    partial void OnLanguageIndexChanged(int value){if(value<0 || value>=Localization.LanguageCodes.Length)return;Localization.CurrentLanguage=Localization.LanguageCodes[value];Status=Localization.Text(Status);Error=Localization.Text(Error);LanguageChanged?.Invoke();}
+    partial void OnLanguageIndexChanged(int value){if(value<0 || value>=Localization.LanguageCodes.Length)return;Localization.CurrentLanguage=Localization.LanguageCodes[value];Status=Localization.Text(Status);Error=Localization.Text(Error);ConfigurationStatus=Localization.Text(ConfigurationStatus);LanguageChanged?.Invoke();}
     partial void OnStatusChanged(string value){var translated=Localization.Text(value);if(translated!=value)Status=translated;}
     [ObservableProperty] public partial double TaskbarOpacity { get; set; } = 255;
     [ObservableProperty] public partial bool HideStart { get; set; }
@@ -122,13 +124,13 @@ public partial class TrayViewModel : ObservableObject
         foreach (var row in wanted) if (!Icons.Contains(row)) Icons.Add(row);
         for(int i=0;i<wanted.Count;i++)if(Icons[i]!=wanted[i])Icons.Move(Icons.IndexOf(wanted[i]),i);
     }
-    public async Task InitializeAsync()
+    public async Task InitializeAsync(JsonObject? importedSettings = null)
     {
         if (initializing) return;
         initializing = true;
         try
         {
-            initialized=false;var result = await Call("settings.read"); Settings = (JsonObject)result["data"]!.DeepClone();iconOrder=Settings["iconOrder"]?.AsArray().Select(x=>x!.GetValue<string>()).ToList()??new();
+            initialized=false;var result = importedSettings==null?await Call("settings.read"):new JsonObject{["data"]=importedSettings.DeepClone()}; Settings = (JsonObject)result["data"]!.DeepClone();iconOrder=Settings["iconOrder"]?.AsArray().Select(x=>x!.GetValue<string>()).ToList()??new();
             Startup = Settings["startup"]?.GetValue<bool>() ?? false; OwnVisible = Settings["ownIcon"]!["visible"]!.GetValue<bool>(); OwnAsset = Settings["ownIcon"]!["asset"]!.GetValue<string>();
             OwnTip=Settings["ownIcon"]?["tip"]?.GetValue<string>()??"托盘图标助手";OwnInList=Settings["ownIcon"]?["showInList"]?.GetValue<bool>()??true;
             Hotkeys=(JsonObject?)Settings["hotkeys"]?.DeepClone()??new();Hotkeys.Remove("restoreIcons");
@@ -147,8 +149,8 @@ public partial class TrayViewModel : ObservableObject
 #else
             var aumid = global::Windows.ApplicationModel.Package.Current.Id.FamilyName + "!App";
 #endif
-            await Call("settings.apply", new() { ["uiActivation"] = aumid });
-            await Call("ui.attach", new() { ["hwnd"] = (long)App.WindowHandle });
+            await Call("settings.apply", new() { ["uiActivation"] = aumid }, importedSettings==null?null:TimeSpan.FromSeconds(60));
+            await Call("ui.attach", new() { ["hwnd"] = (long)App.WindowHandle }, importedSettings==null?null:TimeSpan.FromSeconds(60));
             await RefreshAsync();initialized=true;
         }
         catch (Exception ex) { IsReady=false;IsLoading=false;ReportError(ex,true); }
@@ -190,9 +192,9 @@ public partial class TrayViewModel : ObservableObject
         }
         finally { readingEditor = false; }
     }
-    private async Task<JsonObject> Call(string method, JsonObject? data = null)
+    private async Task<JsonObject> Call(string method, JsonObject? data = null, TimeSpan? timeout = null)
     {
-        var result = await Pipe.RequestAsync(method, data); if (result["success"]?.GetValue<bool>() != true) throw new IOException((result["saved"]?.GetValue<bool>() == true ? "已保存，但未生效：" : "") + (result["detail"]?.GetValue<string>() ?? "操作失败")); return result;
+        var result = await Pipe.RequestAsync(method, data, timeout: timeout); if (result["success"]?.GetValue<bool>() != true) throw new IOException((result["saved"]?.GetValue<bool>() == true ? "已保存，但未生效：" : "") + (result["detail"]?.GetValue<string>() ?? "操作失败")); return result;
     }
     public void ReportError(Exception ex,bool connection=false){Status=Localization.Text(ex.Message);Error=Localization.Text(ex.Message);connectionError=connection;}
     private async Task Execute(Func<Task> action) { try { Error="";connectionError=false;await action(); } catch (Exception ex) { ReportError(ex); } }

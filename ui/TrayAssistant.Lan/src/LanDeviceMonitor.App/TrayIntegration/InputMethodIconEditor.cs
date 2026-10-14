@@ -146,8 +146,7 @@ public sealed class InputMethodIconEditor : UserControl
             IconEditorPanel.BalanceHeaderSpacing(header,choice,i==0?content.Margin.Top:0);
             if (i + 1 < model.Rows.Count)
             {
-                var divider = new Border { Height = .5, Margin = new Thickness(4,16,4,16) };
-                divider.SetResourceReference(Border.BackgroundProperty, "BorderBrush"); content.Children.Add(divider);
+                content.Children.Add(IconEditorPanel.CreateDivider(new Thickness(4,16,4,16)));
             }
         }
         if (model.Rows.Count == 0)root.Children.Add(IconEditorPanel.CreateHeader("没有可编辑的输入法标志",close,"InputMethodEditorClose"));

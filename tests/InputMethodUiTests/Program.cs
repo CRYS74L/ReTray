@@ -90,10 +90,12 @@ internal static class Program
                 var ink=new System.Windows.Media.FormattedText(title.Text,System.Globalization.CultureInfo.CurrentCulture,title.FlowDirection,
                     new Typeface(title.FontFamily,title.FontStyle,title.FontWeight,title.FontStretch),title.FontSize,Brushes.Black,VisualTreeHelper.GetDpi(title).PixelsPerDip) {MaxTextWidth=title.ActualWidth,MaxLineCount=1,Trimming=TextTrimming.CharacterEllipsis}.BuildGeometry(new Point()).Bounds;
                 double top=image.TranslatePoint(new Point(),root).Y-title.TranslatePoint(new Point(ink.Left,ink.Bottom),root).Y;
-                double bottom=mode.TranslatePoint(new Point(),root).Y-image.TranslatePoint(new Point(0,image.ActualHeight),root).Y;
+                var caption=Find<TextBlock>(choices[i]).First(t=>t.Text=="原始图标");
+                var captionInk=new FormattedText(caption.Text,System.Globalization.CultureInfo.CurrentCulture,caption.FlowDirection,new Typeface(caption.FontFamily,caption.FontStyle,caption.FontWeight,caption.FontStretch),caption.FontSize,Brushes.Black,VisualTreeHelper.GetDpi(caption).PixelsPerDip).BuildGeometry(new Point()).Bounds;
+                double bottom=mode.TranslatePoint(new Point(),root).Y-caption.TranslatePoint(new Point(captionInk.Left,captionInk.Bottom),root).Y;
                 Require(Math.Abs(top-bottom)<.5,"Heading and slider gaps differ in row "+i+": "+top+" vs "+bottom);
             }
-            Require(titles.SelectMany(h=>h.Children.OfType<Button>()).Count(b=>b.Visibility==Visibility.Visible)==1,"Editor needs exactly one close button");window.Close();
+            Require(titles.SelectMany(h=>Find<Button>(h)).Count(b=>b.Visibility==Visibility.Visible)==1,"Editor needs exactly one close button");window.Close();
         }
     }
     private static IEnumerable<T> Find<T>(DependencyObject root) where T:DependencyObject

@@ -250,6 +250,18 @@
                   </StackPanel>
                   <ComboBox x:Name="LanguageChoice" Grid.Column="1" Width="132" SelectedIndex="{Binding LanguageIndex,Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.AutomationId="LanguageChoice" Height="28" MinHeight="28" />
                 </Grid>
+                <Border Height="0.5" Background="{DynamicResource BorderBrush}" Margin="4,0,0,0" />
+                <Grid Margin="4,0,4,0" Height="34">
+                  <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                  <TextBlock Text="配置文件" VerticalAlignment="Center" Margin="0,0,12,0" />
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="ExportConfigurationButton" Content="导出配置" FontSize="12" Padding="10,0" MinWidth="0" MinHeight="28" Height="28" Click="ExportConfigurationClick" AutomationProperties.AutomationId="ExportConfiguration" />
+                    <Button x:Name="ImportConfigurationButton" Content="导入配置" FontSize="12" Padding="10,0" MinWidth="0" MinHeight="28" Height="28" Margin="8,0,0,0" Click="ImportConfigurationClick" AutomationProperties.AutomationId="ImportConfiguration" />
+                  </StackPanel>
+                </Grid>
+                <TextBlock Text="{Binding ConfigurationStatus}" ToolTip="{Binding ConfigurationBackupPath}" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" Margin="4,5,4,4" AutomationProperties.AutomationId="ConfigurationStatus">
+                  <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Style.Triggers><DataTrigger Binding="{Binding ConfigurationStatus}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                </TextBlock>
               </StackPanel>
               <TextBlock x:Name="VersionText" Grid.Row="2" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" Margin="0,8,0,16" AutomationProperties.AutomationId="SoftwareVersion" />
             </Grid>

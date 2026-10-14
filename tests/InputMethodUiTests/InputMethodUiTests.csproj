@@ -6,4 +6,5 @@
     <DisableTransitiveFrameworkReferences>true</DisableTransitiveFrameworkReferences>
   </PropertyGroup>
   <ItemGroup><ProjectReference Include="../../ui/TrayAssistant.Lan/src/LanDeviceMonitor.App/LanDeviceMonitor.App.csproj" /></ItemGroup>
+  <ItemGroup><None Include="../../ui/TrayAssistant.Lan/src/LanDeviceMonitor.App/TrayIntegration/MainPage.xaml" Link="EditorTemplates.xaml" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
 </Project>

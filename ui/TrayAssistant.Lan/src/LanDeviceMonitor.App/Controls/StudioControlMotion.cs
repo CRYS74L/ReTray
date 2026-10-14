@@ -16,6 +16,10 @@ namespace LanDeviceMonitor.Controls;
 /// <summary>State transitions transcribed from UP Studio's final CSS cascade.</summary>
 public static class StudioControlMotion
 {
+    public static readonly DependencyProperty UseSelectorSurfaceProperty = DependencyProperty.RegisterAttached(
+        "UseSelectorSurface", typeof(bool), typeof(StudioControlMotion), new PropertyMetadata(false));
+    public static bool GetUseSelectorSurface(DependencyObject target) => (bool)target.GetValue(UseSelectorSurfaceProperty);
+    public static void SetUseSelectorSurface(DependencyObject target, bool value) => target.SetValue(UseSelectorSurfaceProperty,value);
     public static readonly DependencyProperty EnabledProperty = DependencyProperty.RegisterAttached(
         "Enabled", typeof(bool), typeof(StudioControlMotion), new PropertyMetadata(false, Attach));
     public static bool GetEnabled(DependencyObject value) => (bool)value.GetValue(EnabledProperty);
@@ -44,7 +48,7 @@ public static class StudioControlMotion
         private bool _keyboardFocus;
         private bool IsSelect => _control is ToggleButton;
         private bool IsItem => _control is ComboBoxItem;
-        private bool IsInput => !IsSelect && !IsItem;
+        private bool IsInput => !IsSelect && !IsItem && !GetUseSelectorSurface(_control);
 
         internal MotionState(Control control)
         {

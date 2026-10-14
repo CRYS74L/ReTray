@@ -16,8 +16,9 @@ internal static class Program
             ("selected replacement synchronizes the visible slider",SelectedFileUpdatesMode),
             ("locale switching preserves source labels and user bindings",LocaleRoundtrip),
             ("every input method balances heading and slider gaps",EqualHeadingSpacing),
-            ("language order and saved codes stay independent",LanguageOrder)})
-            try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e.Message);}
+            ("language order and saved codes stay independent",LanguageOrder),
+            ("editor scrollbar preserves content width and positions",ScrollbarPreservesLayout)})
+            try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e);}
         return failed==0?0:1;
     }
     private sealed class State : INotifyPropertyChanged
@@ -112,5 +113,40 @@ internal static class Program
         foreach(var code in new[]{"zh","zh-Hant","ja","en"})
             Require(TrayAssistant_App.Services.Localization.LanguageCodes[TrayAssistant_App.Services.Localization.LanguageIndex(code)]==code,"Saved language code changed meaning");
         Require(TrayAssistant_App.Services.Localization.LanguageIndex(null)==0,"Default language must be simplified Chinese");
+    }
+    private static void ScrollbarPreservesLayout()
+    {
+        var app=new LanDeviceMonitor.App();app.InitializeComponent();
+        // Render the actual template without loading page events or connecting to the agent.
+        var document=System.Xml.Linq.XDocument.Load(System.IO.Path.Combine(AppContext.BaseDirectory,"EditorTemplates.xaml"));
+        var key=System.Xml.Linq.XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml")+"Key";
+        var template=document.Descendants().Single(e=>e.Name.LocalName=="Style" && (string?)e.Attribute(key)=="IconEditorScrollViewerStyle");
+        template.Attribute("BasedOn")!.Remove();
+        var style=(Style)System.Windows.Markup.XamlReader.Parse(template.ToString());
+        var choice=Row(new State());
+        var stack=new StackPanel();stack.Children.Add(choice);stack.Children.Add(new Border{Height=450});
+        var scroll=new ScrollViewer{Content=stack,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility=ScrollBarVisibility.Disabled,Style=style};
+        var window=new Window{Content=new Border{Padding=new Thickness(20),Child=scroll},Width=400,Height=800,ShowActivated=false,ShowInTaskbar=false,Opacity=0};
+        try {
+            window.Show();window.UpdateLayout();
+            Require(scroll.ComputedVerticalScrollBarVisibility==Visibility.Collapsed,"Tall editor unexpectedly scrolls");
+            var image=Find<Image>(choice).First();var mode=Slider(choice);
+            var viewport=scroll.ViewportWidth;
+            var position=image.TranslatePoint(new Point(),scroll);
+            var modePosition=mode.TranslatePoint(new Point(),scroll);
+            var width=mode.ActualWidth;
+            window.Height=300;window.UpdateLayout();
+            Require(scroll.ComputedVerticalScrollBarVisibility==Visibility.Visible,"Short editor does not expose scrollbar");
+            Require(Math.Abs(scroll.ViewportWidth-viewport)<.01,"Scrollbar reduced editor viewport width");
+            Require((image.TranslatePoint(new Point(),scroll)-position).Length<.01,"Scrollbar moved the original icon");
+            Require((mode.TranslatePoint(new Point(),scroll)-modePosition).Length<.01 && Math.Abs(mode.ActualWidth-width)<.01,"Scrollbar changed slider bounds");
+            var bar=(System.Windows.Controls.Primitives.ScrollBar)scroll.Template.FindName("PART_VerticalScrollBar",scroll);
+            Require(bar.ActualWidth>0 && bar.TranslatePoint(new Point(),scroll).X>=scroll.ViewportWidth,"Scrollbar overlaps editor content");
+            var hit=window.InputHitTest(bar.TranslatePoint(new Point(bar.ActualWidth/2,bar.ActualHeight/2),window)) as DependencyObject;
+            while(hit!=null && hit!=bar)hit=VisualTreeHelper.GetParent(hit);
+            Require(hit==bar,"Scrollbar cannot be operated in the card inset");
+        }
+        finally{window.Close();}
     }
 }

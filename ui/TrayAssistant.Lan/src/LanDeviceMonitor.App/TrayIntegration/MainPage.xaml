@@ -98,17 +98,20 @@
         <Setter.Value>
           <ControlTemplate TargetType="ScrollViewer">
             <Grid Background="{TemplateBinding Background}">
-              <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
               <Grid x:Name="DetailViewportMask" Background="Transparent" ClipToBounds="True">
                 <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" Margin="{TemplateBinding Padding}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" CanContentScroll="{TemplateBinding CanContentScroll}" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
               </Grid>
-              <Grid Grid.Column="1" Width="14" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}">
+              <!-- Overlay the existing right inset without reducing the content viewport. -->
+              <Grid Width="14" Margin="0,0,-14,0" HorizontalAlignment="Right" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}">
                 <ScrollBar x:Name="PART_VerticalScrollBar" Width="10" MinWidth="0" HorizontalAlignment="Center" Orientation="Vertical" Margin="0,14,0,14" Style="{StaticResource WindowsSettingsScrollBarStyle}" Maximum="{TemplateBinding ScrollableHeight}" ViewportSize="{TemplateBinding ViewportHeight}" Value="{Binding VerticalOffset,RelativeSource={RelativeSource TemplatedParent},Mode=OneWay}" />
               </Grid>
             </Grid>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
+    </Style>
+    <Style x:Key="ConfigurationButtonStyle" TargetType="Button" BasedOn="{StaticResource StudioActionButtonStyle}">
+      <Setter Property="controls:StudioControlMotion.UseSelectorSurface" Value="True" />
     </Style>
     <Style x:Key="TrayMoreButtonStyle" TargetType="Button" BasedOn="{StaticResource FooterCircleButtonStyle}">
       <Setter Property="Width" Value="{x:Static local:TrayRowMetrics.ActionDiameter}" />
@@ -255,8 +258,8 @@
                   <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                   <TextBlock Text="配置文件" VerticalAlignment="Center" Margin="0,0,12,0" />
                   <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                    <Button x:Name="ExportConfigurationButton" Content="导出配置" FontSize="12" Padding="10,0" MinWidth="0" MinHeight="28" Height="28" Click="ExportConfigurationClick" AutomationProperties.AutomationId="ExportConfiguration" />
-                    <Button x:Name="ImportConfigurationButton" Content="导入配置" FontSize="12" Padding="10,0" MinWidth="0" MinHeight="28" Height="28" Margin="8,0,0,0" Click="ImportConfigurationClick" AutomationProperties.AutomationId="ImportConfiguration" />
+                    <Button x:Name="ExportConfigurationButton" Style="{StaticResource ConfigurationButtonStyle}" Content="导出配置" FontSize="12" Padding="10,0" MinWidth="0" MinHeight="28" Height="28" Click="ExportConfigurationClick" AutomationProperties.AutomationId="ExportConfiguration" />
+                    <Button x:Name="ImportConfigurationButton" Style="{StaticResource ConfigurationButtonStyle}" Content="导入配置" FontSize="12" Padding="10,0" MinWidth="0" MinHeight="28" Height="28" Margin="8,0,0,0" Click="ImportConfigurationClick" AutomationProperties.AutomationId="ImportConfiguration" />
                   </StackPanel>
                 </Grid>
                 <TextBlock Text="{Binding ConfigurationStatus}" ToolTip="{Binding ConfigurationBackupPath}" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" Margin="4,5,4,4" AutomationProperties.AutomationId="ConfigurationStatus">

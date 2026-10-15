@@ -1,5 +1,6 @@
 #pragma once
 #include <windows.h>
+#include <algorithm>
 #include <oleacc.h>
 #include <filesystem>
 #include <string>
@@ -19,18 +20,18 @@ inline Typeface typeface;
 inline std::string language="zh";
 inline void SetLanguage(const std::string& value){language=value;}
 inline const wchar_t* Label(UINT id) {
-    if(language=="en")switch(id){case 1:return L"Open assistant";case 2:return L"Restart";case 3:return L"Exit";default:return L"";}
-    if(language=="zh-Hant")switch(id){case 1:return L"開啟助手";case 2:return L"重新啟動";case 3:return L"退出";default:return L"";}
-    if(language=="ja")switch(id){case 1:return L"アシスタントを開く";case 2:return L"再起動";case 3:return L"終了";default:return L"";}
+    if(language=="en")switch(id){case 1:return L"Open";case 2:return L"Restart";case 3:return L"Exit";default:return L"";}
+    if(language=="zh-Hant")switch(id){case 1:return L"開啟";case 2:return L"重新啟動";case 3:return L"退出";default:return L"";}
+    if(language=="ja")switch(id){case 1:return L"開く";case 2:return L"再起動";case 3:return L"終了";default:return L"";}
     switch (id) {
-        case 1: return L"打开助手";
+        case 1: return L"打开";
         case 2: return L"重新启动";
         case 3: return L"退出";
         default: return L"";
     }
 }
 inline MSAAMENUINFO menuNames[] = {
-    {MSAA_MENU_SIG, 4, const_cast<wchar_t*>(L"打开助手")},
+    {MSAA_MENU_SIG, 2, const_cast<wchar_t*>(L"打开")},
     {MSAA_MENU_SIG, 4, const_cast<wchar_t*>(L"重新启动")},
     {MSAA_MENU_SIG, 2, const_cast<wchar_t*>(L"退出")}};
 inline const wchar_t* Data(UINT id) {
@@ -55,9 +56,9 @@ inline void Prepare(const std::filesystem::path& root, POINT point) {
     if (typeface.font && typeface.dpi == dpiX) return;
     if (typeface.font) DeleteObject(typeface.font);
     typeface.dpi = dpiX;
-    typeface.font = CreateFontW(-Scale(12), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_NATURAL_QUALITY,
-        DEFAULT_PITCH | FF_SWISS, L"Noto Sans SC");
+    typeface.font = CreateFontW(-Scale(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+        DEFAULT_PITCH | FF_SWISS, typeface.privateLoaded ? L"Noto Sans SC" : L"Segoe UI");
 }
 inline bool Measure(LPARAM argument) {
     auto item = reinterpret_cast<MEASUREITEMSTRUCT*>(argument);
@@ -67,8 +68,8 @@ inline bool Measure(LPARAM argument) {
     SIZE size{};
     auto label = Label(item->itemID);
     GetTextExtentPoint32W(dc, label, static_cast<int>(wcslen(label)), &size);
-    item->itemWidth = size.cx + Scale(24);
-    item->itemHeight = static_cast<UINT>(Scale(27));
+    item->itemWidth = static_cast<UINT>(std::max(size.cx + Scale(28), static_cast<LONG>(Scale(104))));
+    item->itemHeight = static_cast<UINT>(Scale(30));
     SelectObject(dc, previous); ReleaseDC(nullptr, dc);
     return true;
 }
@@ -88,7 +89,7 @@ inline bool Draw(LPARAM argument) {
     auto previous = SelectObject(item->hDC, typeface.font);
     auto oldMode = SetBkMode(item->hDC, TRANSPARENT);
     auto oldColor = SetTextColor(item->hDC, foreground);
-    auto bounds = item->rcItem; bounds.left += Scale(12); bounds.right -= Scale(12);
+    auto bounds = item->rcItem; bounds.left += Scale(14); bounds.right -= Scale(14);
     DrawTextW(item->hDC, Label(item->itemID), -1, &bounds, DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
     SetTextColor(item->hDC, oldColor); SetBkMode(item->hDC, oldMode);
     SelectObject(item->hDC, previous);
@@ -108,8 +109,16 @@ inline LRESULT CALLBACK RoundMenuHook(int code, WPARAM argument, LPARAM value) {
                 if (size.cx > 0 && size.cy > 0 &&
                     (roundedWindow != event->hwnd || roundedSize.cx != size.cx || roundedSize.cy != size.cy)) {
                     roundedWindow = event->hwnd; roundedSize = size;
-                    auto region = CreateRoundRectRgn(0, 0, size.cx + 1, size.cy + 1, Scale(16), Scale(16));
-                    if (region && !SetWindowRgn(event->hwnd, region, TRUE)) DeleteObject(region);
+                    // DWM owns the menu's full frame and shadow. A custom window
+                    // region clips that frame (and prevents system rounding).
+                    auto dwm = LoadLibraryW(L"dwmapi.dll");
+                    if (dwm) {
+                        using SetAttribute = HRESULT(WINAPI*)(HWND, DWORD, LPCVOID, DWORD);
+                        auto set = reinterpret_cast<SetAttribute>(GetProcAddress(dwm, "DwmSetWindowAttribute"));
+                        DWORD preference = 3; // DWMWCP_ROUNDSMALL, standard auxiliary menus.
+                        if (set) set(event->hwnd, 33, &preference, sizeof(preference));
+                        FreeLibrary(dwm);
+                    }
                 }
             }
         }

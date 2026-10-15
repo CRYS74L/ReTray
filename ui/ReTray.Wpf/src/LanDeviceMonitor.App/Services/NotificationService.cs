@@ -84,7 +84,7 @@ public sealed class NotificationService : IDisposable
     // Changing it makes Windows treat the same executable as a new notification sender.
     internal const string StableAppUserModelId = "{95AFFE3D-014F-4F5F-AD8B-FD52B4E62CE3}";
 
-    private const string DisplayName = "局域网设备助手";
+    private const string DisplayName = "ReTray";
     private const string IconRelativePath = "Assets\\SystemIcon.png";
 
     private readonly object _syncRoot = new();
@@ -166,7 +166,7 @@ public sealed class NotificationService : IDisposable
 
     public NotificationDeliveryResult ShowTestNotification() => Show(
         title: "Windows 系统通知测试",
-        message: "局域网设备助手已将这条通知提交到 Windows。",
+        message: "ReTray已将这条通知提交到 Windows。",
         argumentName: "category",
         argumentValue: "test");
 

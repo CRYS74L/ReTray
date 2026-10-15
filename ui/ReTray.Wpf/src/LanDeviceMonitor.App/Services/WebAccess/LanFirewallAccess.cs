@@ -87,7 +87,7 @@ internal sealed class LanFirewallAccess : ILanFirewallAccess
             dynamic rule = ruleObject;
             rule.Enabled = false;
             rule.Name = RuleName(executable);
-            rule.Description = "局域网设备助手：仅允许同一局域网访问本程序的只读网页。";
+            rule.Description = "ReTray：仅允许同一局域网访问本程序的只读网页。";
             rule.ApplicationName = executable;
             rule.Protocol = 6;
             rule.LocalPorts = port.ToString(CultureInfo.InvariantCulture);

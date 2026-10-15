@@ -214,7 +214,7 @@ public partial class MainPage : UserControl
     {
         try
         {
-            var picker = new SaveFileDialog { FileName = "托盘助手配置", DefaultExt = ".json", Filter = "助手配置|*.json" };
+            var picker = new SaveFileDialog { FileName = "托盘ReTray配置", DefaultExt = ".json", Filter = "ReTray配置|*.json" };
             if (picker.ShowDialog(App.Window) != true) return;
             var reply = await Vm.Pipe.RequestAsync("settings.read"); Check(reply);
             var settings = (JsonObject)reply["data"]!.DeepClone(); var assets = new JsonObject();
@@ -235,7 +235,7 @@ public partial class MainPage : UserControl
     {
         try
         {
-            var picker = new OpenFileDialog { Filter = "助手配置|*.json", CheckFileExists = true };
+            var picker = new OpenFileDialog { Filter = "ReTray配置|*.json", CheckFileExists = true };
             if (picker.ShowDialog(App.Window) != true) return;
             if (new FileInfo(picker.FileName).Length > 96 * 1024 * 1024) throw new IOException("配置文件过大");
             var bundle = JsonNode.Parse(await File.ReadAllTextAsync(picker.FileName))!.AsObject();

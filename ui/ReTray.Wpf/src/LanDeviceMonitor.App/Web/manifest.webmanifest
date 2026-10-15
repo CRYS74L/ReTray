@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "局域网设备助手",
-  "short_name": "设备助手",
+  "name": "ReTray",
+  "short_name": "设备ReTray",
   "lang": "zh-CN",
   "start_url": "/#devices",
   "scope": "/",

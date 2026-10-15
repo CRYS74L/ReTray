@@ -12,7 +12,7 @@ $installed=Get-AppxPackage -Name 'CRYS74L.ReTray' -ErrorAction Stop
 if(!$installed){throw 'ReTray package registration was not found after installation'}
 $brand=Join-Path $env:LOCALAPPDATA 'ReTray/Branding'
 New-Item -ItemType Directory -Path $brand -Force | Out-Null
-Copy-Item -LiteralPath (Join-Path $installed.InstallLocation 'Assets/AppIcon.ico') -Destination (Join-Path $brand 'AppIcon.ico') -Force
+Copy-Item -LiteralPath (Join-Path $installed.InstallLocation 'Assets/DesktopIcon.ico') -Destination (Join-Path $brand 'DesktopIcon.ico') -Force
 $shell=New-Object -ComObject WScript.Shell
 $shortcutPath=Join-Path ([Environment]::GetFolderPath('Desktop')) 'ReTray.lnk'
 if(Test-Path -LiteralPath $shortcutPath) {
@@ -25,7 +25,7 @@ if(Test-Path -LiteralPath $shortcutPath) {
 $shortcut=$shell.CreateShortcut($shortcutPath)
 $shortcut.TargetPath=Join-Path $env:WINDIR 'explorer.exe'
 $shortcut.Arguments='shell:AppsFolder\'+$installed.PackageFamilyName+'!App'
-$shortcut.IconLocation=(Join-Path $brand 'AppIcon.ico')+',0'
+$shortcut.IconLocation=(Join-Path $brand 'DesktopIcon.ico')+',0'
 $shortcut.Description='ReTray — Redefine Your Tray'
 $shortcut.Save()
 Write-Host 'Installed for the current user. Open ReTray from Start.'

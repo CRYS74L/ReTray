@@ -6,7 +6,7 @@ namespace LanDeviceMonitor.Services;
 public sealed class StartupRegistrationService
 {
     internal const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
-    internal const string ValueName = "局域网设备助手";
+    internal const string ValueName = "\u5C40\u57DF\u7F51\u8BBE\u5907\u52A9\u624B";
     internal const string BackgroundArgument = "--background";
 
     public bool IsEnabled()

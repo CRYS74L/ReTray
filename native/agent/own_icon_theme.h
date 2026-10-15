@@ -18,8 +18,8 @@ inline bool WindowsUsesDarkMode() {
     return status == ERROR_SUCCESS && light == 0;
 }
 inline std::filesystem::path OwnIconAsset(const std::filesystem::path& root,
-                                         const std::wstring& custom, bool dark) {
+                                         const std::wstring& custom, bool /*dark*/) {
     if (!custom.empty()) return custom;
-    return root / L"Assets" / (dark ? L"TrayWhite.ico" : L"TrayBlack.ico");
+    return root / L"Assets" / L"WindowIcon.ico";
 }
 }

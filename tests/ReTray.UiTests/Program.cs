@@ -22,7 +22,8 @@ internal static class Program
             ("disabled automation switch cannot act", DisabledSwitch),
             ("owner identity recovery reenables bound tray toggle", IdentityRecovery),
             ("system theme follows Windows mode independently of app mode", WindowsTheme),
-            ("window taskbar branding overrides package artwork with valid relaunch metadata", TaskbarIdentity)
+            ("window taskbar branding overrides package artwork with valid relaunch metadata", TaskbarIdentity),
+            ("own row uses product identity rather than the agent executable name", OwnProductName)
         })
         {
             try { test(); Console.WriteLine($"PASS {name}"); }
@@ -40,6 +41,19 @@ internal static class Program
             "System theme must follow SystemUsesLightTheme, even when AppsUseLightTheme differs");
         Require(LanDeviceMonitor.Services.ThemeService.ResolveIsDark("Dark"), "Explicit dark was lost");
         Require(!LanDeviceMonitor.Services.ThemeService.ResolveIsDark("Light"), "Explicit light was lost");
+    }
+    private static void OwnProductName()
+    {
+        var json = JsonNode.Parse("""
+        {"key":"own","owned":true,"selector":{"executable":"C:\\ReTray\\ReTray.Agent.exe","hasGuid":false,"uid":1},
+         "nativeUid":1,"pid":123,"placement":1,"displayPixels":"","displayWidth":0,"displayHeight":0,
+         "originalPixels":"","originalWidth":0,"originalHeight":0}
+        """)!.AsObject();
+        var row = new IconRow(json);
+        Require(row.Name == "ReTray", "Own row exposed the agent process name");
+        json["owned"] = false;
+        row.Update(json);
+        Require(row.Name == "ReTray.Agent", "An unrelated process was renamed by filename alone");
     }
     private static void TaskbarIdentity()
     {

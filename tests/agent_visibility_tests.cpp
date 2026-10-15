@@ -190,6 +190,10 @@ BOOL WINAPI AgentTestCreateProcessW(LPCWSTR, LPWSTR command, LPSECURITY_ATTRIBUT
 }
 int WINAPI AgentTestMessageBoxW(HWND, LPCWSTR, LPCWSTR, UINT) { ++restartErrors; return IDOK; }
 BOOL WINAPI AgentTestNotifyIcon(DWORD operation, PNOTIFYICONDATAW data) {
+    if (operation == NIM_ADD || operation == NIM_MODIFY) {
+        CHECK((data->uFlags & NIF_SHOWTIP) != 0);
+        CHECK(wcslen(data->szTip) != 0);
+    }
     if (operation == NIM_ADD || operation == NIM_MODIFY || operation == NIM_DELETE) {
         ++ownPolicyWrites;
         if (auto error = std::exchange(ownPolicyNextError, 0)) { SetLastError(error); return FALSE; }
@@ -461,7 +465,7 @@ void OwnMenuUsesNativeDpiAndUpperRightAnchor() {
     TrayMenu();
     auto restored = GetThreadDpiAwarenessContext();
     SetThreadDpiAwarenessContext(previous);
-    CHECK(menuLabels == std::vector<std::wstring>({L"打开助手", L"重新启动", L"退出"}));
+    CHECK(menuLabels == std::vector<std::wstring>({L"打开", L"重新启动", L"退出"}));
     CHECK((menuFlags & TPM_BOTTOMALIGN) != 0);
     CHECK((menuFlags & (TPM_RIGHTALIGN | TPM_CENTERALIGN)) == 0);
     CHECK(AreDpiAwarenessContextsEqual(menuDpi, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2));

@@ -16,7 +16,7 @@ PS Tray Factory 的问题存在底层兼容性风险，不能只归为几个配�
 | --- | --- | --- |
 | 115645–115667，FUN_00496ebc | 构造 0x58 字节旧通知结构，flags=7，写 HWND、UID、callback、HICON 及短 ANSI 提示 | 这个结构不包含 GUID、完整状态及版本；是代码证据，尚未证明每一次自定义都会调用此分支 |
 | 116618–116659，原条目显示/恢复路径 | 用保存的条目构造通知包，调用 Shell_NotifyIconA(NIM_ADD) 两次 | 重新注册可能复活已经不应出现的条目；窗口仍存活不能证明其历史托盘注册仍有效 |
-| 115015–115087，自有图标修改及回调 | 自有代理使用 callback 0x4AD，按旧 mouse lParam 分派 | 这是助手自己的代理路径，不能与保留源 owner 的路径混为一谈；代理和现代源回调需分别处理 |
+| 115015–115087，自有图标修改及回调 | 自有代理使用 callback 0x4AD，按旧 mouse lParam 分派 | 这是ReTray自己的代理路径，不能与保留源 owner 的路径混为一谈；代理和现代源回调需分别处理 |
 | HKx64Dll_recovered.cpp 的 UpdateMainRecordFromMapping | 替代图标标志启用时把更新记录的图像字段换成固定句柄 | 如果这种处理覆盖空白/off 帧，会破坏闪烁及动态状态；这个 C++ 文件属于行为重建，未证明它逐字等于当前原厂实现 |
 | 当前 Taskbar.dll 匹配 PDB | LegacySystrayCompatStubs 的旧注册回调占位路径 | 与实际 RegisterCallback 返回 S_OK/cookie0/entries0 一致；不能继续把这套旧接口作为完整识别后端 |
 
@@ -33,7 +33,7 @@ PS Tray Factory 的问题存在底层兼容性风险，不能只归为几个配�
 
 这些结果证明本机存在可验证的现代原生识别路径。尚未验证显示层定制、排序、隐藏、事件安装/卸载及微信自定义后的实际闪烁和菜单。
 
-对应的原生当前图像 getter、图标 Changed 事件、promoted/overflow 集合变更事件和 MoveNotificationAreaIcon 方法已在匹配符号中定位。它们还需要正确的进程内 ABI 验证；只读取得的远程对象指针不能在助手进程直接当成本地 COM/WinRT 对象调用。
+对应的原生当前图像 getter、图标 Changed 事件、promoted/overflow 集合变更事件和 MoveNotificationAreaIcon 方法已在匹配符号中定位。它们还需要正确的进程内 ABI 验证；只读取得的远程对象指针不能在ReTray进程直接当成本地 COM/WinRT 对象调用。
 
 ## 微信兼容契约
 

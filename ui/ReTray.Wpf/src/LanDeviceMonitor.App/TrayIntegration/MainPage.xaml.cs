@@ -109,7 +109,7 @@ public partial class MainPage : UserControl
     {
         await TransferConfigurationAsync(async()=>{
             var picker=new Microsoft.Win32.SaveFileDialog {
-                Title=Localization.Text("导出配置"),Filter=Localization.Text("助手配置文件")+"|*.trayconfig",DefaultExt=".trayconfig",
+                Title=Localization.Text("导出配置"),Filter=Localization.Text("ReTray配置文件")+"|*.trayconfig",DefaultExt=".trayconfig",
                 FileName="ReTray-"+DateTime.Now.ToString("yyyyMMdd-HHmmss")+".trayconfig",AddExtension=true,OverwritePrompt=true };
             if(picker.ShowDialog(Window.GetWindow(this))!=true)return;
             if(!await FlushChangesAsync())return;
@@ -122,7 +122,7 @@ public partial class MainPage : UserControl
     {
         await TransferConfigurationAsync(async()=>{
             var picker=new Microsoft.Win32.OpenFileDialog {
-                Title=Localization.Text("导入配置"),Filter=Localization.Text("助手配置文件")+"|*.trayconfig;*.json",CheckFileExists=true,Multiselect=false };
+                Title=Localization.Text("导入配置"),Filter=Localization.Text("ReTray配置文件")+"|*.trayconfig;*.json",CheckFileExists=true,Multiselect=false };
             if(picker.ShowDialog(Window.GetWindow(this))!=true)return;
             var package=await ConfigurationArchive.ReadAsync(picker.FileName);
             var validation=await Vm.Pipe.RequestAsync("settings.validateImport",new(){["settings"]=package.Settings});CheckConfigurationReply(validation);

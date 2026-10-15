@@ -37,19 +37,19 @@
       <controls:BelowComboBox x:Name="LanguageChoice" Header="语言" SelectedIndex="{Binding LanguageIndex,Mode=TwoWay}" AutomationProperties.AutomationId="LanguageChoice"/>
      </StackPanel></Border>
      <Border Style="{StaticResource Card}"><StackPanel>
-      <TextBlock Text="助手图标" FontWeight="SemiBold" Margin="0,0,0,14"/>
-      <Grid MinHeight="32" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="显示助手托盘图标" VerticalAlignment="Center"/><ToggleButton Grid.Column="1" Style="{StaticResource SettingToggle}" IsChecked="{Binding OwnVisible,Mode=TwoWay}" AutomationProperties.AutomationId="OwnIconToggle"/></Grid>
+      <TextBlock Text="ReTray图标" FontWeight="SemiBold" Margin="0,0,0,14"/>
+      <Grid MinHeight="32" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="显示ReTray托盘图标" VerticalAlignment="Center"/><ToggleButton Grid.Column="1" Style="{StaticResource SettingToggle}" IsChecked="{Binding OwnVisible,Mode=TwoWay}" AutomationProperties.AutomationId="OwnIconToggle"/></Grid>
       <TextBlock Text="图标提示" Margin="0,0,0,6"/><TextBox Text="{Binding OwnTip,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" MaxLength="127" AutomationProperties.AutomationId="OwnIconTip" Margin="0,0,0,14"/>
-      <Button Content="选择助手图标…" Command="{Binding ChooseOwnIconCommand}" HorizontalAlignment="Left" Margin="0,0,0,8"/><TextBlock Text="{Binding OwnAsset}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/>
+      <Button Content="选择ReTray图标…" Command="{Binding ChooseOwnIconCommand}" HorizontalAlignment="Left" Margin="0,0,0,8"/><TextBlock Text="{Binding OwnAsset}" TextTrimming="CharacterEllipsis" FontSize="11" Foreground="{DynamicResource SecondaryTextBrush}"/>
      </StackPanel></Border>
      <Border Style="{StaticResource Card}"><StackPanel><TextBlock Text="系统图标" FontWeight="SemiBold" Margin="0,0,0,12"/><StackPanel x:Name="SystemList"/></StackPanel></Border>
      <Border Style="{StaticResource Card}"><StackPanel>
       <TextBlock Text="高级设置" FontWeight="SemiBold" Margin="0,0,0,14"/>
-      <Grid MinHeight="32" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="助手窗口置顶" VerticalAlignment="Center"/><ToggleButton Grid.Column="1" Style="{StaticResource SettingToggle}" IsChecked="{Binding UiTopmost,Mode=TwoWay}" AutomationProperties.AutomationId="TopmostToggle"/></Grid>
+      <Grid MinHeight="32" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="ReTray窗口置顶" VerticalAlignment="Center"/><ToggleButton Grid.Column="1" Style="{StaticResource SettingToggle}" IsChecked="{Binding UiTopmost,Mode=TwoWay}" AutomationProperties.AutomationId="TopmostToggle"/></Grid>
       <Grid MinHeight="32" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="隐藏开始按钮" VerticalAlignment="Center"/><ToggleButton Grid.Column="1" Style="{StaticResource SettingToggle}" IsChecked="{Binding HideStart,Mode=TwoWay}" AutomationProperties.AutomationId="HideStartToggle"/></Grid>
       <TextBlock Text="任务栏不透明度" Margin="0,0,0,6"/><Slider Minimum="40" Maximum="255" Value="{Binding TaskbarOpacity,Mode=TwoWay}" Margin="0,0,0,14" AutomationProperties.AutomationId="TaskbarOpacity"/>
       <Grid MinHeight="32" Margin="0,0,0,14"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock Text="自动按名称排序" VerticalAlignment="Center"/><ToggleButton Grid.Column="1" Style="{StaticResource SettingToggle}" IsChecked="{Binding AutoSort,Mode=TwoWay}" AutomationProperties.AutomationId="AutoSortToggle"/></Grid>
-      <TextBlock Text="打开助手快捷键" Margin="0,0,0,6"/><TextBox x:Name="OpenHotkey" IsReadOnly="True" PreviewKeyDown="OpenHotkeyKeyDown" Margin="0,0,0,14" AutomationProperties.AutomationId="OpenHotkey"/>
+      <TextBlock Text="打开快捷键" Margin="0,0,0,6"/><TextBox x:Name="OpenHotkey" IsReadOnly="True" PreviewKeyDown="OpenHotkeyKeyDown" Margin="0,0,0,14" AutomationProperties.AutomationId="OpenHotkey"/>
       <WrapPanel><Button Content="导出配置…" Click="ExportClick" Margin="0,0,8,0"/><Button Content="导入配置…" Click="ImportClick"/></WrapPanel>
      </StackPanel></Border>
     </StackPanel>

@@ -4,10 +4,10 @@
 
 | SVG 主文件 | 使用位置 |
 | --- | --- |
-| `retray-color.svg` | 任务栏、窗口、界面内标志；透明背景 |
-| `retray-black.svg` | 默认 Windows 浅色模式下的自身托盘图标 |
-| `retray-white.svg` | 默认 Windows 深色模式下的自身托盘图标 |
-| `retray-macos-white.svg` | EXE、桌面/开始菜单快捷方式、安装包与已安装应用标识 |
+| `retray-color.svg` | EXE、程序目录、开始菜单、安装包、任务栏、自身托盘、窗口和界面内标志；透明背景 |
+| `retray-black.svg` | 备用纯黑资源；不再用于默认托盘图标 |
+| `retray-white.svg` | 备用纯白资源；不再用于默认托盘图标 |
+| `retray-macos-white.svg` | 仅桌面快捷方式（`DesktopIcon.ico`） |
 
 定稿参数保存在 `geometry.json`：环带宽 110、中心圆盘 R112、尖端 R5、转角 R66.5、
 尖角延长 54.5，平滑圆弧 R133 / 24°，共 27 个独立的渐变色标。

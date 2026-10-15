@@ -65,7 +65,8 @@
     <Resource Include="Assets\AppIcon.ico" />
     <None Remove="Assets\WindowIcon.ico;Assets\TrayBlack.ico;Assets\TrayWhite.ico" />
     <Resource Include="Assets\WindowIcon.ico" />
-    <Content Include="Assets\WindowIcon.ico;Assets\TrayBlack.ico;Assets\TrayWhite.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Resource Include="Assets\BrandLogo.svg" />
+    <Content Include="Assets\DesktopIcon.ico;Assets\WindowIcon.ico;Assets\TrayBlack.ico;Assets\TrayWhite.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\WindowIcon.png;Assets\Square44x44Logo.targetsize-*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\*Logo*.png;Assets\SplashScreen*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
@@ -93,7 +94,7 @@
     <Resource Include="Assets\Fonts\Static\*.ttf">
       <Link>Assets\Fonts\WpfStatic\%(Filename)%(Extension)</Link>
     </Resource>
-    <Content Include="Assets\Fonts\Static\NotoSansSC-Regular.ttf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\Static\NotoSansSC-Regular.ttf;Assets\Fonts\Static\NotoSansSC-Medium.ttf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\Fonts\OFL.txt;Assets\Fonts\noto-font-manifest.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup><Content Include="ThirdParty\react-desktop\LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>

@@ -394,22 +394,34 @@ bool SetOwnIcon(bool reloadImage = true) {
     ownWindowsDark = WindowsUsesDarkMode();
     if (!ownImage) {
         ownImage = LoadAsset(OwnIconAsset(root, asset, ownWindowsDark), 0, pixelSize);
-        if (ownImage) ownImagePixelSize = pixelSize;
     }
-    if (!ownImage && asset.empty())
-        ownImage = CopyIcon(LoadIconW(nullptr, IDI_APPLICATION));
+    if (!ownImage && asset.empty()) {
+        auto fallback = static_cast<HICON>(LoadImageW(nullptr, IDI_APPLICATION,
+            IMAGE_ICON, pixelSize, pixelSize, LR_SHARED));
+        if (fallback) ownImage = CopyIcon(fallback);
+    }
     if (!ownImage)
         return false;
-    d.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
+    ownImagePixelSize = pixelSize;
+    d.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP;
     d.uCallbackMessage = OwnCallback;
     d.hIcon = ownImage;
     auto tip = Wide(policy.value("tip", std::string("ReTray")));
+    if (tip.empty() || tip.find_first_not_of(L" \t\r\n") == std::wstring::npos)
+        tip = L"ReTray";
     wcsncpy_s(d.szTip, std::size(d.szTip), tip.c_str(), _TRUNCATE);
-    bool ok = Shell_NotifyIconW(ownAdded ? NIM_MODIFY : NIM_ADD, &d) != FALSE;
+    const bool adding = !ownAdded;
+    bool ok = Shell_NotifyIconW(adding ? NIM_ADD : NIM_MODIFY, &d) != FALSE;
     if (ok) {
         ownAdded = true;
-        d.uVersion = NOTIFYICON_VERSION_4;
-        Shell_NotifyIconW(NIM_SETVERSION, &d);
+        if (adding) {
+            d.uVersion = NOTIFYICON_VERSION_4;
+            Shell_NotifyIconW(NIM_SETVERSION, &d);
+            // Apply the standard tooltip after the V4 transition; do not reset
+            // the notification version on every image/text modification.
+            d.uFlags = NIF_TIP | NIF_SHOWTIP;
+            ok = Shell_NotifyIconW(NIM_MODIFY, &d) != FALSE;
+        }
     }
     return ok;
 }
@@ -449,10 +461,11 @@ bool SetStartup(bool enabled, bool previousEnabled) {
         wchar_t local[32768]{};
         GetEnvironmentVariableW(L"LOCALAPPDATA", local, std::size(local));
         startupExecutable = std::filesystem::path(local) / L"Packages" / family.data() /
-                            L"LocalState" / L"Startup" / L"ReTray.Startup-v1.exe";
+                            L"LocalState" / L"Startup" / L"ReTray.Startup-v2.exe";
         try { std::filesystem::create_directories(startupExecutable.parent_path()); }
         catch (...) { SetLastError(ERROR_CANNOT_MAKE); return false; }
-        // The small v1 activator is version-independent and never reads personal settings.
+        // v2 carries the transparent color branding. It is otherwise a small,
+        // version-independent activator that never reads personal settings.
         if (!CopyFileW((root / L"ReTray.Startup.exe").c_str(), startupExecutable.c_str(), TRUE) &&
             GetLastError() != ERROR_FILE_EXISTS) return false;
         startupArguments = L"\"" + std::wstring(family.data()) + L"!Background\"";
@@ -746,9 +759,7 @@ void Refresh() {
         return;
     // Poll on the existing worker as well as reacting to normal shell refreshes.
     // A theme change must never replace a user's explicitly chosen image.
-    if (ownImagePixelSize != OwnIconPixelSize() ||
-        (settings["ownIcon"].value("asset", std::string{}).empty() &&
-         ownWindowsDark != WindowsUsesDarkMode()))
+    if (window && ownAdded && ownImage && ownImagePixelSize != OwnIconPixelSize())
         SetOwnIcon();
     if (importOwnPending && window && GetTickCount64() >= importOwnRetryAt) {
         if (SetOwnIcon()) { importOwnPending = false; importOwnRetryAt = 0; }
@@ -1169,8 +1180,8 @@ Json SetIconVisibility(const Json& data) {
         if (!SetOwnIcon(false)) {
             auto error = GetLastError();
             bool rolledBack = RollbackSettings(previous);
-            auto result = Result(false, rolledBack ? "助手图标更新失败，配置未改变"
-                                                  : "助手图标更新失败，配置回滚失败",
+            auto result = Result(false, rolledBack ? "ReTray图标更新失败，配置未改变"
+                                                  : "ReTray图标更新失败，配置回滚失败",
                                  rolledBack ? error : ERROR_WRITE_FAULT);
             result["saved"] = !rolledBack;
             return result;
@@ -1407,7 +1418,7 @@ Json Handle(const Json& req) {
         uiWindow = hwnd;
     } else if (method == "assistant.menu") {
         bool ok = PostMessageW(window, ShowTrayMenuMessage, 0, 0) != FALSE;
-        return Result(ok, "助手菜单", ok ? ERROR_SUCCESS : GetLastError());
+        return Result(ok, "ReTray菜单", ok ? ERROR_SUCCESS : GetLastError());
     } else if (method == "icons.reorder") {
         auto keys = d.at("keys");
         if (!keys.is_array() || keys.size() > MaxBridgeIcons)
@@ -1861,7 +1872,7 @@ void TrayMenu() {
         PostJob("internal.openUi");
     else if (selected == 2) {
         if (RestartAssistant() != ERROR_SUCCESS)
-            MessageBoxW(window, L"无法启动重启进程。当前助手与配置仍保留，请稍后重试。",
+            MessageBoxW(window, L"无法启动重启进程。当前ReTray与配置仍保留，请稍后重试。",
                         L"ReTray", MB_OK | MB_ICONERROR);
     } else if (selected == 3) {
         auto ui = uiWindow.load();
@@ -1920,6 +1931,10 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     if (msg == WM_CLOSE) {
+        // A native popup has its own modal loop. End it on its owning UI
+        // thread before posting WM_QUIT, otherwise shutdown can strand here
+        // after the worker/pipe have already stopped.
+        EndMenu();
         stopping = true;
         if (lifecycle.state != SessionState::SessionEnding)
             lifecycle.state = SessionState::UserStopping;

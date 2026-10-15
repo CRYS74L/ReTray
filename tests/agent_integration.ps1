@@ -39,7 +39,10 @@ try{
  if(($before.data|ConvertTo-Json -Depth 30 -Compress) -ne ($after.data|ConvertTo-Json -Depth 30 -Compress)){throw 'Rejected settings changed persisted configuration'}
  Start-Sleep -Milliseconds 1200
  if(!(Invoke-Agent 'status.read').data.ready){throw 'Agent failed after rejected configuration'}
- $stopwatch=[Diagnostics.Stopwatch]::StartNew();$stop=Invoke-Agent 'agent.stop';$agent.WaitForExit(1000)|Out-Null;$stopwatch.Stop();if(!$agent.HasExited -or $stopwatch.ElapsedMilliseconds -gt 1000){throw 'Agent exit missed bound'}
+ # A native menu owns a nested message loop; exit must close it before WM_QUIT.
+ if(!(Invoke-Agent 'assistant.menu').success){throw 'Own menu could not open'}
+ Start-Sleep -Milliseconds 150
+ $stopwatch=[Diagnostics.Stopwatch]::StartNew();$stop=Invoke-Agent 'agent.stop';$agent.WaitForExit(1000)|Out-Null;$stopwatch.Stop();if(!$agent.HasExited -or $stopwatch.ElapsedMilliseconds -gt 1000){throw 'Agent exit with an open menu missed bound'}
  "PASS real catalog, own icon, invalid config rejection and unchanged settings, QUERY/cancel $($watch.ElapsedMilliseconds)ms, stop $($stopwatch.ElapsedMilliseconds)ms; real shutdown remains untested"
 }finally{if(!$agent.HasExited){try{Invoke-Agent 'agent.stop'|Out-Null;$agent.WaitForExit(1000)|Out-Null}catch{}}}
 

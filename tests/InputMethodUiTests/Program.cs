@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -21,7 +22,8 @@ internal static class Program
             ("settings glyph ink is centered with a uniform thin outline",SettingsGlyphInk),
             ("P3 power matches approved proportions and has an unbroken arc",PowerMatchesPreview),
             ("page placeholders match controls and loading visibility",PagePlaceholders),
-            ("list dividers keep constant coverage through fractional scrolling",DividerScrollStability)})
+            ("list dividers keep constant coverage through fractional scrolling",DividerScrollStability),
+            ("caption uses vector artwork and smaller centered regular text",BrandCaptionAndVector)})
             try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e);}
         return failed==0?0:1;
     }
@@ -32,6 +34,36 @@ internal static class Program
         private bool mode;
         public bool UseReplacement{get=>mode;set{mode=value;PropertyChanged?.Invoke(this,new(nameof(UseReplacement)));}}
         public event PropertyChangedEventHandler? PropertyChanged;
+    }
+    private static void BrandCaptionAndVector()
+    {
+        var app = Application.Current ?? new Application();
+        var image = BrandArtwork.Image;
+        Require(image.IsFrozen, "Brand artwork must be an immutable vector drawing");
+        Require(Math.Abs(image.Width - 1024) < .001 && Math.Abs(image.Height - 1024) < .001,
+            $"Vector artwork lost the full-bleed bounds: {image.Width} × {image.Height}");
+        var visual = new DrawingVisual();
+        using (var dc = visual.RenderOpen()) dc.DrawImage(image, new Rect(0, 0, 320, 320));
+        var bitmap = new RenderTargetBitmap(320, 320, 96, 96, PixelFormats.Pbgra32);
+        bitmap.Render(visual);
+        var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        using (var file = File.Create(Path.Combine(AppContext.BaseDirectory, "brand-vector-reference.png"))) encoder.Save(file);
+
+        var caption = new BrandCaption { Foreground = Brushes.Black, Width = 100, Height = 16 };
+        System.Windows.Documents.TextElement.SetFontFamily(caption, new FontFamily("Segoe UI"));
+        caption.Measure(new Size(100, 16)); caption.Arrange(new Rect(0, 0, 100, 16)); caption.UpdateLayout();
+        // Render the control directly. VisualBrush's default Fill would stretch
+        // the tight text bounds back to the logo height, hiding size regressions.
+        var textBitmap = new RenderTargetBitmap(100, 16, 96, 96, PixelFormats.Pbgra32); textBitmap.Render(caption);
+        var bytes = new byte[100 * 16 * 4]; textBitmap.CopyPixels(bytes, 400, 0);
+        var rows = Enumerable.Range(0, 16).Where(y => Enumerable.Range(0, 100).Any(x => bytes[(y * 100 + x) * 4 + 3] > 32)).ToArray();
+        Require(rows.Length > 0 && rows[^1] - rows[0] + 1 <= 14,
+            "Caption text is oversized");
+        Require(Math.Abs((rows[^1] + rows[0] + 1) / 2d - 8) <= 1,
+            "Caption ink is not vertically centered");
+        LanDeviceMonitor.Services.ThemeService.Apply("Light");
+        Require((Color)app.Resources["SwitchOnColor"] == (Color)ColorConverter.ConvertFromString("#C58CFF"),
+            "Enabled switch lost the soft brand lavender");
     }
     private static IconChoiceRow Row(State state)=>new(state,nameof(state.Original),()=>state.AssetPreview,
         ()=>state.UseReplacement,value=>state.UseReplacement=value,new RelayCommand(()=>{}));

@@ -115,17 +115,17 @@
             </Border>
             <Border Style="{StaticResource Card}">
               <StackPanel Spacing="14">
-                <TextBlock Text="助手图标" FontWeight="SemiBold" />
+                <TextBlock Text="ReTray图标" FontWeight="SemiBold" />
                 <Grid MinHeight="32">
                   <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                   </Grid.ColumnDefinitions>
-                  <TextBlock Text="显示助手托盘图标" VerticalAlignment="Center" />
-                  <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Vm.OwnVisible, Mode=TwoWay}" AutomationProperties.Name="显示助手托盘图标" AutomationProperties.AutomationId="OwnIconToggle" />
+                  <TextBlock Text="显示ReTray托盘图标" VerticalAlignment="Center" />
+                  <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Vm.OwnVisible, Mode=TwoWay}" AutomationProperties.Name="显示ReTray托盘图标" AutomationProperties.AutomationId="OwnIconToggle" />
                 </Grid>
                 <TextBox Header="图标提示" MaxLength="127" Text="{x:Bind Vm.OwnTip, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.AutomationId="OwnIconTip" />
-                <Button Content="选择助手图标…" Command="{x:Bind Vm.ChooseOwnIconCommand}" HorizontalAlignment="Left" />
+                <Button Content="选择ReTray图标…" Command="{x:Bind Vm.ChooseOwnIconCommand}" HorizontalAlignment="Left" />
                 <TextBlock Text="{x:Bind Vm.OwnAsset, Mode=OneWay}" TextTrimming="CharacterEllipsis" FontSize="11" />
               </StackPanel>
             </Border>
@@ -143,8 +143,8 @@
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="Auto" />
                   </Grid.ColumnDefinitions>
-                  <TextBlock Text="助手窗口置顶" VerticalAlignment="Center" />
-                  <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Vm.UiTopmost, Mode=TwoWay}" AutomationProperties.Name="助手窗口置顶" AutomationProperties.AutomationId="TopmostToggle" />
+                  <TextBlock Text="ReTray窗口置顶" VerticalAlignment="Center" />
+                  <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Vm.UiTopmost, Mode=TwoWay}" AutomationProperties.Name="ReTray窗口置顶" AutomationProperties.AutomationId="TopmostToggle" />
                 </Grid>
                 <Grid MinHeight="32">
                   <Grid.ColumnDefinitions>
@@ -163,7 +163,7 @@
                   <TextBlock Text="自动按名称排序" VerticalAlignment="Center" />
                   <ToggleSwitch Grid.Column="1" IsOn="{x:Bind Vm.AutoSort, Mode=TwoWay}" AutomationProperties.Name="自动按名称排序" AutomationProperties.AutomationId="AutoSortToggle" />
                 </Grid>
-                <TextBox x:Name="Hotkey_open" Header="打开助手快捷键" Tag="open" IsReadOnly="True" KeyDown="HotkeyBox_KeyDown" />
+                <TextBox x:Name="Hotkey_open" Header="打开快捷键" Tag="open" IsReadOnly="True" KeyDown="HotkeyBox_KeyDown" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
                 </StackPanel>
               </StackPanel>

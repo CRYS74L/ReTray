@@ -1,7 +1,7 @@
 <Window x:Class="LanDeviceMonitor.TrayMenuWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="局域网设备助手"
+        Title="ReTray"
         FontFamily="{StaticResource AppTextFont}"
         Width="180"
         SizeToContent="Height"

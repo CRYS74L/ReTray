@@ -22,17 +22,18 @@ async function main(){
  for(const d of destinations)fs.mkdirSync(d,{recursive:true});
  async function write(file,bytes){for(const d of destinations)fs.writeFileSync(path.join(d,file),bytes);}
  for(const name of ['color','black','white','macos-white'])fs.writeFileSync(path.join(masters,'retray-'+name+'.png'),await render('retray-'+name,1024));
- await write('AppIcon.png',await render('retray-macos-white',1024));
+ await write('BrandLogo.svg',fs.readFileSync(path.join(masters,'retray-color.svg')));
+ await write('AppIcon.png',await render('retray-color',1024));
  await write('WindowIcon.png',await render('retray-color',1024));
- for(const [file,name]of [['AppIcon','macos-white'],['WindowIcon','color'],['TrayBlack','black'],['TrayWhite','white']])await write(file+'.ico',await ico('retray-'+name));
+ for(const [file,name]of [['AppIcon','color'],['DesktopIcon','macos-white'],['WindowIcon','color'],['TrayBlack','black'],['TrayWhite','white']])await write(file+'.ico',await ico('retray-'+name));
  for(const [base,w,h]of [['Square44x44Logo',44,44],['Square150x150Logo',150,150],['Wide310x150Logo',310,150],['SplashScreen',620,300]]){
-  await write(base+'.png',await render('retray-macos-white',w,h));
-  for(const scale of [100,125,150,200,250,300,400])await write(base+'.scale-'+scale+'.png',await render('retray-macos-white',Math.round(w*scale/100),Math.round(h*scale/100)));
+  await write(base+'.png',await render('retray-color',w,h));
+  for(const scale of [100,125,150,200,250,300,400])await write(base+'.scale-'+scale+'.png',await render('retray-color',Math.round(w*scale/100),Math.round(h*scale/100)));
  }
- await write('StoreLogo.png',await render('retray-macos-white',50));
- await write('LockScreenLogo.scale-200.png',await render('retray-macos-white',48));
- // Start/app list use the plate. TaskbarBranding supplies WindowIcon.ico to the running window.
- for(const size of sizes)for(const suffix of ['', '_altform-unplated','_altform-lightunplated'])await write('Square44x44Logo.targetsize-'+size+suffix+'.png',await render('retray-macos-white',size));
+ await write('StoreLogo.png',await render('retray-color',50));
+ await write('LockScreenLogo.scale-200.png',await render('retray-color',48));
+ // Only the desktop shortcut uses the white plate.
+ for(const size of sizes)for(const suffix of ['', '_altform-unplated','_altform-lightunplated'])await write('Square44x44Logo.targetsize-'+size+suffix+'.png',await render('retray-color',size));
  console.log(JSON.stringify({source:'approved SVG masters',icoSizes:sizes,variants:4,locations:destinations}));
 }
 main().catch(e=>{console.error(e);process.exitCode=1;});

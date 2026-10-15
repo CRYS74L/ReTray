@@ -13,6 +13,6 @@ Windows API 依据：
 
 回归覆盖实际版本目录变化、跨卷/架构变化、GUID 隔离、发布者/资源包/程序路径隔离、非法及伪造目录、旧式多图标安全、冲突规则。后台集成回归覆盖两次升级后自动重施图像和提示、目录呈现、规则内容未改写。
 
-验证命令：`build.ps1 -Target CoreTests` 和 `build.ps1 -Target AgentVisibilityTests`。本机验收读取规则与原生目录、更新助手后核对替换图标恢复，并保留 ChatGPT/Codex 与 Explorer 的运行进程。
+验证命令：`build.ps1 -Target CoreTests` 和 `build.ps1 -Target AgentVisibilityTests`。本机验收读取规则与原生目录、更新ReTray后核对替换图标恢复，并保留 ChatGPT/Codex 与 Explorer 的运行进程。
 
 本机最终验收：旧规则逐项保持，当前注册 custom=true、decision=CustomIdle、应用成功、无身份冲突；折叠托盘实拍出现原有紫蓝色终端替换图标。ChatGPT.exe 与 Explorer 的原 PID 和启动时间持续不变。43 项核心回归及后台集成回归通过，独立复核发现的嵌入 NUL 字符校验边界已修复并加入回归。

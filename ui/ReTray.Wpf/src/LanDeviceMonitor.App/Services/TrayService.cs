@@ -163,7 +163,7 @@ public sealed class TrayService : IDisposable
     }
 
     internal static string BuildNotifyIconText() =>
-        "局域网设备助手";
+        "ReTray";
 
     private static Icon LoadSystemIcon()
     {

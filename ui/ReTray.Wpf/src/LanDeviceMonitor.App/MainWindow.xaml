@@ -441,7 +441,7 @@
                                         ToolTipService.IsEnabled="False"
                                         AutomationProperties.Name="返回设备列表"/>
 
-<StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" shell:WindowChrome.IsHitTestVisibleInChrome="True" MouseRightButtonUp="TrayTitleMenu" MouseLeftButtonDown="TrayTitleDrag"><Image Source="Assets/WindowIcon.png" Width="16" Height="16" Margin="0,0,10,0"/><TextBlock Text="{Binding Title,RelativeSource={RelativeSource AncestorType=Window}}" FontSize="12" VerticalAlignment="Center"/></StackPanel>
+<StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" UseLayoutRounding="True" shell:WindowChrome.IsHitTestVisibleInChrome="True" MouseRightButtonUp="TrayTitleMenu" MouseLeftButtonDown="TrayTitleDrag"><Image x:Name="TitleBrandIcon" Source="{x:Static controls:BrandArtwork.Image}" Width="16" Height="16" Margin="0,0,10,0" SnapsToDevicePixels="True"/><controls:BrandCaption x:Name="TitleBrandCaption" Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center" Height="16" AutomationProperties.Name="ReTray"/></StackPanel>
             <StackPanel Orientation="Horizontal"
                         HorizontalAlignment="Right">
                 <Button Style="{StaticResource CaptionButtonStyle}"
@@ -484,8 +484,8 @@
                     <Grid x:Name="SidebarExpandedContent" Margin="18,18,4,18" HorizontalAlignment="Left">
                         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
                         <Grid x:Name="ShellIdentityRow" Height="44" Margin="12,0,14,0"><Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition/><ColumnDefinition Width="36"/></Grid.ColumnDefinitions>
-                            <Image x:Name="ShellAppIcon" Source="Assets/WindowIcon.png" Width="30" Height="30" HorizontalAlignment="Left" VerticalAlignment="Center"/>
-                            <AdornerDecorator Grid.Column="1" VerticalAlignment="Center" Margin="10,0,8,0"><controls:OpticalWeightTextBlock x:Name="ShellAppName" Style="{StaticResource CrispTextStyle}" Text="局域网设备助手" FontSize="18" FontWeight="Medium" TextTrimming="CharacterEllipsis"/></AdornerDecorator>
+                            <Image x:Name="ShellAppIcon" Source="{x:Static controls:BrandArtwork.Image}" Width="30" Height="30" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                            <AdornerDecorator Grid.Column="1" VerticalAlignment="Center" Margin="10,0,8,0"><controls:OpticalWeightTextBlock x:Name="ShellAppName" Style="{StaticResource CrispTextStyle}" Text="ReTray" FontSize="18" FontWeight="Medium" TextTrimming="CharacterEllipsis"/></AdornerDecorator>
                             <Button x:Name="SidebarToggleButton" Grid.Column="2" Style="{StaticResource SidebarIconButtonStyle}" Click="SidebarToggleButton_Click" ToolTip="收起侧栏" AutomationProperties.Name="收起侧栏"><Path Data="{StaticResource SidebarPanelGeometry}" Width="20" Height="17.426471" Stretch="Uniform" Fill="{DynamicResource MutedTextBrush}"/></Button>
                         </Grid>
                         <controls:SegmentedControl x:Name="DeviceFilterSegments" AnimationMilliseconds="480" SizeChanged="DeviceFilterSegments_SizeChanged" Grid.Row="3" Margin="0,14,14,14" Height="40" FontSize="14" SelectedIndex="0" SelectionChanged="DeviceFilterSegments_SelectionChanged" AutomationProperties.Name="设备状态筛选">
@@ -543,7 +543,7 @@
                            Width="86" Height="86" Stretch="Uniform"
                            HorizontalAlignment="Center" VerticalAlignment="Center"
                            RenderOptions.BitmapScalingMode="HighQuality"
-                           AutomationProperties.Name="局域网设备助手"/>
+                           AutomationProperties.Name="ReTray"/>
                 </Grid>
 
                 <ScrollViewer controls:DeviceListViewport.Enabled="True" x:Name="DetailPanel" Visibility="Collapsed"
@@ -1373,7 +1373,7 @@
                             <TextBlock x:Name="SettingsMessageText" Foreground="{DynamicResource TextBrush}" TextWrapping="Wrap"/>
                         </Border>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">
-                            <TextBlock Text="局域网设备助手 · " Foreground="{DynamicResource MutedTextBrush}" FontSize="12"/>
+                            <TextBlock Text="ReTray · " Foreground="{DynamicResource MutedTextBrush}" FontSize="12"/>
                             <TextBlock x:Name="AppVersionText" Foreground="{DynamicResource MutedTextBrush}" FontSize="12"/>
                         </StackPanel>
                     </StackPanel>

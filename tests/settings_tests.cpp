@@ -30,8 +30,8 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(systemPath.empty());
         auto settings = DefaultSettings();
         CHECK(ValidateSettings(settings));
-        CHECK(OwnIconAsset(directory, L"", true).filename() == L"TrayWhite.ico");
-        CHECK(OwnIconAsset(directory, L"", false).filename() == L"TrayBlack.ico");
+        CHECK(OwnIconAsset(directory, L"", true).filename() == L"WindowIcon.ico");
+        CHECK(OwnIconAsset(directory, L"", false).filename() == L"WindowIcon.ico");
         CHECK(OwnIconAsset(directory, L"custom.ico", true) == L"custom.ico");
         CHECK(OwnIconAsset(directory, L"custom.ico", false) == L"custom.ico");
         {

@@ -21,7 +21,7 @@ public sealed class PipeClient
             try { await pipe.ConnectAsync(800, deadline.Token); }
             catch (TimeoutException)
             {
-                if (!mayStart || App.IsExiting) throw new IOException("后台已停止。再次启动助手即可重新打开。");
+                if (!mayStart || App.IsExiting) throw new IOException("后台已停止。再次启动ReTray即可重新打开。");
                 mayStart = false;
                 var agent = Path.Combine(AppContext.BaseDirectory, "ReTray.Agent.exe");
                 if (!File.Exists(agent)) throw new IOException("后台文件缺失，请使用完整安装包。");

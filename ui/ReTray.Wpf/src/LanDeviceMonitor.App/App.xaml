@@ -14,7 +14,7 @@
             <SolidColorBrush x:Key="SegmentInactiveTextBrush" Color="{DynamicResource SegmentInactiveTextColor}"/>
             <Color x:Key="SegmentTrackColor">#08000000</Color>
             <Color x:Key="SegmentSelectionColor">#EEFFFFFF</Color>
-            <Color x:Key="SwitchOnColor">#C58CFF</Color><SolidColorBrush x:Key="SwitchOnBrush" Color="{DynamicResource SwitchOnColor}"/>
+            <Color x:Key="SwitchOnColor">#C183FF</Color><SolidColorBrush x:Key="SwitchOnBrush" Color="{DynamicResource SwitchOnColor}"/>
             <Color x:Key="SwitchOffColor">#B3D1D1D6</Color>
             <SolidColorBrush x:Key="SegmentTrackBrush" Color="{DynamicResource SegmentTrackColor}"/>
             <SolidColorBrush x:Key="SegmentSelectionBrush" Color="{DynamicResource SegmentSelectionColor}"/>

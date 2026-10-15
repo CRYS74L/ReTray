@@ -2,14 +2,13 @@ using System;
 using System.Globalization;
 using System.Linq;
 using System.Windows;
-using System.Windows.Documents;
 using System.Windows.Media;
 using System.Xml.Linq;
 
 namespace LanDeviceMonitor.Controls;
 
 // Keep the approved SVG's geometry and seven paint gradients as native WPF
-// drawings. The caption is rasterized once at the monitor's actual DPI.
+// drawings, rendered at the monitor's actual DPI.
 public static class BrandArtwork
 {
     private static readonly Lazy<DrawingImage> Artwork = new(Create);
@@ -108,52 +107,5 @@ public static class BrandArtwork
         var image = new DrawingImage(viewport);
         image.Freeze();
         return image;
-    }
-}
-
-// Use fractional glyph outlines and grayscale coverage on the translucent
-// title surface. Display grid fitting and an independently rounded baseline
-// made small letters look stepped and displaced them from the adjacent logo.
-public sealed class BrandCaption : FrameworkElement
-{
-    public static readonly DependencyProperty ForegroundProperty = DependencyProperty.Register(
-        nameof(Foreground), typeof(Brush), typeof(BrandCaption),
-        new FrameworkPropertyMetadata(Brushes.Black, FrameworkPropertyMetadataOptions.AffectsRender));
-    public Brush Foreground { get => (Brush)GetValue(ForegroundProperty); set => SetValue(ForegroundProperty, value); }
-    public BrandCaption()
-    {
-        UseLayoutRounding = true;
-        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
-        TextOptions.SetTextRenderingMode(this, TextRenderingMode.Grayscale);
-    }
-    private FormattedText Fit(out Rect ink, out double opticalCenter)
-    {
-        var typeface = new Typeface(TextElement.GetFontFamily(this), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
-        var text = new FormattedText("ReTray", CultureInfo.CurrentUICulture,
-            FlowDirection.LeftToRight, typeface, 13, Foreground, null,
-            TextFormattingMode.Ideal, VisualTreeHelper.GetDpi(this).PixelsPerDip);
-        ink = text.BuildGeometry(new Point()).Bounds;
-        opticalCenter = ink.Top + ink.Height / 2;
-        // A descending y gives the word a much lower outline bound than the
-        // main letter bodies. Balance the full outline with the capital body,
-        // so a mathematically centered box does not leave the word looking high.
-        if (typeface.TryGetGlyphTypeface(out var glyph))
-            opticalCenter = (opticalCenter + text.Baseline - 13 * glyph.CapsHeight / 2) / 2;
-        return text;
-    }
-    protected override Size MeasureOverride(Size availableSize)
-    {
-        Fit(out var ink, out _);
-        return new Size(Math.Ceiling(ink.Width + 2), 16);
-    }
-    protected override void OnRender(DrawingContext dc)
-    {
-        var text = Fit(out var ink, out var opticalCenter);
-        var dpi = VisualTreeHelper.GetDpi(this);
-        var x = Math.Round(-ink.Left * dpi.DpiScaleX) / dpi.DpiScaleX;
-        // Keep the optical text center on the logo center. Do not round the
-        // baseline separately: at 125/150% that moves it by almost a pixel.
-        var y = ActualHeight / 2 - opticalCenter;
-        dc.DrawText(text, new Point(x, y));
     }
 }

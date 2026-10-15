@@ -441,7 +441,7 @@
                                         ToolTipService.IsEnabled="False"
                                         AutomationProperties.Name="返回设备列表"/>
 
-<StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" UseLayoutRounding="True" shell:WindowChrome.IsHitTestVisibleInChrome="True" MouseRightButtonUp="TrayTitleMenu" MouseLeftButtonDown="TrayTitleDrag"><Image x:Name="TitleBrandIcon" Source="{x:Static controls:BrandArtwork.Image}" Width="16" Height="16" Margin="0,0,10,0" SnapsToDevicePixels="True"/><controls:BrandCaption x:Name="TitleBrandCaption" Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center" Height="16" AutomationProperties.Name="ReTray"/></StackPanel>
+<StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" UseLayoutRounding="True" shell:WindowChrome.IsHitTestVisibleInChrome="True" MouseRightButtonUp="TrayTitleMenu" MouseLeftButtonDown="TrayTitleDrag"><Image x:Name="TitleBrandIcon" Source="{x:Static controls:BrandArtwork.Image}" Width="16" Height="16" Margin="0,0,10,0" SnapsToDevicePixels="True"/><TextBlock x:Name="TitleBrandCaption" Text="ReTray" Style="{StaticResource BodyTextStyle}" FontSize="13" Margin="0,0,0,3" VerticalAlignment="Center" UseLayoutRounding="False" SnapsToDevicePixels="False" AutomationProperties.Name="ReTray"/></StackPanel>
             <StackPanel Orientation="Horizontal"
                         HorizontalAlignment="Right">
                 <Button Style="{StaticResource CaptionButtonStyle}"

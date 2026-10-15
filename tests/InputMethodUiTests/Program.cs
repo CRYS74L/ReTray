@@ -23,7 +23,7 @@ internal static class Program
             ("P3 power matches approved proportions and has an unbroken arc",PowerMatchesPreview),
             ("page placeholders match controls and loading visibility",PagePlaceholders),
             ("list dividers keep constant coverage through fractional scrolling",DividerScrollStability),
-            ("caption uses vector artwork and smaller centered regular text",BrandCaptionAndVector)})
+            ("caption uses body TextBlock rendering and genuine Regular face",BrandCaptionAndVector)})
             try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e);}
         return failed==0?0:1;
     }
@@ -59,13 +59,23 @@ internal static class Program
             "Caption must use genuine Regular outlines");
         foreach (var scale in new[] { 1d, 1.25, 1.5, 2d })
         {
-            var caption = new BrandCaption { Foreground = Brushes.Black, Width = 100, Height = 16 };
-            System.Windows.Documents.TextElement.SetFontFamily(caption, family);
-            VisualTreeHelper.SetRootDpi(caption, new DpiScale(scale, scale));
-            caption.Measure(new Size(100, 16)); caption.Arrange(new Rect(0, 0, 100, 16)); caption.UpdateLayout();
-            int width = (int)(100 * scale), height = (int)(16 * scale);
+            var source = System.Xml.Linq.XDocument.Load(Path.Combine(AppContext.BaseDirectory, "WindowTemplates.xaml"));
+            var element = source.Descendants().Single(e => (string?)e.Attribute(System.Xml.Linq.XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "TitleBrandCaption");
+            var caption = (TextBlock)System.Windows.Markup.XamlReader.Parse(element.ToString());
+            Require(caption.GetType() == typeof(TextBlock) && ReferenceEquals(caption.Style, app.Resources["BodyTextStyle"]),
+                "Caption must use the ordinary body TextBlock style without custom text drawing");
+            var body = new TextBlock { Text = "ReTray", FontSize = 13, Style = (Style)app.Resources["BodyTextStyle"] };
+            Require(TextOptions.GetTextRenderingMode(caption) == TextOptions.GetTextRenderingMode(body) &&
+                TextOptions.GetTextFormattingMode(caption) == TextOptions.GetTextFormattingMode(body) &&
+                TextOptions.GetTextHintingMode(caption) == TextOptions.GetTextHintingMode(body),
+                "Caption rendering options differ from body text");
+            var viewport = new Grid { Width = 100, Height = 32 };
+            viewport.Children.Add(caption);
+            VisualTreeHelper.SetRootDpi(viewport, new DpiScale(scale, scale));
+            viewport.Measure(new Size(100, 32)); viewport.Arrange(new Rect(0, 0, 100, 32)); viewport.UpdateLayout();
+            int width = (int)(100 * scale), height = (int)(32 * scale);
             var textBitmap = new RenderTargetBitmap(width, height, 96 * scale, 96 * scale, PixelFormats.Pbgra32);
-            textBitmap.Render(caption);
+            textBitmap.Render(viewport);
             var bytes = new byte[width * height * 4]; textBitmap.CopyPixels(bytes, width * 4, 0);
             var rows = Enumerable.Range(0, height).Where(y => Enumerable.Range(0, width).Any(x => bytes[(y * width + x) * 4 + 3] > 32)).ToArray();
             Require(rows.Length > 0 && rows[^1] - rows[0] + 1 <= 14 * scale, "Caption text is oversized");
@@ -84,7 +94,7 @@ internal static class Program
             Console.WriteLine($"Caption {scale * 100}%: rows {rows[0]}–{rows[^1]}, visual center {moment / coverage:F2}, logo center {height / 2d}");
         }
         LanDeviceMonitor.Services.ThemeService.Apply("Light");
-        Require((Color)app.Resources["SwitchOnColor"] == (Color)ColorConverter.ConvertFromString("#C58CFF"),
+        Require((Color)app.Resources["SwitchOnColor"] == (Color)ColorConverter.ConvertFromString("#C183FF"),
             "Enabled switch lost the soft brand lavender");
     }
     private static IconChoiceRow Row(State state)=>new(state,nameof(state.Original),()=>state.AssetPreview,

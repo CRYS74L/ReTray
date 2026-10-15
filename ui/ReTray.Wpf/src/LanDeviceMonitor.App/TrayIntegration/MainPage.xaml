@@ -1,0 +1,310 @@
+<UserControl xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:controls="clr-namespace:LanDeviceMonitor.Controls" xmlns:tray="clr-namespace:ReTray_App.Controls" xmlns:local="clr-namespace:ReTray_App" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" x:Class="ReTray_App.MainPage" UseLayoutRounding="False" SnapsToDevicePixels="False">
+  <UserControl.Resources>
+    <SolidColorBrush x:Key="ListDividerBrush" Color="{DynamicResource ListDividerColor}" />
+    <Style TargetType="ListBoxItem" x:Key="TrayListItemStyle">
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,0,0,5" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ListBoxItem">
+            <Grid x:Name="ItemMotionRoot" MinHeight="{TemplateBinding MinHeight}">
+              <Border Background="Transparent" />
+              <ContentPresenter Margin="{TemplateBinding Padding}" UseLayoutRounding="False" />
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="SettingToggle" TargetType="controls:SwitchControl" BasedOn="{StaticResource {x:Type controls:SwitchControl}}">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+    </Style>
+    <Style x:Key="TrayRowToggle" TargetType="controls:SwitchControl" BasedOn="{StaticResource SettingToggle}">
+      <Setter Property="LayoutTransform">
+        <Setter.Value>
+          <ScaleTransform ScaleX="0.74" ScaleY="0.74" />
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="SettingsCard" TargetType="Border" BasedOn="{StaticResource CardStyle}">
+      <Setter Property="Padding" Value="20,8" />
+      <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+    <Style x:Key="ReplacementIconButtonStyle" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource FooterButtonBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1.2" />
+      <Setter Property="Padding" Value="6" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid Background="Transparent">
+              <controls:RoundedCardBorder x:Name="ChoiceSurface" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" />
+              <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" />
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ChoiceSurface" Property="Background" Value="{DynamicResource ControlHoverBrush}" /></Trigger>
+              <Trigger Property="IsPressed" Value="True"><Setter TargetName="ChoiceSurface" Property="Background" Value="{DynamicResource FooterPressedBrush}" /><Setter Property="Opacity" Value="0.65" /></Trigger>
+              <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /></Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="FloatingCloseButtonStyle" TargetType="Button">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid Background="Transparent" RenderTransformOrigin="0.5,0.5">
+              <Border x:Name="CloseHover" Background="{DynamicResource ControlHoverBrush}" CornerRadius="16" Opacity="0" IsHitTestVisible="False" />
+              <Border x:Name="ClosePressed" Background="{DynamicResource FooterPressedBrush}" CornerRadius="16" Opacity="0" IsHitTestVisible="False" />
+              <ContentPresenter x:Name="CloseGlyph" HorizontalAlignment="Center" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5">
+                <ContentPresenter.RenderTransform><ScaleTransform /></ContentPresenter.RenderTransform>
+              </ContentPresenter>
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Trigger.EnterActions><BeginStoryboard><Storyboard>
+                  <DoubleAnimation Storyboard.TargetName="CloseHover" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.1" />
+                </Storyboard></BeginStoryboard></Trigger.EnterActions>
+                <Trigger.ExitActions><BeginStoryboard><Storyboard>
+                  <DoubleAnimation Storyboard.TargetName="CloseHover" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.1" />
+                </Storyboard></BeginStoryboard></Trigger.ExitActions>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="ClosePressed" Property="Opacity" Value="1" />
+                <Setter TargetName="CloseGlyph" Property="Opacity" Value="0.65" />
+                <Setter TargetName="CloseGlyph" Property="RenderTransform">
+                  <Setter.Value><ScaleTransform ScaleX="0.9" ScaleY="0.9" /></Setter.Value>
+                </Setter>
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="IconEditorScrollViewerStyle" TargetType="ScrollViewer" BasedOn="{StaticResource FadingDetailScrollViewerStyle}">
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="ScrollViewer">
+            <Grid Background="{TemplateBinding Background}">
+              <Grid x:Name="DetailViewportMask" Background="Transparent" ClipToBounds="True">
+                <ScrollContentPresenter x:Name="PART_ScrollContentPresenter" Margin="{TemplateBinding Padding}" Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}" CanContentScroll="{TemplateBinding CanContentScroll}" SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}" />
+              </Grid>
+              <!-- Overlay the existing right inset without reducing the content viewport. -->
+              <Grid Width="14" Margin="0,0,-14,0" HorizontalAlignment="Right" Visibility="{TemplateBinding ComputedVerticalScrollBarVisibility}">
+                <ScrollBar x:Name="PART_VerticalScrollBar" Width="10" MinWidth="0" HorizontalAlignment="Center" Orientation="Vertical" Margin="0,14,0,14" Style="{StaticResource WindowsSettingsScrollBarStyle}" Maximum="{TemplateBinding ScrollableHeight}" ViewportSize="{TemplateBinding ViewportHeight}" Value="{Binding VerticalOffset,RelativeSource={RelativeSource TemplatedParent},Mode=OneWay}" />
+              </Grid>
+            </Grid>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="ConfigurationButtonStyle" TargetType="Button" BasedOn="{StaticResource StudioActionButtonStyle}">
+      <Setter Property="controls:StudioControlMotion.UseSelectorSurface" Value="True" />
+      <!-- Match plain ComboBox text inset: 13 DIP padding + 2 DIP presenter margin. -->
+      <Setter Property="Padding" Value="15,0" />
+    </Style>
+    <Style x:Key="TrayMoreButtonStyle" TargetType="Button" BasedOn="{StaticResource FooterCircleButtonStyle}">
+      <Setter Property="Width" Value="{x:Static local:TrayRowMetrics.ActionDiameter}" />
+      <Setter Property="Height" Value="{x:Static local:TrayRowMetrics.ActionDiameter}" />
+      <Setter Property="MinWidth" Value="0" /><Setter Property="MinHeight" Value="0" />
+      <Setter Property="Template">
+        <Setter.Value>
+          <ControlTemplate TargetType="Button">
+            <Grid Background="Transparent">
+              <controls:CircleButtonBorder Background="{TemplateBinding Background}" CornerRadius="18" />
+              <Border x:Name="CircleHover" Margin="0.75" Background="{DynamicResource TrayMoreHoverBrush}" CornerRadius="17.25" Opacity="0" IsHitTestVisible="False" />
+              <Border x:Name="CirclePressed" Margin="0.75" Background="{DynamicResource FooterPressedBrush}" CornerRadius="17.25" Opacity="0" IsHitTestVisible="False" />
+              <controls:CircleButtonBorder Background="Transparent" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="18" IsHitTestVisible="False" />
+              <controls:CircleButtonBorder x:Name="CircleHoverOutline" Background="Transparent" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="18" Opacity="0" IsHitTestVisible="False" />
+              <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="IsMouseOver" Value="True">
+                <Trigger.EnterActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="CircleHover" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.1" />
+                      <DoubleAnimation Storyboard.TargetName="CircleHoverOutline" Storyboard.TargetProperty="Opacity" To="0.5" Duration="0:0:0.1" />
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.EnterActions>
+                <Trigger.ExitActions>
+                  <BeginStoryboard>
+                    <Storyboard>
+                      <DoubleAnimation Storyboard.TargetName="CircleHover" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.1" />
+                      <DoubleAnimation Storyboard.TargetName="CircleHoverOutline" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.1" />
+                    </Storyboard>
+                  </BeginStoryboard>
+                </Trigger.ExitActions>
+              </Trigger>
+              <Trigger Property="IsPressed" Value="True">
+                <Setter TargetName="CircleHover" Property="Visibility" Value="Collapsed" />
+                <Setter TargetName="CirclePressed" Property="Opacity" Value="1" />
+              </Trigger>
+              <Trigger Property="IsKeyboardFocused" Value="True">
+                <Setter TargetName="CircleHover" Property="Opacity" Value="1" />
+              </Trigger>
+            </ControlTemplate.Triggers>
+          </ControlTemplate>
+        </Setter.Value>
+      </Setter>
+    </Style>
+    <DataTemplate x:Key="IconRowTemplate">
+      <Grid Height="34" Background="Transparent">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="28" />
+          <ColumnDefinition />
+          <ColumnDefinition Width="Auto" />
+          <ColumnDefinition Width="Auto" />
+        </Grid.ColumnDefinitions>
+        <tray:TrayIconButton Width="28" Height="28" MinWidth="0" MinHeight="0" ImageSource="{Binding Image}" Tag="{Binding}" NativeAction="IconNativeAction" VerticalAlignment="Center" AutomationProperties.AutomationId="TrayNativeAction" AutomationProperties.Name="{Binding Name}" />
+        <TextBlock Grid.Column="1" Margin="8,0,8,0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+        <controls:SwitchControl Grid.Column="3" Style="{StaticResource TrayRowToggle}" Margin="0,0,4,0" IsChecked="{Binding Visible,Mode=OneWay}" IsEnabled="{Binding CanToggle}" Tag="{Binding}" Click="VisibilityClick" AutomationProperties.AutomationId="TrayVisibility" AutomationProperties.Name="{Binding Name}" />
+        <Button Grid.Column="2" Style="{StaticResource TrayMoreButtonStyle}" Margin="0,0,8,0" Tag="{Binding}" Click="IconSettingsClick" VerticalAlignment="Center" AutomationProperties.AutomationId="IconSettings" AutomationProperties.Name="图标设置">
+          <TextBlock Text="" FontFamily="{StaticResource AppIconFont}" FontSize="12" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" controls:GlyphInkAlignment.Enabled="True" />
+        </Button>
+        <local:PixelAlignedDivider Grid.Column="1" Grid.ColumnSpan="3" Height="0.5" Margin="8,0,0,0" Background="{DynamicResource ListDividerBrush}" VerticalAlignment="Bottom" IsHitTestVisible="False" />
+      </Grid>
+    </DataTemplate>
+  </UserControl.Resources>
+  <AdornerDecorator>
+    <Grid x:Name="PageRoot">
+      <Grid x:Name="PageContent">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="48" />
+          <RowDefinition />
+          <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <controls:SegmentedControl x:Name="Navigation" Margin="14,6,14,6" Height="36" SelectedIndex="0" SelectionChanged="Navigate" AutomationProperties.AutomationId="Navigation" AnimationMilliseconds="480" FontSize="14">
+          <controls:SegmentItem x:Name="NavIcons" Tag="icons" AutomationProperties.AutomationId="NavIcons">
+            <TextBlock Text="托盘图标" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=controls:SegmentItem}}" />
+          </controls:SegmentItem>
+          <controls:SegmentItem x:Name="NavSystem" Tag="system" AutomationProperties.AutomationId="NavSystem">
+            <TextBlock Text="系统图标" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=controls:SegmentItem}}" />
+          </controls:SegmentItem>
+          <controls:SegmentItem x:Name="NavSettings" Tag="settings" AutomationProperties.AutomationId="NavSettings">
+            <TextBlock Text="设置" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=controls:SegmentItem}}" />
+          </controls:SegmentItem>
+        </controls:SegmentedControl>
+        <Grid Grid.Row="1" Margin="14,0,0,0" x:Name="PagesHost" ClipToBounds="True">
+          <ListBox x:Name="IconList" Style="{StaticResource DeviceListBoxStyle}" ItemsSource="{Binding Icons}" ItemTemplate="{StaticResource IconRowTemplate}" AllowDrop="True" SelectionMode="Single" PreviewMouseLeftButtonDown="DragStarting" PreviewMouseMove="DragMoving" DragOver="DragOverRow" Drop="DropRow" AutomationProperties.AutomationId="TrayIconList">
+            <ListBox.ItemContainerStyle>
+              <Style TargetType="ListBoxItem" BasedOn="{StaticResource TrayListItemStyle}">
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="Margin" Value="0" />
+                <Setter Property="MinHeight" Value="34" />
+                <Setter Property="Focusable" Value="False" />
+              </Style>
+            </ListBox.ItemContainerStyle>
+          </ListBox>
+          <ScrollViewer x:Name="LoadingList" Style="{StaticResource DeviceListScrollViewerStyle}" controls:DeviceListViewport.Enabled="True" IsHitTestVisible="False" AutomationProperties.AutomationId="TrayLoadingPlaceholders">
+            <StackPanel x:Name="LoadingRows" />
+          </ScrollViewer>
+          <ScrollViewer x:Name="SystemView" Visibility="Collapsed" Style="{StaticResource FadingDetailScrollViewerStyle}" controls:DeviceListViewport.Enabled="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.AutomationId="SystemScroll">
+            <Grid>
+              <StackPanel x:Name="SystemList" />
+              <StackPanel x:Name="SystemLoadingRows" IsHitTestVisible="False" AutomationProperties.AutomationId="SystemLoadingPlaceholders" />
+            </Grid>
+          </ScrollViewer>
+          <ScrollViewer x:Name="SettingsView" Visibility="Collapsed" Style="{StaticResource FadingDetailScrollViewerStyle}" controls:DeviceListViewport.Enabled="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" AutomationProperties.AutomationId="SettingsScroll">
+            <Grid MinHeight="{Binding ViewportHeight, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
+              <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+              </Grid.RowDefinitions>
+              <StackPanel x:Name="SettingsLoadingRows" IsHitTestVisible="False" AutomationProperties.AutomationId="SettingsLoadingPlaceholders" />
+              <StackPanel x:Name="SettingsRows">
+                <Grid Margin="0,0,4,0" Height="34">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <Grid Margin="0,0,20,0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                    <local:SettingsIcon Kind="Startup" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}" IsHitTestVisible="False" />
+                    <TextBlock Grid.Column="1" Text="开机启动" Margin="8,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  </Grid>
+                  <controls:SwitchControl Grid.Column="1" IsChecked="{Binding Startup,Mode=TwoWay}" AutomationProperties.AutomationId="StartupToggle" Style="{StaticResource TrayRowToggle}" />
+                </Grid>
+                <local:PixelAlignedDivider Height="0.5" Background="{DynamicResource ListDividerBrush}" Margin="36,0,0,0" />
+                <Grid Margin="0,0,4,0" Height="34">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <Grid Margin="0,0,20,0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                    <local:SettingsIcon Kind="Theme" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}" IsHitTestVisible="False" />
+                    <TextBlock Grid.Column="1" Text="主题" Margin="8,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  </Grid>
+                  <ComboBox x:Name="ThemeChoice" Grid.Column="1" Width="132" SelectedIndex="{Binding ThemeIndex,Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.AutomationId="ThemeChoice" Height="28" MinHeight="28" />
+                </Grid>
+                <local:PixelAlignedDivider Height="0.5" Background="{DynamicResource ListDividerBrush}" Margin="36,0,0,0" />
+                <Grid Margin="0,0,4,0" Height="34">
+                  <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition Width="Auto" />
+                  </Grid.ColumnDefinitions>
+                  <Grid Margin="0,0,20,0" VerticalAlignment="Center">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                    <local:SettingsIcon Kind="Language" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}" IsHitTestVisible="False" />
+                    <TextBlock Grid.Column="1" Text="语言" Margin="8,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  </Grid>
+                  <ComboBox x:Name="LanguageChoice" Grid.Column="1" Width="132" SelectedIndex="{Binding LanguageIndex,Mode=TwoWay}" VerticalAlignment="Center" AutomationProperties.AutomationId="LanguageChoice" Height="28" MinHeight="28" />
+                </Grid>
+                <local:PixelAlignedDivider Height="0.5" Background="{DynamicResource ListDividerBrush}" Margin="36,0,0,0" />
+                <Grid Margin="0,0,4,0" Height="34">
+                  <Grid.ColumnDefinitions><ColumnDefinition /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                  <Grid VerticalAlignment="Center" Margin="0,0,12,0">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="28" /><ColumnDefinition /></Grid.ColumnDefinitions>
+                    <local:SettingsIcon Kind="Configuration" Width="28" Height="28" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource TextBrush}" IsHitTestVisible="False" />
+                    <TextBlock Grid.Column="1" Text="配置文件" Margin="8,0,0,0" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  </Grid>
+                  <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <Button x:Name="ExportConfigurationButton" Style="{StaticResource ConfigurationButtonStyle}" Content="导出配置" FontSize="{Binding FontSize,ElementName=LanguageChoice}" MinWidth="0" MinHeight="28" Height="28" Click="ExportConfigurationClick" AutomationProperties.AutomationId="ExportConfiguration" />
+                    <Button x:Name="ImportConfigurationButton" Style="{StaticResource ConfigurationButtonStyle}" Content="导入配置" FontSize="{Binding FontSize,ElementName=LanguageChoice}" MinWidth="0" MinHeight="28" Height="28" Margin="8,0,0,0" Click="ImportConfigurationClick" AutomationProperties.AutomationId="ImportConfiguration" />
+                  </StackPanel>
+                </Grid>
+                <TextBlock Text="{Binding ConfigurationStatus}" ToolTip="{Binding ConfigurationBackupPath}" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" TextWrapping="Wrap" Margin="4,5,4,4" AutomationProperties.AutomationId="ConfigurationStatus">
+                  <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Style.Triggers><DataTrigger Binding="{Binding ConfigurationStatus}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
+                </TextBlock>
+              </StackPanel>
+              <TextBlock x:Name="VersionText" Grid.Row="2" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" Margin="0,8,0,16" AutomationProperties.AutomationId="SoftwareVersion" />
+            </Grid>
+          </ScrollViewer>
+        </Grid>
+        <controls:RoundedCardBorder x:Name="ErrorNotice" Grid.Row="2" Style="{StaticResource CardStyle}" Visibility="Collapsed" Margin="14,0,14,12" Background="{DynamicResource DangerSurfaceBrush}" AutomationProperties.AutomationId="OperationError">
+          <StackPanel>
+            <TextBlock Text="{Binding Error}" Foreground="{DynamicResource DangerTextBrush}" TextWrapping="Wrap" Margin="0,0,0,8" />
+            <Button Content="重试" Command="{Binding ReconnectCommand}" HorizontalAlignment="Left" />
+          </StackPanel>
+        </controls:RoundedCardBorder>
+      </Grid>
+      <Grid x:Name="FloatingLayer" Panel.ZIndex="100" Background="#38000000" Visibility="Collapsed" MouseDown="FloatingBackgroundDown" KeyboardNavigation.TabNavigation="Cycle" AutomationProperties.AutomationId="FloatingLayer">
+        <controls:RoundedCardBorder x:Name="FloatingCard" Background="{DynamicResource FloatingSurfaceBrush}" BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="24" Padding="20" Margin="16" MaxWidth="420" HorizontalAlignment="Stretch" VerticalAlignment="Center" RenderTransformOrigin="0.5,0.5" AutomationProperties.AutomationId="IconEditorCard">
+          <controls:RoundedCardBorder.RenderTransform>
+            <TransformGroup>
+              <ScaleTransform x:Name="FloatingScale" />
+              <TranslateTransform x:Name="FloatingTranslate" />
+            </TransformGroup>
+          </controls:RoundedCardBorder.RenderTransform>
+          <ContentControl x:Name="FloatingContent" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+        </controls:RoundedCardBorder>
+      </Grid>
+    </Grid>
+  </AdornerDecorator>
+</UserControl>

@@ -4,11 +4,11 @@ $productRoot=Split-Path $PSScriptRoot -Parent
 $publishRoot=[System.IO.Path]::GetFullPath((Join-Path $productRoot 'publish'))
 $distRoot=[System.IO.Path]::GetFullPath((Join-Path $productRoot 'dist'))
 $version=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
-$activePaths=@(Get-Process -Name 'TrayAssistant.App','TrayAssistant.Agent' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path)
+$activePaths=@(Get-Process -Name 'ReTray.App','ReTray.Agent' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path)
 # A loose MSIX registration points at its build directory even while the app is
 # stopped. Never remove that directory just because no process is using it.
 try {
-    $registeredPackages=@(Get-AppxPackage -Name 'CRYS74L.TrayIconAssistant' -ErrorAction Stop)
+    $registeredPackages=@(Get-AppxPackage -Name 'CRYS74L.ReTray' -ErrorAction Stop)
     foreach($registered in $registeredPackages) {
         if([string]::IsNullOrWhiteSpace($registered.InstallLocation)) {
             Write-Warning 'Build copy cleanup skipped: the registered package location is unavailable.'

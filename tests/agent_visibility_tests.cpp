@@ -1,6 +1,9 @@
 #include "../native/shell/bridge_client.h"
 #include "../native/agent/settings.h"
 #include "../native/agent/logon_startup.h"
+#include "../native/agent/legacy_startup.h"
+DWORD AgentTestRetireLegacyLogonStartup();
+DWORD AgentTestRetireLegacyRunStartup();
 #include <algorithm>
 #include <cstdio>
 #include <memory>
@@ -85,6 +88,8 @@ struct AgentTestBridgeClient {
 #define CreateProcessW AgentTestCreateProcessW
 #define MessageBoxW AgentTestMessageBoxW
 #define SetLogonStartupResult AgentTestSetLogonStartupResult
+#define RetireLegacyLogonStartup AgentTestRetireLegacyLogonStartup
+#define RetireLegacyRunStartup AgentTestRetireLegacyRunStartup
 #define RegOpenKeyExW AgentTestRegOpenKeyExW
 #define RegQueryValueExW AgentTestRegQueryValueExW
 #define RegDeleteValueW AgentTestRegDeleteValueW
@@ -95,12 +100,17 @@ struct AgentTestBridgeClient {
 #undef RegQueryValueExW
 #undef RegOpenKeyExW
 #undef SetLogonStartupResult
+#undef RetireLegacyLogonStartup
+#undef RetireLegacyRunStartup
 #undef MessageBoxW
 #undef CreateProcessW
 #undef TrackPopupMenu
 #undef Shell_NotifyIconW
 #undef BridgeClient
 
+DWORD legacyTaskRetireError{}, legacyRunRetireError{};
+DWORD AgentTestRetireLegacyLogonStartup() { return legacyTaskRetireError; }
+DWORD AgentTestRetireLegacyRunStartup() { return legacyRunRetireError; }
 bool startupTaskEnabled{};
 unsigned startupTaskWrites{};
 DWORD startupTaskError{}, startupTaskRollbackError{};
@@ -241,6 +251,7 @@ void ResetFixture() {
     ownPolicyWrites = ownPolicyNextError = 0;
     startupTaskEnabled = false; startupTaskWrites = 0;
     startupTaskError = startupTaskRollbackError = 0;
+    legacyTaskRetireError = legacyRunRetireError = 0;
     inputMethodStamp.clear(); inputMethodEpoch = 0; appliedInputMethods.clear();
     inputMethodApplySuccess = true; inputMethodRetryAt = 0; inputMethodRollback = nullptr;
     startupRunOpenError = ERROR_FILE_NOT_FOUND; startupRunDeleteError = 0; startupRunCommand.clear();
@@ -463,7 +474,7 @@ void OwnRestartLaunchFailureKeepsCurrentAgentAndSettings() {
     TrayMenu();
     CHECK(restartLaunches == 1); CHECK(restartErrors == 1);
     CHECK(restartArguments.size() == 8);
-    CHECK(restartArguments[0] == (fixtureRoot / L"TrayAssistant.Agent.exe").wstring());
+    CHECK(restartArguments[0] == (fixtureRoot / L"ReTray.Agent.exe").wstring());
     CHECK(restartArguments[1] == L"--open"); CHECK(restartArguments[2] == L"--data");
     CHECK(restartArguments[3] == dataRoot.wstring()); CHECK(restartArguments[4] == L"--restart-wait");
     CHECK(restartInherits); CHECK(restartWaitHandlesValid);
@@ -1016,7 +1027,18 @@ void UnresolvedIdentityCannotPoisonConfiguration() {
     auto peerKey = IdentityKey(bridge.shared->icons[1].identity);
     CHECK(Call("icon.visibility", {{"key", peerKey}, {"visibility", 1}}).value("success", false));
 }
+void StartupRetirementFailureRestoresPreviousPreference() {
+    for (bool previous : {false, true}) for (bool taskFailure : {false, true}) {
+        ResetFixture(); settings["startup"] = previous; auto before = settings;
+        startupTaskEnabled = previous;
+        (taskFailure ? legacyTaskRetireError : legacyRunRetireError) = ERROR_ACCESS_DENIED;
+        auto reply = Call("settings.apply", {{"startup", !previous}});
+        CHECK(!reply.at("success").get<bool>());
+        CHECK(settings == before && startupTaskEnabled == previous && startupTaskWrites == 2);
+    }
+}
 void StartupRunPreflightFailureCannotChangeTask() {
+    StartupRetirementFailureRestoresPreviousPreference();
     for (bool previous : {false, true}) {
         ResetFixture(); settings["startup"] = previous; auto before = settings;
         startupTaskEnabled = previous; startupRunOpenError = ERROR_ACCESS_DENIED;
@@ -1040,7 +1062,7 @@ void StartupRunDeleteFailureRestoresTask() {
         ResetFixture(); settings["startup"] = previous; auto before = settings;
         startupTaskEnabled = previous; startupRunOpenError = ERROR_SUCCESS;
         startupRunDeleteError = ERROR_WRITE_FAULT;
-        startupRunCommand = L"\"" + (root / L"TrayAssistant.Agent.exe").wstring() + L"\" --background";
+        startupRunCommand = L"\"" + (root / L"ReTray.Agent.exe").wstring() + L"\" --background";
         auto reply = Call("settings.apply", {{"startup", !previous}});
         CHECK(!reply.value("success", true)); CHECK(settings == before);
         CHECK(startupTaskEnabled == previous);

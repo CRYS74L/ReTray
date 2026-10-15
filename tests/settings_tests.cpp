@@ -1,4 +1,6 @@
 #include "../native/agent/settings.h"
+#include "../native/agent/data_migration.h"
+#include "../native/agent/own_icon_theme.h"
 #include "../native/platform/input_profiles.h"
 #include "../native/platform/process_identity.h"
 #include <cstdio>
@@ -28,6 +30,71 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(systemPath.empty());
         auto settings = DefaultSettings();
         CHECK(ValidateSettings(settings));
+        CHECK(OwnIconAsset(directory, L"", true).filename() == L"TrayWhite.ico");
+        CHECK(OwnIconAsset(directory, L"", false).filename() == L"TrayBlack.ico");
+        CHECK(OwnIconAsset(directory, L"custom.ico", true) == L"custom.ico");
+        CHECK(OwnIconAsset(directory, L"custom.ico", false) == L"custom.ico");
+        {
+        auto local = directory / (L"migration-" + std::to_wstring(GetTickCount64()));
+        auto legacy = local / L"TrayIconAssistant";
+        std::filesystem::create_directories(legacy / L"Assets");
+        { std::ofstream asset(legacy / L"Assets" / L"custom.ico"); asset << "retained custom asset"; }
+        auto oldProfile = settings;
+        oldProfile["ownIcon"]["asset"] = Utf8((legacy / L"Assets" / L"custom.ico").wstring());
+        CHECK(SaveSettings(legacy / L"settings.json", oldProfile));
+        MigrateLegacyData(local);
+        bool migratedRecovered{};
+        auto migrated = LoadSettings(local / L"ReTray" / L"settings.json", migratedRecovered);
+        CHECK(migrated["ownIcon"]["asset"] == Utf8((local / L"ReTray" / L"Assets" / L"custom.ico").wstring()));
+        CHECK(std::filesystem::file_size(local / L"ReTray" / L"Assets" / L"custom.ico") == 21);
+        CHECK(std::filesystem::exists(legacy / L"settings.json"));
+        migrated["ownIcon"]["tip"] = "Retained after second launch";
+        CHECK(SaveSettings(local / L"ReTray" / L"settings.json", migrated));
+        MigrateLegacyData(local);
+        CHECK(LoadSettings(local / L"ReTray" / L"settings.json", migratedRecovered)["ownIcon"]["tip"] == "Retained after second launch");
+        for (const auto scenario : {L"backup-only", L"invalid-tip", L"broken-json"}) {
+            auto recoverLocal = local / scenario;
+            auto recoverLegacy = recoverLocal / L"TrayIconAssistant";
+            std::filesystem::create_directories(recoverLegacy);
+            { std::ofstream backup(recoverLegacy / L"settings.json.bak"); backup << DefaultSettings().dump(); }
+            if (std::wstring_view(scenario) == L"invalid-tip") {
+                auto invalid = DefaultSettings(); invalid["ownIcon"]["tip"] = 123;
+                std::ofstream primary(recoverLegacy / L"settings.json"); primary << invalid.dump();
+            } else if (std::wstring_view(scenario) == L"broken-json") {
+                std::ofstream primary(recoverLegacy / L"settings.json"); primary << "{broken";
+            }
+            MigrateLegacyData(recoverLocal);
+            bool recoveredBackup{};
+            auto recovery = LoadSettings(recoverLocal / L"ReTray" / L"settings.json", recoveredBackup);
+            CHECK(recoveredBackup && recovery["ownIcon"]["tip"] == "ReTray");
+        }
+        auto msixLocal = local / L"msix-profile";
+        auto loose = msixLocal / L"TrayIconAssistant";
+        auto redirected = msixLocal / L"Packages" / L"CRYS74L.TrayIconAssistant_testpublisher" /
+                          L"LocalCache" / L"Local" / L"TrayIconAssistant";
+        CHECK(SaveSettings(loose / L"settings.json", DefaultSettings()));
+        std::filesystem::last_write_time(loose / L"settings.json",
+            std::filesystem::file_time_type::clock::now() - std::chrono::hours(1));
+        auto msixSettings = DefaultSettings(); msixSettings["theme"] = "light";
+        msixSettings["ownIcon"]["asset"] = Utf8((loose / L"Assets" / L"selected.ico").wstring());
+        CHECK(SaveSettings(redirected / L"settings.json", msixSettings));
+        std::filesystem::create_directories(redirected / L"Assets");
+        { std::ofstream image(redirected / L"Assets" / L"selected.ico"); image << "selected"; }
+        MigrateLegacyData(msixLocal);
+        auto msixMigrated = LoadSettings(msixLocal / L"ReTray" / L"settings.json", migratedRecovered);
+        CHECK(msixMigrated["theme"] == "light");
+        CHECK(msixMigrated["ownIcon"]["asset"] == Utf8((msixLocal / L"ReTray" / L"Assets" / L"selected.ico").wstring()));
+        CHECK(std::filesystem::exists(msixLocal / L"ReTray" / L"Assets" / L"selected.ico"));
+        }
+        CHECK(settings["ownIcon"]["tip"] == "ReTray");
+        auto legacyOwn = settings;
+        legacyOwn["ownIcon"]["tip"] = "\u6258\u76d8\u56fe\u6807\u52a9\u624b";
+        legacyOwn["ownIcon"]["asset"] = "user-selected.ico";
+        auto upgradedOwn = NormalizeSettings(legacyOwn);
+        CHECK(upgradedOwn["ownIcon"]["tip"] == "ReTray");
+        CHECK(upgradedOwn["ownIcon"]["asset"] == "user-selected.ico");
+        legacyOwn["ownIcon"]["tip"] = "My custom tooltip";
+        CHECK(NormalizeSettings(legacyOwn)["ownIcon"]["tip"] == "My custom tooltip");
         for(const auto language:{"zh-Hant","ja"}) {
             auto localized=settings;localized["language"]=language;
             CHECK(SaveSettings(path,localized));bool restored{};

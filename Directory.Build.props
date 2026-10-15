@@ -1,5 +1,8 @@
 <Project>
   <PropertyGroup>
+    <Product>ReTray</Product>
+    <Company>CRYS74L</Company>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</Version>
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>

@@ -4,8 +4,8 @@ namespace tray {
 constexpr uint32_t BridgeMagic = 0x54494131;
 constexpr uint32_t BridgeSchema = 8;
 constexpr size_t MaxBridgeIcons = 256, MaxFramePixels = 4096;
-constexpr wchar_t InstallMessage[] = L"TrayAssistant.Bridge.Install.8";
-constexpr wchar_t CommandMessage[] = L"TrayAssistant.Bridge.Command.8";
+constexpr wchar_t InstallMessage[] = L"ReTray.Bridge.Install.8";
+constexpr wchar_t CommandMessage[] = L"ReTray.Bridge.Command.8";
 enum class BridgeOperation : uint32_t {
     Refresh = 1,
     Apply = 2,
@@ -84,10 +84,10 @@ struct BridgeState {
     BridgeIcon icons[MaxBridgeIcons];
 };
 inline std::wstring MappingName(uint32_t session) {
-    return L"Local\\TrayAssistant.Bridge.8." + std::to_wstring(session);
+    return L"Local\\ReTray.Bridge.8." + std::to_wstring(session);
 }
 inline std::wstring EndingEventName(uint32_t pid, uint64_t created) {
-    return L"Local\\TrayAssistant.Ending." + std::to_wstring(pid) + L"." + std::to_wstring(created);
+    return L"Local\\ReTray.Ending." + std::to_wstring(pid) + L"." + std::to_wstring(created);
 }
 inline CompactAdapter Compact(const SymbolAdapter& a) {
     CompactAdapter c;

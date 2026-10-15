@@ -1,0 +1,10 @@
+{
+  "profiles": {
+    "ReTray.App (Package)": {
+      "commandName": "MsixPackage"
+    },
+    "ReTray.App (Unpackaged)": {
+      "commandName": "Project"
+    }
+  }
+}

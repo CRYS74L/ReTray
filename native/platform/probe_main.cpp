@@ -4,7 +4,7 @@
 int wmain(int argc, wchar_t** argv) {
     try {
         if (argc < 2) {
-            std::cerr << "Usage: TrayAssistant.Probe.exe adapter.json [output.json]\n";
+            std::cerr << "Usage: ReTray.Probe.exe adapter.json [output.json]\n";
             return 2;
         }
         auto adapter = tray::LoadAdapter(argv[1]);

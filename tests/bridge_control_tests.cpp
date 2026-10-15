@@ -201,7 +201,7 @@ int wmain(int argc, wchar_t** argv) {
         CHECK(client.Command(menu));
         Sleep(150);
         PostMessageW(reinterpret_cast<HWND>(original.identity.ownerHwnd), WM_CANCELMODE, 0, 0);
-        auto statusName = L"Local\\TrayAssistant.TestSource." + std::to_wstring(sourcePid);
+        auto statusName = L"Local\\ReTray.TestSource." + std::to_wstring(sourcePid);
         auto statusMap = OpenFileMappingW(FILE_MAP_READ, FALSE, statusName.c_str());
         CHECK(statusMap != nullptr);
         auto bytes = static_cast<uint8_t*>(MapViewOfFile(statusMap, FILE_MAP_READ, 0, 0, 40));

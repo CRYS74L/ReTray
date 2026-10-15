@@ -1011,7 +1011,7 @@ void Install(HWND hwnd) {
     moduleBase = reinterpret_cast<uint64_t>(GetModuleHandleW(L"Taskbar.dll"));
     taskbar = hwnd;
     commandMessage = RegisterWindowMessageW(CommandMessage);
-    reconcileMessage = RegisterWindowMessageW(L"TrayAssistant.Bridge.Reconcile.1");
+    reconcileMessage = RegisterWindowMessageW(L"ReTray.Bridge.Reconcile.1");
     auto snapshot = ReadSnapshot(adapter, GetCurrentProcessId(), state->epoch, false);
     if (!snapshot.complete) {
         state->lastError = ERROR_BAD_EXE_FORMAT;

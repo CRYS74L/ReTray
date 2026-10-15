@@ -62,9 +62,9 @@ NOTIFYICONDATAW Data(bool guid, DWORD flags) {
     if (guid) {
         data.uFlags |= NIF_GUID;
         data.guidItem = GuidIcon;
-        wcscpy_s(data.szTip, L"TrayAssistant Test GUID");
+        wcscpy_s(data.szTip, L"ReTray Test GUID");
     } else
-        wcscpy_s(data.szTip, L"TrayAssistant Test Legacy");
+        wcscpy_s(data.szTip, L"ReTray Test Legacy");
     return data;
 }
 void Update(uint32_t color) {
@@ -110,7 +110,7 @@ LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         silentOwnerExit = true;
         DestroyWindow(hwnd);
         silentOwnerExit = false;
-        window = CreateWindowExW(0, L"TrayAssistant.TestSource", L"TrayAssistant controlled source",
+        window = CreateWindowExW(0, L"ReTray.TestSource", L"ReTray controlled source",
                                  0, 0, 0, 0, 0, nullptr, nullptr,
                                  GetModuleHandleW(nullptr), nullptr);
         status->hwnd = reinterpret_cast<uint64_t>(window);
@@ -153,7 +153,7 @@ LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         for (uint32_t i = 0; i < std::min<uint32_t>(200, w); ++i) {
             auto data = Data(false, NIF_ICON | NIF_TIP | NIF_MESSAGE);
             data.uID = 100 + i;
-            wcscpy_s(data.szTip, L"TrayAssistant load test");
+            wcscpy_s(data.szTip, L"ReTray load test");
             if (Shell_NotifyIconW(NIM_ADD, &data))
                 extras.insert(data.uID);
         }
@@ -245,7 +245,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR options, int) {
     if (wcsstr(options, L"--unique-guid"))
         GuidIcon.Data1 ^= GetCurrentProcessId();
     std::wstring name =
-        L"Local\\TrayAssistant.TestSource." + std::to_wstring(GetCurrentProcessId());
+        L"Local\\ReTray.TestSource." + std::to_wstring(GetCurrentProcessId());
     map = CreateFileMappingW(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, sizeof(SourceStatus),
                              name.c_str());
     status = static_cast<SourceStatus*>(
@@ -258,9 +258,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, LPWSTR options, int) {
     WNDCLASSW cls{};
     cls.lpfnWndProc = Procedure;
     cls.hInstance = instance;
-    cls.lpszClassName = L"TrayAssistant.TestSource";
+    cls.lpszClassName = L"ReTray.TestSource";
     RegisterClassW(&cls);
-    window = CreateWindowExW(0, cls.lpszClassName, L"TrayAssistant controlled source", 0, 0, 0, 0,
+    window = CreateWindowExW(0, cls.lpszClassName, L"ReTray controlled source", 0, 0, 0, 0,
                              0, nullptr, nullptr, instance, nullptr);
     status->hwnd = reinterpret_cast<uint64_t>(window);
     current = CreateColor(0xff248954);

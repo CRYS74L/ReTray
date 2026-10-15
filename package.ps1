@@ -12,31 +12,48 @@ if(!$SkipNative){foreach($target in @('Agent','Bridge')){& (Join-Path $productRo
 $publishRoot=[System.IO.Path]::GetFullPath((Join-Path $productRoot 'publish'))
 $layout=[System.IO.Path]::GetFullPath((Join-Path $publishRoot ($version+'-origin'+$BuildSuffix+'\layout')))
 if(!$layout.StartsWith($publishRoot+[System.IO.Path]::DirectorySeparatorChar,[System.StringComparison]::OrdinalIgnoreCase)){throw 'Publish layout must remain inside this product publish directory'}
-if(Test-Path -LiteralPath $layout){Remove-Item -LiteralPath $layout -Recurse -Force}
+if(Test-Path -LiteralPath $layout){
+    $usingLayout=@(Get-Process -Name 'ReTray.App','ReTray.Agent' -ErrorAction SilentlyContinue | Where-Object {
+        $_.Path -and $_.Path.StartsWith($layout+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)
+    })
+    $registered=Get-AppxPackage -Name 'CRYS74L.ReTray' -ErrorAction Stop
+    if($usingLayout.Count -or ($registered -and $registered.InstallLocation -eq $layout)){
+        throw 'This layout is running or registered. Choose a new BuildSuffix instead of overwriting it.'
+    }
+    Remove-Item -LiteralPath $layout -Recurse -Force
+}
 New-Item -ItemType Directory -Force -Path $layout | Out-Null
 $distribution=Join-Path $productRoot ('dist\'+$version)
 New-Item -ItemType Directory -Force -Path $distribution | Out-Null
-$originRoot=Join-Path $productRoot 'ui\TrayAssistant.Lan'
+& (Join-Path $productRoot 'packaging/build-assets.ps1')
+$originRoot=Join-Path $productRoot 'ui\ReTray.Wpf'
 $originProject=Join-Path $originRoot 'src\LanDeviceMonitor.App\LanDeviceMonitor.App.csproj'
 if(!(Test-Path -LiteralPath $originProject)){throw 'The complete LAN source project is missing'}
 Push-Location -LiteralPath $originRoot
 try{
-    & $dotnet publish $originProject -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=false -p:PublishReadyToRun=false -o $layout -v:minimal
+    & $dotnet publish $originProject -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=false -p:PublishReadyToRun=false -p:DebugType=None -p:DebugSymbols=false -o $layout -v:minimal
     if($LASTEXITCODE -ne 0){throw 'UI publish failed'}
 }finally{Pop-Location}
 $manifest=Join-Path $layout 'AppxManifest.xml'
-$doc=[xml](Get-Content -LiteralPath (Join-Path $productRoot 'ui\TrayAssistant.App\Package.appxmanifest') -Raw)
+$doc=[xml](Get-Content -LiteralPath (Join-Path $productRoot 'ui\ReTray.App\Package.appxmanifest') -Raw)
 $doc.Package.Identity.Version=$version+'.0'
 $mainApplication=$doc.Package.Applications.Application | Where-Object Id -eq 'App'
-$mainApplication.Executable='TrayAssistant.App.exe'
+$mainApplication.Executable='ReTray.App.exe'
 $mainApplication.EntryPoint='Windows.FullTrustApplication'
 $doc.Package.Resources.Resource.Language='zh-CN'
-# WPF has no generated PRI. Reference the real packaged artwork directly.
+# Index the SVG-derived scale/targetsize PNGs explicitly, including every scale
+# in the main package. Do not inherit a stale SDK-generated resource index.
 $doc.Package.Properties.Logo='Assets\StoreLogo.png'
-$mainApplication.VisualElements.Square150x150Logo='Assets\Square150x150Logo.scale-200.png'
-$mainApplication.VisualElements.Square44x44Logo='Assets\Square44x44Logo.scale-200.png'
-$mainApplication.VisualElements.DefaultTile.Wide310x150Logo='Assets\Wide310x150Logo.scale-200.png'
-$mainApplication.VisualElements.SplashScreen.Image='Assets\SplashScreen.scale-200.png'
+$mainApplication.VisualElements.Square150x150Logo='Assets\Square150x150Logo.png'
+$mainApplication.VisualElements.Square44x44Logo='Assets\Square44x44Logo.png'
+$mainApplication.VisualElements.DefaultTile.Wide310x150Logo='Assets\Wide310x150Logo.png'
+$mainApplication.VisualElements.SplashScreen.Image='Assets\SplashScreen.png'
+$backgroundApplication=$doc.Package.Applications.Application | Where-Object Id -eq 'Background'
+$backgroundApplication.VisualElements.Square150x150Logo='Assets\Square150x150Logo.png'
+$backgroundApplication.VisualElements.Square44x44Logo='Assets\Square44x44Logo.png'
+foreach($legal in @('LICENSE','NOTICE.md','README.md')) {
+    Copy-Item -LiteralPath (Join-Path $productRoot $legal) -Destination $layout -Force
+}
 $doc.Save($manifest)
 $signing=Join-Path $productRoot 'artifacts\signing'
 New-Item -ItemType Directory -Force -Path $signing | Out-Null
@@ -45,14 +62,20 @@ if(!(Test-Path -LiteralPath $certificate)){
     & winapp cert generate --publisher 'CN=CRYS74L' --output $certificate --export-cer --quiet
     if($LASTEXITCODE -ne 0){throw 'Development certificate creation failed'}
 }
-$package=Join-Path $distribution ('TrayIconAssistant-'+$version+'-x64.msix')
+$package=Join-Path $distribution ('ReTray-'+$version+'-x64.msix')
+& winapp tool makepri new /pr $layout /cf (Join-Path $productRoot 'packaging/priconfig.xml') /mn $manifest /of (Join-Path $layout 'resources.pri') /o | Out-Null
+if($LASTEXITCODE -ne 0){throw 'ReTray icon resource index generation failed'}
 & winapp package $layout --manifest $manifest --output $package --cert $certificate --skip-pri --quiet
 if($LASTEXITCODE -ne 0){throw 'MSIX packaging failed'}
 Copy-Item -LiteralPath (Join-Path $signing 'development.cer') -Destination (Join-Path $distribution 'development-certificate.cer') -Force
 Copy-Item -LiteralPath (Join-Path $productRoot 'packaging\Install.ps1') -Destination $distribution -Force
 Copy-Item -LiteralPath (Join-Path $productRoot 'packaging\安装助手.cmd') -Destination $distribution -Force
 Copy-Item -LiteralPath (Join-Path $productRoot 'packaging\README.txt') -Destination $distribution -Force
-$hash=Get-FileHash -LiteralPath $package -Algorithm SHA256
-Set-Content -LiteralPath (Join-Path $distribution 'SHA256.txt') -Value ($hash.Hash+'  '+(Split-Path $package -Leaf)) -Encoding utf8
+Copy-Item -LiteralPath (Join-Path $productRoot 'LICENSE') -Destination $distribution -Force
+Copy-Item -LiteralPath (Join-Path $productRoot 'NOTICE.md') -Destination $distribution -Force
+$portable=Join-Path $distribution ('ReTray-'+$version+'-win-x64.zip')
+Compress-Archive -Path (Join-Path $layout '*') -DestinationPath $portable -Force
+$hashes=@($package,$portable) | ForEach-Object { (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash+'  '+(Split-Path $_ -Leaf) }
+Set-Content -LiteralPath (Join-Path $distribution 'SHA256.txt') -Value $hashes -Encoding utf8
 Write-Host ('Build complete: '+$package)
-& (Join-Path $productRoot 'packaging\CleanBuildCopies.ps1') -KeepPublish (Split-Path $layout -Parent)
+# Build cleanup is an explicit maintenance operation; preserve previous runnable copies.

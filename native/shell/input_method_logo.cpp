@@ -134,7 +134,7 @@ void Apply(Target& t, const ImageSource& image) {
         t.opacity=t.source.ReadLocalValue(UIElement::OpacityProperty());
         t.binding=nullptr;
         if(auto b=t.source.GetBindingExpression(UIElement::OpacityProperty()))t.binding=b.ParentBinding();
-        t.overlay=Image();t.overlay.Name(L"TrayAssistantInputMethodLogo");t.overlay.IsHitTestVisible(false);
+        t.overlay=Image();t.overlay.Name(L"ReTrayInputMethodLogo");t.overlay.IsHitTestVisible(false);
         t.overlay.Stretch(Stretch::Uniform);t.overlay.Margin(t.source.Margin());
         t.overlay.HorizontalAlignment(t.source.HorizontalAlignment());t.overlay.VerticalAlignment(t.source.VerticalAlignment());
         Grid::SetRow(t.overlay,Grid::GetRow(t.source));Grid::SetColumn(t.overlay,Grid::GetColumn(t.source));
@@ -167,7 +167,7 @@ std::vector<Target> Locate() {
         std::vector<DependencyObject> nodes{host.element};
         while(!nodes.empty()) {
             auto node=nodes.back();nodes.pop_back();
-            if(auto leaf=node.try_as<FrameworkElement>();leaf && leaf.Name()!=L"TrayAssistantInputMethodLogo" &&
+            if(auto leaf=node.try_as<FrameworkElement>();leaf && leaf.Name()!=L"ReTrayInputMethodLogo" &&
                 (leaf.try_as<Image>() || leaf.try_as<TextBlock>() || leaf.try_as<FontIcon>())) {
                 if(auto parent=VisualTreeHelper::GetParent(leaf).try_as<Grid>()) {
                     auto old=std::find_if(targets.begin(),targets.end(),[&](const auto& t){return t.source==leaf;});
@@ -179,7 +179,7 @@ std::vector<Target> Locate() {
             auto count=VisualTreeHelper::GetChildrenCount(node);
             for(int i=0;i<count;++i) {
                 auto child=VisualTreeHelper::GetChild(node,i);
-                if(auto element=child.try_as<FrameworkElement>();element && element.Name()==L"TrayAssistantInputMethodLogo")continue;
+                if(auto element=child.try_as<FrameworkElement>();element && element.Name()==L"ReTrayInputMethodLogo")continue;
                 nodes.push_back(child);
             }
         }

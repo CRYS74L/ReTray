@@ -1,4 +1,4 @@
-# 托盘图标助手 Implementation Plan
+# ReTray Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -23,8 +23,8 @@
 - 源动态图像/off 帧及菜单由原应用控制；没有通用的新消息闪烁标志可供猜测。
 - 用户已明确授权按需停止当前 PS Tray Factory、Lyrics Tray Icon Fix 以及重启 Explorer；保留停止前状态和可恢复配置。Codex、ChatGPT、Clash Verge 和宿主关机/重启仍遵守原边界。
 - Shell 回调不等待外部进程/磁盘；会话查询目标 <50 ms，退出目标 <1 s；性能数字必须实测。
-- 新产品在 `托盘图标助手/` 独立目录；旧项目和 _analysis 中的逆向文件、PDB、账号/tooltip、机器快照不进入产品仓库。
-- 默认 private 仓库 CRYS74L/Tray-Icon-Assistant，每个有意义的项目提交有唯一 annotated tag 并推送；未完成功能使用 WIP 说明。
+- 新产品在 `ReTray/` 独立目录；旧项目和 _analysis 中的逆向文件、PDB、账号/tooltip、机器快照不进入产品仓库。
+- 默认 private 仓库 CRYS74L/ReTray，每个有意义的项目提交有唯一 annotated tag 并推送；未完成功能使用 WIP 说明。
 - 任何必备功能未完成或未验证，整体状态保持未完成，不用“构建成功”替代验收。
 
 ## Review Focus
@@ -52,7 +52,7 @@
 
 Task 1 的 SymbolAdapter 定义准确 PE/PDB 身份、关键方法入口及经验证的布局/接口；Task 2 在 `rule_engine.h` 定义 IconRule、FrameBaseline、CatalogDelta；Task 3 定义 BridgeStatus 和 PresentationPolicy；后续设置/窗口/菜单类型在各任务的对应公共 header 或 Contracts.cs 定义，不能复制另一套独立身份格式。
 
-以下文件名均相对于新产品 `托盘图标助手/`；计划与证据文件目前位于外层工作区，创建产品工程时复制经审阅的文档到产品 docs 并更新内部引用，不复制原厂或第三方 GPL 研究实现。
+以下文件名均相对于新产品 `ReTray/`；计划与证据文件目前位于外层工作区，创建产品工程时复制经审阅的文档到产品 docs 并更新内部引用，不复制原厂或第三方 GPL 研究实现。
 
 ### Task 1: 真实目录与当前帧的原生适配
 
@@ -106,7 +106,7 @@ Task 1 的 SymbolAdapter 定义准确 PE/PDB 身份、关键方法入口及经�
 
 ### Task 5: 现代 UI、持久配置与真实状态
 
-**Files:** `ui/TrayAssistant.App/`（App.xaml、MainWindow.xaml、Pages/IconsPage.xaml、IconDetailsPage.xaml、SettingsPage.xaml、DiagnosticsPage.xaml）、`ui/TrayAssistant.Shared/`（PipeClient.cs、Contracts.cs、SettingsStore.cs、IconAssetStore.cs）、`tests/ui-config-tests/`、`tests/ui-smoke.ps1`。
+**Files:** `ui/ReTray.App/`（App.xaml、MainWindow.xaml、Pages/IconsPage.xaml、IconDetailsPage.xaml、SettingsPage.xaml、DiagnosticsPage.xaml）、`ui/ReTray.Shared/`（PipeClient.cs、Contracts.cs、SettingsStore.cs、IconAssetStore.cs）、`tests/ui-config-tests/`、`tests/ui-smoke.ps1`。
 
 **Interfaces:** 消费 Task 4 管道契约；产生 `PipeClient.RequestAsync(Command, CancellationToken) -> CommandResult` 和 `SettingsStore.SaveAsync(SettingsDocument, CancellationToken)`；JSON 契约字段对应公共 native 类型，版本不一致明确报错。
 
@@ -119,7 +119,7 @@ Task 1 的 SymbolAdapter 定义准确 PE/PDB 身份、关键方法入口及经�
 
 ### Task 6: 完整菜单、快捷键和窗口最小化器
 
-**Files:** `native/agent/shortcuts.h/.cpp`、`native/agent/tray_menu.h/.cpp`、`native/agent/window_minimizer.h/.cpp`、`native/core/activity_policy.h/.cpp`、`ui/TrayAssistant.App/Pages/MinimizedAppsPage.xaml`、`tests/window_minimizer_tests.cpp`、`tests/menu_activity_tests.cpp`。
+**Files:** `native/agent/shortcuts.h/.cpp`、`native/agent/tray_menu.h/.cpp`、`native/agent/window_minimizer.h/.cpp`、`native/core/activity_policy.h/.cpp`、`ui/ReTray.App/Pages/MinimizedAppsPage.xaml`、`tests/window_minimizer_tests.cpp`、`tests/menu_activity_tests.cpp`。
 
 **Interfaces:** 产生 `InvokeOriginal(const IconIdentity&, IconAction, ScreenPoint) -> OperationResult`、`MinimizeWindow(WindowIdentity) -> OperationResult`、`RestoreWindows(RestoreScope) -> OperationResult`、`NextActivityDeadline(const IconRule&, ActivityState) -> Deadline`。
 
@@ -130,7 +130,7 @@ Task 1 的 SymbolAdapter 定义准确 PE/PDB 身份、关键方法入口及经�
 
 ### Task 7: Windows 11 内置控件与旧附加功能
 
-**Files:** `native/platform/system_tray_controls.h/.cpp`、`native/platform/taskbar_options.h/.cpp`、`native/core/protection.h/.cpp`、`ui/TrayAssistant.App/Pages/AdvancedPage.xaml`、`tests/system_controls_integration.ps1`、`docs/feature-coverage.md`。
+**Files:** `native/platform/system_tray_controls.h/.cpp`、`native/platform/taskbar_options.h/.cpp`、`native/core/protection.h/.cpp`、`ui/ReTray.App/Pages/AdvancedPage.xaml`、`tests/system_controls_integration.ps1`、`docs/feature-coverage.md`。
 
 **Interfaces:** 产生 `ReadSystemControls(const SymbolAdapter&) -> SystemControlsResult`、`ApplySystemControlPolicy(SystemControlId, ControlPolicy) -> OperationResult`、`ApplyTaskbarOptions(const TaskbarOptions&) -> OperationResult`、`SetProtection(const ProtectionPolicy&) -> OperationResult`；系统控件身份与应用 GUID/UID 不混用。
 

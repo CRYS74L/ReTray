@@ -3,6 +3,9 @@
 #include "../platform/user_security.h"
 #include "../shell/bridge_client.h"
 #include "settings.h"
+#include "own_icon_theme.h"
+#include "data_migration.h"
+#include "legacy_startup.h"
 #include "../platform/input_profiles.h"
 #include "logon_startup.h"
 #include "tray_menu_typography.h"
@@ -24,8 +27,8 @@
 using namespace tray;
 namespace {
 constexpr UINT OwnCallback = WM_APP + 101, OpenMessage = WM_APP + 102, UpdateHotkeys = WM_APP + 103;
-const UINT ExitInterfaceMessage = RegisterWindowMessageW(L"TrayAssistant.ExitInterface.v1");
-const UINT ShowTrayMenuMessage = RegisterWindowMessageW(L"TrayAssistant.ShowMenu.v1");
+const UINT ExitInterfaceMessage = RegisterWindowMessageW(L"ReTray.ExitInterface.v1");
+const UINT ShowTrayMenuMessage = RegisterWindowMessageW(L"ReTray.ShowMenu.v1");
 HWND window{};
 std::atomic<HWND> uiWindow{};
 
@@ -45,6 +48,8 @@ std::atomic<bool> stopping{};
 std::atomic<bool> ownOpenQueued{};
 std::atomic<unsigned> menuLanguageIndex{};
 HICON ownImage{};
+int ownImagePixelSize{};
+bool ownWindowsDark{};
 std::string ownIdentityKey;
 uint64_t ownIdentityEpoch{};
 std::unordered_map<std::string, IconRule> rules;
@@ -356,7 +361,7 @@ void OpenUI() {
     if (!length || length >= module.size())
         return;
     module.resize(length);
-    auto executable = std::filesystem::path(module).parent_path() / L"TrayAssistant.App.exe";
+    auto executable = std::filesystem::path(module).parent_path() / L"ReTray.App.exe";
     std::wstring command = L"\"" + executable.wstring() + L"\"";
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
@@ -369,7 +374,8 @@ void OpenUI() {
 }
 bool SetOwnIcon(bool reloadImage = true) {
     auto policy = settings["ownIcon"];
-    if (reloadImage && ownImage) {
+    const auto pixelSize = OwnIconPixelSize();
+    if ((reloadImage || ownImagePixelSize != pixelSize) && ownImage) {
         DestroyIcon(ownImage);
         ownImage = nullptr;
     }
@@ -385,8 +391,11 @@ bool SetOwnIcon(bool reloadImage = true) {
         return true;
     }
     auto asset = Wide(policy.value("asset", std::string{}));
-    if (!ownImage)
-        ownImage = asset.empty() ? LoadAsset(root / L"Assets" / L"AppIcon.ico") : LoadAsset(asset);
+    ownWindowsDark = WindowsUsesDarkMode();
+    if (!ownImage) {
+        ownImage = LoadAsset(OwnIconAsset(root, asset, ownWindowsDark), 0, pixelSize);
+        if (ownImage) ownImagePixelSize = pixelSize;
+    }
     if (!ownImage && asset.empty())
         ownImage = CopyIcon(LoadIconW(nullptr, IDI_APPLICATION));
     if (!ownImage)
@@ -394,7 +403,7 @@ bool SetOwnIcon(bool reloadImage = true) {
     d.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP;
     d.uCallbackMessage = OwnCallback;
     d.hIcon = ownImage;
-    auto tip = Wide(policy.value("tip", std::string("托盘图标助手")));
+    auto tip = Wide(policy.value("tip", std::string("ReTray")));
     wcsncpy_s(d.szTip, std::size(d.szTip), tip.c_str(), _TRUNCATE);
     bool ok = Shell_NotifyIconW(ownAdded ? NIM_MODIFY : NIM_ADD, &d) != FALSE;
     if (ok) {
@@ -406,7 +415,7 @@ bool SetOwnIcon(bool reloadImage = true) {
 }
 bool SetStartup(bool enabled, bool previousEnabled) {
     startupOutcome.erase("rollbackFailed");
-    std::filesystem::path startupExecutable = root / L"TrayAssistant.Agent.exe";
+    std::filesystem::path startupExecutable = root / L"ReTray.Agent.exe";
     std::wstring startupArguments = L"--background";
     UINT32 packageNameLength{};
     bool packaged = GetCurrentPackageFullName(&packageNameLength, nullptr) == ERROR_INSUFFICIENT_BUFFER;
@@ -422,7 +431,7 @@ bool SetStartup(bool enabled, bool previousEnabled) {
         if (key) {
             auto command = L"\"" + startupExecutable.wstring() + L"\" --background";
             wchar_t previous[32768]{}; DWORD bytes = sizeof(previous), type{};
-            auto code = RegQueryValueExW(key, L"TrayIconAssistant", nullptr, &type,
+            auto code = RegQueryValueExW(key, L"ReTray", nullptr, &type,
                                        reinterpret_cast<BYTE*>(previous), &bytes);
             if (code != ERROR_SUCCESS && code != ERROR_FILE_NOT_FOUND && code != ERROR_MORE_DATA) {
                 RegCloseKey(key); SetLastError(code); return false;
@@ -431,7 +440,7 @@ bool SetStartup(bool enabled, bool previousEnabled) {
                         previous[std::size(previous) - 1] == 0 && command == previous;
         }
     }
-    if (packaged && enabled) {
+    if (packaged && (enabled || previousEnabled)) {
         UINT32 familyLength{};
         GetCurrentPackageFamilyName(&familyLength, nullptr);
         std::vector<wchar_t> family(familyLength);
@@ -440,11 +449,11 @@ bool SetStartup(bool enabled, bool previousEnabled) {
         wchar_t local[32768]{};
         GetEnvironmentVariableW(L"LOCALAPPDATA", local, std::size(local));
         startupExecutable = std::filesystem::path(local) / L"Packages" / family.data() /
-                            L"LocalState" / L"Startup" / L"TrayAssistant.Startup-v1.exe";
+                            L"LocalState" / L"Startup" / L"ReTray.Startup-v1.exe";
         try { std::filesystem::create_directories(startupExecutable.parent_path()); }
         catch (...) { SetLastError(ERROR_CANNOT_MAKE); return false; }
         // The small v1 activator is version-independent and never reads personal settings.
-        if (!CopyFileW((root / L"TrayAssistant.Startup.exe").c_str(), startupExecutable.c_str(), TRUE) &&
+        if (!CopyFileW((root / L"ReTray.Startup.exe").c_str(), startupExecutable.c_str(), TRUE) &&
             GetLastError() != ERROR_FILE_EXISTS) return false;
         startupArguments = L"\"" + std::wstring(family.data()) + L"!Background\"";
     }
@@ -452,6 +461,16 @@ bool SetStartup(bool enabled, bool previousEnabled) {
     if (scheduled != ERROR_SUCCESS) {
         if (key) RegCloseKey(key);
         SetLastError(scheduled); return false;
+    }
+    auto retired = RetireLegacyLogonStartup();
+    if (retired == ERROR_SUCCESS || retired == ERROR_ALREADY_EXISTS)
+        retired = RetireLegacyRunStartup();
+    if (retired != ERROR_SUCCESS && retired != ERROR_ALREADY_EXISTS) {
+        auto restored = SetLogonStartupResult(startupExecutable, previousEnabled,
+                                              StartupTaskName(), startupArguments);
+        if (restored != ERROR_SUCCESS) startupOutcome["rollbackFailed"] = true;
+        if (key) RegCloseKey(key);
+        SetLastError(restored == ERROR_SUCCESS ? retired : restored); return false;
     }
     if (packaged) {
         // Keep the existing extension as an upgrade fallback until our task is created.
@@ -464,7 +483,7 @@ bool SetStartup(bool enabled, bool previousEnabled) {
             GetCurrentApplicationUserModelId(&applicationLength, application.data()) == ERROR_SUCCESS &&
             std::wstring_view(application.data()).ends_with(L"!App")) {
             try {
-                auto operation = winrt::Windows::ApplicationModel::StartupTask::GetAsync(L"TrayAssistantStartup");
+                auto operation = winrt::Windows::ApplicationModel::StartupTask::GetAsync(L"ReTrayStartup");
                 auto deadline = GetTickCount64() + 3000;
                 while (operation.Status() == winrt::Windows::Foundation::AsyncStatus::Started &&
                        !stopping && GetTickCount64() < deadline)
@@ -481,7 +500,7 @@ bool SetStartup(bool enabled, bool previousEnabled) {
     }
     // Only an exact legacy command is retired. Failure restores the task's prior preference.
     if (retireRun) {
-        auto code = RegDeleteValueW(key, L"TrayIconAssistant");
+        auto code = RegDeleteValueW(key, L"ReTray");
         if (code != ERROR_SUCCESS && code != ERROR_FILE_NOT_FOUND) {
             auto restored = SetLogonStartupResult(startupExecutable, previousEnabled,
                                                   StartupTaskName(), startupArguments);
@@ -725,6 +744,12 @@ bool ReconcileNativeCatalog(bool force = false) {
 void Refresh() {
     if (!ShouldRecover(lifecycle) || stopping)
         return;
+    // Poll on the existing worker as well as reacting to normal shell refreshes.
+    // A theme change must never replace a user's explicitly chosen image.
+    if (ownImagePixelSize != OwnIconPixelSize() ||
+        (settings["ownIcon"].value("asset", std::string{}).empty() &&
+         ownWindowsDark != WindowsUsesDarkMode()))
+        SetOwnIcon();
     if (importOwnPending && window && GetTickCount64() >= importOwnRetryAt) {
         if (SetOwnIcon()) { importOwnPending = false; importOwnRetryAt = 0; }
         else importOwnRetryAt = GetTickCount64() + 3000;
@@ -734,7 +759,7 @@ void Refresh() {
         if (!ExplorerPid())
             return;
         bridge.Reset();
-        if (!bridge.Attach(adapter, root / L"TrayAssistant.ShellBridge.dll"))
+        if (!bridge.Attach(adapter, root / L"ReTray.ShellBridge.dll"))
             return;
         seenSequence = -1;
         lastCatalogRefresh = 0;
@@ -873,7 +898,7 @@ std::string Bytes64(const uint32_t* pixels, size_t count) {
 const Frame& OwnOriginalPreview() {
     static std::filesystem::path loadedPath;
     static Frame preview;
-    auto path = root / L"Assets" / L"AppIcon.ico";
+    auto path = OwnIconAsset(root, L"", WindowsUsesDarkMode());
     if (loadedPath != path || preview.pixels.empty()) {
         loadedPath = path;
         auto image = LoadAsset(path);
@@ -912,7 +937,7 @@ Json CatalogJson() {
             j["asset"] = settings["ownIcon"].value("asset", std::string{});
             j["replacementAsset"] = j["asset"].get_ref<const std::string&>().empty()
                 ? settings["ownIcon"].value("replacementAsset", std::string{}) : j["asset"].get<std::string>();
-            j["tip"] = settings["ownIcon"].value("tip", std::string("托盘图标助手"));
+            j["tip"] = settings["ownIcon"].value("tip", std::string("ReTray"));
         }
         j["key"] = key;
         j["registration"] = row.registration;
@@ -976,7 +1001,7 @@ HANDLE AssistantUiProcess(HWND hwnd, DWORD access = PROCESS_QUERY_LIMITED_INFORM
     DWORD currentPid{};
     GetWindowThreadProcessId(hwnd, &currentPid);
     if (!read || currentPid != pid ||
-        _wcsicmp(path, (root / L"TrayAssistant.App.exe").c_str()) != 0) {
+        _wcsicmp(path, (root / L"ReTray.App.exe").c_str()) != 0) {
         CloseHandle(process);
         return nullptr;
     }
@@ -1063,7 +1088,7 @@ DWORD RestartAssistant() {
         auto error = GetLastError(); DeleteProcThreadAttributeList(attributes);
         closeHandles(); return error;
     }
-    auto executable = root / L"TrayAssistant.Agent.exe";
+    auto executable = root / L"ReTray.Agent.exe";
     auto command = QuoteCommandArgument(executable.wstring()) + L" --open --data " +
                    QuoteCommandArgument(dataRoot.wstring()) + L" --restart-wait";
     for (auto handle : handles)
@@ -1423,7 +1448,7 @@ Json Handle(const Json& req) {
             {"ready", lifecycle.state == SessionState::Ready},
             {"state", static_cast<int>(lifecycle.state.load())},
             {"connected", bridge.Alive()},
-            {"version", TRAY_ASSISTANT_VERSION},
+            {"version", RETRAY_VERSION},
 
             {"environment", environmentOutcome},
             {"identity", identityOutcome},
@@ -1704,7 +1729,7 @@ DWORD WINAPI Serve(void*) {
     if (!sd)
         return 1;
     SECURITY_ATTRIBUTES sa{sizeof(sa), sd, FALSE};
-    auto name = L"\\\\.\\pipe\\TrayAssistant.v1." + std::to_wstring(session);
+    auto name = L"\\\\.\\pipe\\ReTray.v1." + std::to_wstring(session);
     while (WaitForSingleObject(stopEvent, 0) == WAIT_TIMEOUT) {
         HANDLE pipe = CreateNamedPipeW(name.c_str(), PIPE_ACCESS_DUPLEX,
                                        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT |
@@ -1759,7 +1784,7 @@ DWORD WINAPI Worker(void*) {
             jobs.swap(requests);
         }
         for (auto& request : jobs) {
-            SetPropW(window, L"TrayAssistant.Busy", reinterpret_cast<HANDLE>(1));
+            SetPropW(window, L"ReTray.Busy", reinterpret_cast<HANDLE>(1));
             try {
                 request->output = Handle(request->input);
             } catch (const std::exception& e) {
@@ -1768,7 +1793,7 @@ DWORD WINAPI Worker(void*) {
             if (request->input.is_object() && request->input.contains("method") &&
                 request->input["method"] == "internal.openUi")
                 ownOpenQueued = false;
-            RemovePropW(window, L"TrayAssistant.Busy");
+            RemovePropW(window, L"ReTray.Busy");
             request->output["requestId"] = request->input.is_object() &&
                                                    request->input.contains("requestId") &&
                                                    request->input["requestId"].is_string()
@@ -1837,7 +1862,7 @@ void TrayMenu() {
     else if (selected == 2) {
         if (RestartAssistant() != ERROR_SUCCESS)
             MessageBoxW(window, L"无法启动重启进程。当前助手与配置仍保留，请稍后重试。",
-                        L"托盘图标助手", MB_OK | MB_ICONERROR);
+                        L"ReTray", MB_OK | MB_ICONERROR);
     } else if (selected == 3) {
         auto ui = uiWindow.load();
         if (!IsAssistantUi(ui) || !PostMessageW(ui, ExitInterfaceMessage, 0, 0))
@@ -1926,7 +1951,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     bool legacyAutomaticLaunch = argc == 1 &&
         GetCurrentPackageFullName(&startupPackageLength, nullptr) == ERROR_INSUFFICIENT_BUFFER;
     bool background = true;
-    bool restartWaiting{};
+    bool restartWaiting{}, migrateOnly{}, explicitData{};
     HANDLE restartHandles[3]{};
 
     wchar_t executable[32768]{};
@@ -1934,14 +1959,16 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     root = std::filesystem::path(executable).parent_path();
     wchar_t local[32768]{};
     GetEnvironmentVariableW(L"LOCALAPPDATA", local, 32768);
-    dataRoot = std::filesystem::path(local) / L"TrayIconAssistant";
+    dataRoot = std::filesystem::path(local) / L"ReTray";
     for (int i = 1; i < argc; ++i) {
         if (std::wstring(args[i]) == L"--background")
             background = true;
         else if (std::wstring(args[i]) == L"--open")
             background = false;
-        else if (std::wstring(args[i]) == L"--data" && i + 1 < argc)
-            dataRoot = args[++i];
+        else if (std::wstring(args[i]) == L"--data" && i + 1 < argc) {
+            dataRoot = args[++i]; explicitData = true;
+        } else if (std::wstring(args[i]) == L"--migrate-data")
+            migrateOnly = true;
         else if (std::wstring(args[i]) == L"--restart-wait") {
             if (i + 3 >= argc) { LocalFree(args); return 1; }
             restartWaiting = true;
@@ -1955,6 +1982,11 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         }
     }
     LocalFree(args);
+    if (!explicitData) {
+        try { MigrateLegacyData(std::filesystem::path(local)); }
+        catch (...) { return ERROR_WRITE_FAULT; }
+    }
+    if (migrateOnly) return 0;
     if (restartWaiting) {
         bool inherited = restartHandles[0] && restartHandles[2];
         for (auto handle : restartHandles) {
@@ -1974,7 +2006,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         return 1;
     SECURITY_ATTRIBUTES security{sizeof(security), sd, FALSE};
     singleton = CreateMutexW(&security, FALSE,
-                             (L"Local\\TrayAssistant.Agent." + std::to_wstring(session)).c_str());
+                             (L"Local\\ReTray.Agent." + std::to_wstring(session)).c_str());
     auto mutexError = GetLastError();
     if (sd)
         LocalFree(sd);
@@ -1982,18 +2014,19 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         return 1;
     if (mutexError == ERROR_ALREADY_EXISTS) {
         if (!background)
-            PostMessageW(FindWindowW(L"TrayAssistant.Agent", nullptr), OpenMessage, 0, 0);
+            PostMessageW(FindWindowW(L"ReTray.Agent", nullptr), OpenMessage, 0, 0);
         CloseHandle(singleton);
         return 0;
     }
     try {
         settingsPath = dataRoot / L"settings.json";
-        bool firstUse = !std::filesystem::exists(settingsPath);
+        bool firstUse = !std::filesystem::exists(settingsPath) &&
+                        !std::filesystem::exists(dataRoot / L"settings.json.bak");
         settings = LoadSettings(settingsPath, recovered);
         if (firstUse) {
             wchar_t common[32768]{};
             GetEnvironmentVariableW(L"PROGRAMDATA", common, std::size(common));
-            auto defaults = std::filesystem::path(common) / L"TrayIconAssistant" / L"Defaults" /
+            auto defaults = std::filesystem::path(common) / L"ReTray" / L"Defaults" /
                             L"settings.json";
             if (std::filesystem::is_regular_file(defaults)) {
                 bool ignored{};
@@ -2011,8 +2044,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         }
         // Refresh the action after a package update and migrate the old enabled mechanism.
         // Disabled users are not silently opted into startup.
-        if (settings.value("startup", false)) {
-            auto ok = SetStartup(true, true);
+        {
+            auto enabled = settings.value("startup", false);
+            auto ok = SetStartup(enabled, enabled);
             startupOutcome = Result(ok, ok ? "登录计划任务已更新" : "登录计划任务更新失败",
                                     ok ? 0 : GetLastError());
         }
@@ -2052,9 +2086,9 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         WNDCLASSW wc{};
         wc.hInstance = instance;
         wc.lpfnWndProc = WindowProc;
-        wc.lpszClassName = L"TrayAssistant.Agent";
+        wc.lpszClassName = L"ReTray.Agent";
         RegisterClassW(&wc);
-        window = CreateWindowW(wc.lpszClassName, L"托盘图标助手后台", WS_OVERLAPPED, 0, 0, 0, 0,
+        window = CreateWindowW(wc.lpszClassName, L"ReTray后台", WS_OVERLAPPED, 0, 0, 0, 0,
                                nullptr, nullptr, instance, nullptr);
         if (!window)
             throw std::runtime_error("Session window unavailable");

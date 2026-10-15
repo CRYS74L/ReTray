@@ -1,0 +1,8 @@
+{
+  "name": "retray-build-assets",
+  "private": true,
+  "license": "GPL-3.0-only",
+  "engines": { "node": ">=22" },
+  "scripts": { "build": "node build-assets.cjs" },
+  "devDependencies": { "sharp": "0.35.5" }
+}

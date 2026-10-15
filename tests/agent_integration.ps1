@@ -12,21 +12,21 @@ public static class AgentTestNative {
 '@
 function Invoke-Agent($method,$data=@{}) {
  $session=(Get-Process -Id $PID).SessionId
- $pipe=[IO.Pipes.NamedPipeClientStream]::new('.',"TrayAssistant.v1.$session",[IO.Pipes.PipeDirection]::InOut)
+ $pipe=[IO.Pipes.NamedPipeClientStream]::new('.',"ReTray.v1.$session",[IO.Pipes.PipeDirection]::InOut)
  try{$pipe.Connect(3000);$utf8=[Text.UTF8Encoding]::new($false);$writer=[IO.StreamWriter]::new($pipe,$utf8,4096,$true);$writer.AutoFlush=$true;$reader=[IO.StreamReader]::new($pipe,$utf8,$false,4096,$true)
  $writer.WriteLine((@{schema=1;requestId='test';method=$method;data=$data}|ConvertTo-Json -Depth 12 -Compress))
  $task=$reader.ReadLineAsync();if(!$task.Wait(5000)){throw 'IPC response timeout'};return $task.Result|ConvertFrom-Json -Depth 30
  }finally{if($writer){$writer.Dispose()};if($reader){$reader.Dispose()};$pipe.Dispose()}
 }
 $dataDir=Join-Path $product ('artifacts\agent-integration-'+[guid]::NewGuid().ToString('N'))
-if(Get-Process TrayAssistant.Agent -ErrorAction SilentlyContinue){throw 'Stop the running assistant before starting isolated agent acceptance'}
-$agent=Start-Process -FilePath (Join-Path $product 'build\TrayAssistant.Agent.exe') -ArgumentList @('--background','--data',('"'+$dataDir+'"')) -WindowStyle Hidden -PassThru
+if(Get-Process ReTray.Agent -ErrorAction SilentlyContinue){throw 'Stop the running assistant before starting isolated agent acceptance'}
+$agent=Start-Process -FilePath (Join-Path $product 'build\ReTray.Agent.exe') -ArgumentList @('--background','--data',('"'+$dataDir+'"')) -WindowStyle Hidden -PassThru
 try{
  $limit=[DateTime]::UtcNow.AddSeconds(8);do{try{$status=Invoke-Agent 'status.read';if($status.success -and $status.data.ready){break};Start-Sleep -Milliseconds 100}catch{Start-Sleep -Milliseconds 200}}while([DateTime]::UtcNow -lt $limit)
  if(!$status.success -or !$status.data.ready){throw 'Agent did not attach existing tray inventory'}
  $catalog=Invoke-Agent 'catalog.read';if(!$catalog.success -or $catalog.data.icons.Count -lt 1){throw 'Empty real catalog'}
  $own=Invoke-Agent 'ownIcon.apply' @{visible=$false;asset='';tip='test'};if(!$own.success -or !$own.saved){throw 'Own icon policy not saved/applied'}
- $window=[AgentTestNative]::FindWindow('TrayAssistant.Agent',[IntPtr]::Zero);if($window -eq [IntPtr]::Zero){throw 'Missing session window'}
+ $window=[AgentTestNative]::FindWindow('ReTray.Agent',[IntPtr]::Zero);if($window -eq [IntPtr]::Zero){throw 'Missing session window'}
  $watch=[Diagnostics.Stopwatch]::StartNew();$reply=[AgentTestNative]::SendMessage($window,0x11,[UIntPtr]::Zero,[IntPtr]::Zero);$watch.Stop();if($reply -ne [IntPtr]1 -or $watch.ElapsedMilliseconds -gt 50){throw 'Session query refused/slow'}
  [void][AgentTestNative]::SendMessage($window,0x16,[UIntPtr]::Zero,[IntPtr]::Zero)
  if(!(Invoke-Agent 'status.read').data.ready){throw 'Cancelled session did not return ready'}

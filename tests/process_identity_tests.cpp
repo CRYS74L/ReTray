@@ -42,8 +42,8 @@ int wmain(int argc, wchar_t** argv) {
         std::puts("PASS unavailable owner clears stale identity");
     } catch (const std::exception& error) { ++failed; std::fprintf(stderr, "FAIL %s\n", error.what()); }
     auto suffix = std::to_wstring(GetCurrentProcessId()) + L"." + std::to_wstring(GetTickCount64());
-    auto readyName = L"Local\\TrayAssistant.OwnerTest.Ready." + suffix;
-    auto stopName = L"Local\\TrayAssistant.OwnerTest.Stop." + suffix;
+    auto readyName = L"Local\\ReTray.OwnerTest.Ready." + suffix;
+    auto stopName = L"Local\\ReTray.OwnerTest.Stop." + suffix;
     auto ready = CreateEventW(nullptr, TRUE, FALSE, readyName.c_str());
     auto stop = CreateEventW(nullptr, TRUE, FALSE, stopName.c_str());
     PROCESS_INFORMATION child{};

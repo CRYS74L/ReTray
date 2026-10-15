@@ -31,4 +31,4 @@
 
 `build.ps1 -Target SettingsTests / CoreTests / AgentSystemTests / AgentVisibilityTests / BitmapTests / BridgeRegistrationTests`。
 
-`tests/InputMethodUiTests` 与 `tests/TrayAssistant.UiTests` 为真实控件回归。`build.ps1 -Target InputMethodLiveTests` 只编译真实桥接驱动，运行需确保助手已正常退出，并传入适配器、桥接 DLL 和实际标志中心坐标；它不会重启 Explorer，也不修改输入法配置。
+`tests/InputMethodUiTests` 与 `tests/ReTray.UiTests` 为真实控件回归。`build.ps1 -Target InputMethodLiveTests` 只编译真实桥接驱动，运行需确保助手已正常退出，并传入适配器、桥接 DLL 和实际标志中心坐标；它不会重启 Explorer，也不修改输入法配置。

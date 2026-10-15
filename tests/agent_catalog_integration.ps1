@@ -6,7 +6,7 @@ if(!$SkipBuild){
     if($LASTEXITCODE -ne 0){throw 'Source build failed'}
 }
 if($ReopenCount -lt 1 -or $ReopenCount -gt 20){throw 'ReopenCount must be between 1 and 20'}
-$sourcePath=Join-Path $productRoot 'build\TrayAssistant.TestSource.exe'
+$sourcePath=Join-Path $productRoot 'build\ReTray.TestSource.exe'
 $sourceSelector=$sourcePath.ToLowerInvariant()
 $sources=[Collections.Generic.List[Diagnostics.Process]]::new()
 $results=[Collections.Generic.List[object]]::new()
@@ -23,7 +23,7 @@ public static class CatalogLifecycleNative {
 }
 function Invoke-CatalogAgent([string]$Method,$Data=@{}){
     $session=(Get-Process -Id $PID).SessionId
-    $pipe=[IO.Pipes.NamedPipeClientStream]::new('.',"TrayAssistant.v1.$session",[IO.Pipes.PipeDirection]::InOut)
+    $pipe=[IO.Pipes.NamedPipeClientStream]::new('.',"ReTray.v1.$session",[IO.Pipes.PipeDirection]::InOut)
     $writer=$null;$reader=$null
     try{
         $pipe.Connect(3000);$encoding=[Text.UTF8Encoding]::new($false)
@@ -56,7 +56,7 @@ function Start-LifecycleSource{
     $deadline=[DateTime]::UtcNow.AddSeconds(4);$map=$null;$view=$null
     try{
         do{
-            try{$map=[IO.MemoryMappedFiles.MemoryMappedFile]::OpenExisting("Local\TrayAssistant.TestSource.$($process.Id)");break}
+            try{$map=[IO.MemoryMappedFiles.MemoryMappedFile]::OpenExisting("Local\ReTray.TestSource.$($process.Id)");break}
             catch{if($process.HasExited){throw 'Controlled source exited during startup'};Start-Sleep -Milliseconds 50}
         }while([DateTime]::UtcNow -lt $deadline)
         if(!$map){throw 'Missing source status mapping'}
@@ -123,7 +123,7 @@ try{
     $elapsed=Wait-SourceCount 0
     if($first.Process.HasExited){throw 'Window-only test must keep the process alive'}
     $results.Add([pscustomobject]@{test='owner-window-exit-with-process-alive';removedAfterMs=$elapsed})
-    $map=[IO.MemoryMappedFiles.MemoryMappedFile]::OpenExisting("Local\TrayAssistant.TestSource.$($first.Process.Id)")
+    $map=[IO.MemoryMappedFiles.MemoryMappedFile]::OpenExisting("Local\ReTray.TestSource.$($first.Process.Id)")
     $view=$map.CreateViewAccessor(0,0,[IO.MemoryMappedFiles.MemoryMappedFileAccess]::Read)
     try{$newWindow=[IntPtr]::new([long]$view.ReadUInt64(8))}finally{$view.Dispose();$map.Dispose()}
     if([CatalogLifecycleNative]::SendMessage($newWindow,0x801d,[IntPtr]::Zero,[IntPtr]::Zero) -ne [IntPtr]1){throw 'Re-register in same process failed'}

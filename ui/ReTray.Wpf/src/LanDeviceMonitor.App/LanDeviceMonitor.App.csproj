@@ -1,0 +1,114 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <WindowsPackageType>None</WindowsPackageType>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <AssemblyName>ReTray.App</AssemblyName>
+    <RootNamespace>LanDeviceMonitor</RootNamespace>
+    <Product>ReTray</Product>
+    <Company>CRYS74L</Company>
+    <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
+    <Title>ReTray</Title>
+    <AssemblyTitle>ReTray</AssemblyTitle>
+    <Description>整理 Windows 托盘，保留原应用交互与动态状态。</Description>
+    <TrayProductDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..\..'))</TrayProductDirectory>
+    <TraySharedSourceDirectory>$(TrayProductDirectory)\ui\ReTray.App</TraySharedSourceDirectory>
+    <Version>$([System.IO.File]::ReadAllText('$(TrayProductDirectory)\VERSION').Trim())</Version>
+    <InformationalVersion>$(Version)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <DefineConstants>$(DefineConstants);TRAY_WPF</DefineConstants>
+    <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.8.260710003" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <Using Remove="System.Drawing" />
+    <Using Remove="System.Windows.Forms" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="$(TraySharedSourceDirectory)\Models\IconRow.cs" Link="Models\IconRow.cs" />
+    <Compile Include="$(TraySharedSourceDirectory)\ViewModels\TrayViewModel.cs" Link="ViewModels\TrayViewModel.cs" />
+    <Compile Include="$(TraySharedSourceDirectory)\ViewModels\TrayViewModel.Autosave.cs" Link="ViewModels\TrayViewModel.Autosave.cs" />
+    <Compile Include="$(TraySharedSourceDirectory)\Services\PipeClient.cs" Link="Services\PipeClient.cs" />
+    <Compile Include="$(TraySharedSourceDirectory)\Services\ConfigurationArchive.cs" Link="Services\ConfigurationArchive.cs" />
+    <Compile Include="$(TraySharedSourceDirectory)\Services\Localization.cs" Link="Services\Localization.cs" />
+    <Compile Include="$(TraySharedSourceDirectory)\Services\Localization.Catalogs.cs" Link="Services\Localization.Catalogs.cs" />
+    <Content Include="$(TrayProductDirectory)\build\ReTray.Agent.exe" Link="ReTray.Agent.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(TrayProductDirectory)\build\ReTray.Startup.exe" Link="ReTray.Startup.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(TrayProductDirectory)\build\ReTray.ShellBridge.dll" Link="ReTray.ShellBridge.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(TrayProductDirectory)\native\platform\supported-adapters.json" Link="supported-adapters.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Web\**\*" Exclude="Web\fonts\*.woff2" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <EmbeddedResource Include="Web\fonts\*.woff2">
+      <LogicalName>LanDeviceMonitor.Web.Fonts.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>LanDeviceMonitor.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Remove="Assets\AppIcon.ico" />
+    <Resource Include="Assets\AppIcon.ico" />
+    <None Remove="Assets\WindowIcon.ico;Assets\TrayBlack.ico;Assets\TrayWhite.ico" />
+    <Resource Include="Assets\WindowIcon.ico" />
+    <Content Include="Assets\WindowIcon.ico;Assets\TrayBlack.ico;Assets\TrayWhite.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\WindowIcon.png;Assets\Square44x44Logo.targetsize-*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\*Logo*.png;Assets\SplashScreen*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Remove="Assets\AppIcon.png" />
+    <Content Include="Assets\AppIcon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <None Remove="Assets\SystemIcon.ico" />
+    <Resource Include="Assets\SystemIcon.ico" />
+    <Content Include="Assets\SystemIcon.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <None Remove="Assets\SystemIcon.png" />
+    <Content Include="Assets\SystemIcon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <None Remove="Assets\ExecutableIcon.png" />
+    <Content Include="Assets\ExecutableIcon.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+  <ItemGroup>
+    <None Remove="Assets\Fonts\*.ttc;Assets\Fonts\*.ttf;Assets\Fonts\Static\*.ttf;Assets\Fonts\Variable\*.ttf" />
+    <Resource Include="Assets\Fonts\SegoeIcons.ttf;Assets\Fonts\Variable\NotoSansSC-VF.ttf" />
+    <Resource Include="Assets\Fonts\Static\*.ttf">
+      <Link>Assets\Fonts\WpfStatic\%(Filename)%(Extension)</Link>
+    </Resource>
+    <Content Include="Assets\Fonts\Static\NotoSansSC-Regular.ttf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\OFL.txt;Assets\Fonts\noto-font-manifest.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup><Content Include="ThirdParty\react-desktop\LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+
+
+  <ItemGroup><Content Include="ThirdParty\lucide\LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\SettingsIcons\*.svg" />
+    <Content Include="Assets\SettingsIcons\LICENSE;Assets\SettingsIcons\NOTICE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="$(TrayProductDirectory)\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(TrayProductDirectory)\NOTICE.md" Link="NOTICE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(TrayProductDirectory)\assets\branding\*.svg" Link="Branding\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(TrayProductDirectory)\third_party\minhook\LICENSE.txt" Link="ThirdParty\minhook\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(TrayProductDirectory)\third_party\nlohmann\LICENSE.MIT" Link="ThirdParty\nlohmann\LICENSE.MIT" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

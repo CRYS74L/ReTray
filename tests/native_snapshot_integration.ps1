@@ -4,7 +4,7 @@ $productRoot=Split-Path -Parent $PSScriptRoot
 if($LASTEXITCODE -ne 0){throw 'Probe build failed'}
 $work=Join-Path $productRoot 'artifacts\snapshot-tests'
 New-Item -ItemType Directory -Force -Path $work | Out-Null
-$exe=Join-Path $productRoot 'build\TrayAssistant.Probe.exe'
+$exe=Join-Path $productRoot 'build\ReTray.Probe.exe'
 $adapterPath=Join-Path $productRoot 'native\platform\supported-adapters.json'
 $out=Join-Path $work 'snapshot.json'
 & $exe $adapterPath $out

@@ -22,4 +22,4 @@ NVIDIA 类访问受限宿主使用通用只读系统身份回退，不按应用�
 
 当多个角色的路径、窗口、提示和图像完全相同，且没有可用的原始 UID 证据时，软件报告歧义并恢复未确认的原生策略，避免把隐藏规则套给另一个图标。缺少历史证据无法可靠反推角色，本版本不会按程序名、最新 UID 或任意候选猜测并永久覆盖旧偏好。
 
-复测入口：build.ps1 的 CoreTests、SettingsTests、AgentVisibilityTests、AgentSystemTests、BitmapTests、BridgeRegistrationTests、ProcessIdentityTests、StartupTests，以及 tests/TrayAssistant.UiTests。native/test-source 支持 WM_APP+31 的受控 UID 重建；实际完整链路脚本和证据留在 artifacts，不作为产品运行依赖。
+复测入口：build.ps1 的 CoreTests、SettingsTests、AgentVisibilityTests、AgentSystemTests、BitmapTests、BridgeRegistrationTests、ProcessIdentityTests、StartupTests，以及 tests/ReTray.UiTests。native/test-source 支持 WM_APP+31 的受控 UID 重建；实际完整链路脚本和证据留在 artifacts，不作为产品运行依赖。

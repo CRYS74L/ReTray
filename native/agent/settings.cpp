@@ -131,7 +131,7 @@ Json DefaultSettings() {
             {"theme", "system"},
             {"startup", false},
             {"ownIcon",
-             {{"visible", true}, {"asset", ""}, {"tip", "托盘图标助手"}, {"showInList", true}}},
+             {{"visible", true}, {"asset", ""}, {"tip", "ReTray"}, {"showInList", true}}},
             {"rules", Json::array()},
             {"inputMethodIcons", Json::array()},
 
@@ -359,6 +359,11 @@ Json NormalizeSettings(Json value) {
             merged.update(value.at(key));
         result[key] = merged;
     }
+    // Only the former default tooltip is renamed. Explicit user text and icon
+    // replacements remain untouched during upgrade and configuration import.
+    if (result["ownIcon"].value("tip", std::string{}) ==
+        "\u6258\u76d8\u56fe\u6807\u52a9\u624b")
+        result["ownIcon"]["tip"] = "ReTray";
     result["hotkeys"] = {{"open", 0}, {"menu", 0}};
     result["taskbar"] = {{"opacity", 255}, {"hideStart", false}};
     result["autoSort"] = result["uiTopmost"] = false;

@@ -29,7 +29,7 @@ Breeze 退出时，Windows 已不再提供有效注册，但助手仍保留旧�
 ./build.ps1 -Target AgentVisibilityTests
 ./build.ps1 -Target AgentSystemTests
 ./build.ps1 -Target BridgeRegistrationTests
-dotnet run --project ./tests/TrayAssistant.UiTests/TrayAssistant.UiTests.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64
+dotnet run --project ./tests/ReTray.UiTests/ReTray.UiTests.csproj -c Release -r win-x64 --self-contained true -p:Platform=x64
 ./tests/agent_catalog_integration.ps1 -ExpectedVersion 0.1.23
 ```
 

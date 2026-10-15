@@ -1,15 +1,22 @@
 #include <windows.h>
 #include "../native/agent/logon_startup.h"
+#include "../native/agent/legacy_startup.h"
 #include <cstdio>
 #include <stdexcept>
 #define CHECK(x) do { if (!(x)) throw std::runtime_error(#x); } while (0)
 using namespace tray;
 int wmain() {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-    auto name = L"TrayIconAssistant.Test." + StartupUserSid() + L"." + std::to_wstring(GetCurrentProcessId());
+    auto name = L"ReTray.Test." + StartupUserSid() + L"." + std::to_wstring(GetCurrentProcessId());
     auto folder = StartupTaskFolder();
     bool created{};
     try {
+        CHECK(LegacyRunExecutable(L"\"C:\\Apps\\TrayAssistant.Agent.exe\" --background").has_value());
+        CHECK(!LegacyRunExecutable(L"\"C:\\Apps\\TrayAssistant.Agent.exe\" --background --other"));
+        CHECK(!LegacyRunExecutable(L"\"C:\\Apps\\Other.exe\" --background"));
+        CHECK(!LegacyRunExecutable(L"TrayAssistant.Agent.exe --background"));
+        CHECK(!LegacyRunExecutable(L"\"C:\\Apps\\TrayAssistant.Agent.exe\" --open"));
+        CHECK(!LegacyProductIdentity(L"C:\\nonexistent-retray-test\\TrayAssistant.App.exe"));
         wchar_t executable[32768]{}; GetModuleFileNameW(nullptr, executable, std::size(executable));
         CHECK(SetLogonStartup(executable, false, name));
         winrt::com_ptr<IRegisteredTask> task;

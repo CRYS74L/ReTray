@@ -5,7 +5,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using CommunityToolkit.Mvvm.Input;
 using LanDeviceMonitor.Controls;
-using TrayAssistant_App;
+using ReTray_App;
 internal static class Program
 {
     [STAThread] static int Main()
@@ -60,8 +60,8 @@ internal static class Program
         var user=new TextBlock();user.SetBinding(TextBlock.TextProperty,new System.Windows.Data.Binding{Source="系统图标"});
         var root=new StackPanel();root.Children.Add(label);root.Children.Add(user);
         foreach(var pair in new[]{("zh-Hant","系統圖示"),("ja","システムアイコン"),("en","System icons"),("zh","系统图标")}) {
-            TrayAssistant_App.Services.Localization.CurrentLanguage=pair.Item1;
-            TrayAssistant_App.Services.Localization.Apply(root);
+            ReTray_App.Services.Localization.CurrentLanguage=pair.Item1;
+            ReTray_App.Services.Localization.Apply(root);
             Require(label.Text==pair.Item2,"Locale label did not roundtrip: "+pair.Item1);
             Require(user.Text=="系统图标" && System.Windows.Data.BindingOperations.IsDataBound(user,TextBlock.TextProperty),"Locale replaced user binding");
         }
@@ -69,7 +69,7 @@ internal static class Program
     private static void EqualHeadingSpacing()
     {
         foreach(int count in new[]{0,1,2,5}) {
-            var model=new InputMethodIconEditorModel(new TrayAssistant_App.Services.PipeClient());
+            var model=new InputMethodIconEditorModel(new ReTray_App.Services.PipeClient());
             for(int i=0;i<count;i++)model.Rows.Add((InputMethodIconRow)Activator.CreateInstance(typeof(InputMethodIconRow),System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic,null,new object[]{model,new System.Text.Json.Nodes.JsonObject {
                 ["original"]=new System.Text.Json.Nodes.JsonObject { ["width"]=1,["height"]=1,["pixels"]="AAAA/w==" },
                 ["key"]="test-"+i,["name"]=i%3==0?"微信输入法":i%3==1?"Google Japanese Input":"日本語入力",["policy"]=new System.Text.Json.Nodes.JsonObject {
@@ -112,11 +112,11 @@ internal static class Program
     }
     private static void LanguageOrder()
     {
-        var names=TrayAssistant_App.Services.Localization.LanguageNames;
+        var names=ReTray_App.Services.Localization.LanguageNames;
         Require(names.SequenceEqual(new[]{"简体中文","繁體中文","日本語","English"}),"Language dropdown order differs");
         foreach(var code in new[]{"zh","zh-Hant","ja","en"})
-            Require(TrayAssistant_App.Services.Localization.LanguageCodes[TrayAssistant_App.Services.Localization.LanguageIndex(code)]==code,"Saved language code changed meaning");
-        Require(TrayAssistant_App.Services.Localization.LanguageIndex(null)==0,"Default language must be simplified Chinese");
+            Require(ReTray_App.Services.Localization.LanguageCodes[ReTray_App.Services.Localization.LanguageIndex(code)]==code,"Saved language code changed meaning");
+        Require(ReTray_App.Services.Localization.LanguageIndex(null)==0,"Default language must be simplified Chinese");
     }
     private static void ScrollbarPreservesLayout()
     {
@@ -179,7 +179,7 @@ internal static class Program
         var source=System.Xml.Linq.XDocument.Load(System.IO.Path.Combine(AppContext.BaseDirectory,"WindowTemplates.xaml"));
         var dictionary=new System.Xml.Linq.XElement(source.Root!.Name.Namespace+"ResourceDictionary",
             source.Root.Attributes().Where(a=>a.IsNamespaceDeclaration).Select(a=>new System.Xml.Linq.XAttribute(a.Name,
-                a.Value.StartsWith("clr-namespace:") && !a.Value.Contains(";assembly=")?a.Value+";assembly=TrayAssistant.App":a.Value)),
+                a.Value.StartsWith("clr-namespace:") && !a.Value.Contains(";assembly=")?a.Value+";assembly=ReTray.App":a.Value)),
             source.Descendants().Where(e=>e.Name.LocalName=="Style" &&
                 new[]{"DeviceListScrollViewerStyle","DeviceListBoxStyle","FooterCircleButtonStyle"}.Contains((string?)e.Attribute(x+"Key"))));
         // MainPage supplies its own item container, so omit the LAN-specific one.
@@ -229,8 +229,8 @@ internal static class Program
         Require(Element("SystemLoadingRows").Visibility==Visibility.Collapsed && Element("SystemList").Visibility==Visibility.Visible,"Periodic system reads flicker back to placeholders");
         typeof(MainPage).GetField("systemLoading",fields)!.SetValue(page,false);
         foreach(var language in new[]{"zh","zh-Hant","ja","en"}) {
-            TrayAssistant_App.Services.Localization.CurrentLanguage=language;
-            TrayAssistant_App.Services.Localization.Apply(page);
+            ReTray_App.Services.Localization.CurrentLanguage=language;
+            ReTray_App.Services.Localization.Apply(page);
             typeof(MainPage).GetMethod("CreateLoadingRows",fields)!.Invoke(page,null);
             page.Vm.IsLoading=true;navigation.SelectedIndex=2;Layout();
             var silhouette=Find<Border>(settings).Single(b=>Equals(b.Tag,"PlaceholderImport"));
@@ -238,7 +238,7 @@ internal static class Program
             page.Vm.IsLoading=false;Layout();
             Require((button.TranslatePoint(new Point(),page)-position).Length<.1 && Math.Abs(button.ActualWidth-size.Width)<.1,"Localized capsule size differs from loading silhouette: "+language);
         }
-        TrayAssistant_App.Services.Localization.CurrentLanguage="zh";TrayAssistant_App.Services.Localization.Apply(page);
+        ReTray_App.Services.Localization.CurrentLanguage="zh";ReTray_App.Services.Localization.Apply(page);
         typeof(MainPage).GetMethod("CreateLoadingRows",fields)!.Invoke(page,null);
         if(Environment.GetEnvironmentVariable("TRAY_PLACEHOLDER_SNAPSHOTS") is {Length:>0} output) {
             System.IO.Directory.CreateDirectory(output);page.Vm.IsLoading=true;
@@ -269,10 +269,10 @@ internal static class Program
         var source=System.Xml.Linq.XDocument.Load(System.IO.Path.Combine(AppContext.BaseDirectory,"EditorTemplates.xaml"));
         var xml=new System.Xml.Linq.XElement(source.Descendants().Single(e=>(string?)e.Attribute("Grid.ColumnSpan")=="3" && (string?)e.Attribute("Height")=="0.5"));
         if(xml.Name.NamespaceName.StartsWith("clr-namespace:"))
-            xml.Name=System.Xml.Linq.XNamespace.Get(xml.Name.NamespaceName+";assembly=TrayAssistant.App")+xml.Name.LocalName;
+            xml.Name=System.Xml.Linq.XNamespace.Get(xml.Name.NamespaceName+";assembly=ReTray.App")+xml.Name.LocalName;
         var wrapper=new System.Xml.Linq.XElement(source.Root!.Name.Namespace+"Grid",
             source.Root.Attributes().Where(a=>a.IsNamespaceDeclaration).Select(a=>new System.Xml.Linq.XAttribute(a.Name,
-                a.Value.StartsWith("clr-namespace:")?a.Value+";assembly=TrayAssistant.App":a.Value)),xml);
+                a.Value.StartsWith("clr-namespace:")?a.Value+";assembly=ReTray.App":a.Value)),xml);
         xml.SetAttributeValue("Background","White");
         foreach(double scale in new[]{1d,1.25,1.5,2d})foreach(byte alpha in new byte[]{176,48}) {
             var parsed=(Grid)System.Windows.Markup.XamlReader.Parse(wrapper.ToString());

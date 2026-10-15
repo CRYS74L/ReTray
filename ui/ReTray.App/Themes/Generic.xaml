@@ -1,0 +1,25 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" xmlns:controls="using:ReTray_App.Controls">
+ <Style TargetType="controls:BelowComboBox">
+  <Setter Property="HorizontalAlignment" Value="Stretch"/>
+  <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="controls:BelowComboBox">
+   <StackPanel Spacing="8">
+    <ContentPresenter x:Name="HeaderPresenter" Content="{TemplateBinding Header}"/>
+    <DropDownButton x:Name="SelectionButton" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" MinWidth="0" MinHeight="32" Padding="12,5"/>
+   </StackPanel>
+  </ControlTemplate></Setter.Value></Setter>
+ </Style>
+ <Style TargetType="controls:TrayIconButton">
+  <Setter Property="Width" Value="28"/><Setter Property="Height" Value="28"/>
+  <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="controls:TrayIconButton">
+   <Grid>
+    <VisualStateManager.VisualStateGroups><VisualStateGroup x:Name="CommonStates">
+     <VisualState x:Name="Normal"/>
+     <VisualState x:Name="PointerOver"><VisualState.Setters><Setter Target="Surface.Background" Value="{ThemeResource SubtleFillColorSecondaryBrush}"/></VisualState.Setters></VisualState>
+     <VisualState x:Name="Pressed"><VisualState.Setters><Setter Target="Surface.Background" Value="{ThemeResource SubtleFillColorTertiaryBrush}"/></VisualState.Setters></VisualState>
+    </VisualStateGroup></VisualStateManager.VisualStateGroups>
+    <Border x:Name="Surface" Background="Transparent" CornerRadius="8"/>
+    <Image Source="{TemplateBinding ImageSource}" Width="20" Height="20" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+   </Grid>
+  </ControlTemplate></Setter.Value></Setter>
+ </Style>
+</ResourceDictionary>

@@ -4,6 +4,6 @@
     <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="../../ui/TrayAssistant.App/Services/ConfigurationArchive.cs" Link="ConfigurationArchive.cs" Condition="Exists('../../ui/TrayAssistant.App/Services/ConfigurationArchive.cs')" />
+    <Compile Include="../../ui/ReTray.App/Services/ConfigurationArchive.cs" Link="ConfigurationArchive.cs" Condition="Exists('../../ui/ReTray.App/Services/ConfigurationArchive.cs')" />
   </ItemGroup>
 </Project>

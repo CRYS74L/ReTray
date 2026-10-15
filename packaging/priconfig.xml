@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources targetOsVersion="10.0.0" majorVersion="1">
+  <!-- Keep every scale in the main package; no separate resource packs. -->
+  <index root="\" startIndexAt="\">
+    <default>
+      <qualifier name="Language" value="zh-CN"/>
+      <qualifier name="Scale" value="100"/>
+      <qualifier name="Contrast" value="standard"/>
+      <qualifier name="TargetSize" value="256"/>
+      <qualifier name="AlternateForm" value=""/>
+    </default>
+    <indexer-config type="folder" foldernameAsQualifier="true" filenameAsQualifier="true" qualifierDelimiter="."/>
+  </index>
+</resources>

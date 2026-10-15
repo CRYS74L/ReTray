@@ -12,7 +12,7 @@ sealed class ArchiveTests
     private readonly string root = Path.Combine(Path.GetTempPath(), "TrayConfigurationTests-" + Guid.NewGuid().ToString("N"));
     private readonly byte[] icon = [1, 2, 3, 4, 5];
     private string AssetName => "assets/" + Convert.ToHexString(SHA256.HashData(icon)).ToLowerInvariant() + ".ico";
-    private Type Service => Assembly.GetExecutingAssembly().GetType("TrayAssistant_App.Services.ConfigurationArchive")
+    private Type Service => Assembly.GetExecutingAssembly().GetType("ReTray_App.Services.ConfigurationArchive")
         ?? throw new Exception("Portable ConfigurationArchive service has not been implemented.");
     private async Task Export(string target, JsonObject settings) => await (Task)Service.GetMethod("ExportAsync")!.Invoke(null, [target, settings])!;
     private async Task<object> Read(string path)
@@ -44,7 +44,7 @@ sealed class ArchiveTests
         using var file = System.IO.File.Create(path);
         using var zip = new ZipArchive(file, ZipArchiveMode.Create);
         async Task Entry(string name, byte[] data) { await using var stream = zip.CreateEntry(name).Open(); await stream.WriteAsync(data); }
-        await Entry("manifest.json", Encoding.UTF8.GetBytes(manifest ?? "{\"format\":\"TrayIconAssistant.Configuration\",\"version\":1}"));
+        await Entry("manifest.json", Encoding.UTF8.GetBytes(manifest ?? "{\"format\":\"ReTray.Configuration\",\"version\":1}"));
         await Entry("settings.json", Encoding.UTF8.GetBytes(settings ?? Fixture(AssetName).ToJsonString()));
         if (asset != null) await Entry(asset, bytes ?? icon);
         if (extra != null) await Entry(extra, icon);
@@ -53,6 +53,11 @@ sealed class ArchiveTests
     public async Task RunAsync()
     {
         Directory.CreateDirectory(root);
+        var legacyFile = FilePath("legacy.trayconfig");
+        await Zip(legacyFile, AssetName, manifest: "{\"format\":\"TrayIconAssistant.Configuration\",\"version\":1}");
+        var legacyRead = await Read(legacyFile);
+        Check(Settings(legacyRead)["ownIcon"] is JsonObject, "Legacy configuration archive must remain importable");
+
         var tests = new (string Name, Func<Task> Run)[]
         {
             ("Roundtrip keeps repeated and inactive references and icon indexes", async () =>
@@ -95,7 +100,7 @@ sealed class ArchiveTests
             ("Reject mismatching asset hash", async () => { await Zip(FilePath("hash.zip"), AssetName, [9]); await Reject(async () => { await Read(FilePath("hash.zip")); }); }),
             ("Reject missing referenced asset", async () => { await Zip(FilePath("missing.zip")); await Reject(async () => { await Read(FilePath("missing.zip")); }); }),
             ("Reject traversal before installation", async () => { await Zip(FilePath("traversal.zip"), AssetName, extra: "../escaped.ico"); await Reject(async () => { await Read(FilePath("traversal.zip")); }); Check(!System.IO.File.Exists(Path.Combine(Path.GetDirectoryName(root)!, "escaped.ico")), "Archive escaped."); }),
-            ("Reject unsupported archive version", async () => { await Zip(FilePath("version.zip"), AssetName, manifest: "{\"format\":\"TrayIconAssistant.Configuration\",\"version\":2}"); await Reject(async () => { await Read(FilePath("version.zip")); }); }),
+            ("Reject unsupported archive version", async () => { await Zip(FilePath("version.zip"), AssetName, manifest: "{\"format\":\"ReTray.Configuration\",\"version\":2}"); await Reject(async () => { await Read(FilePath("version.zip")); }); }),
             ("Reject duplicate ZIP names", async () => { await Zip(FilePath("duplicate.zip"), AssetName, duplicate: true); await Reject(async () => { await Read(FilePath("duplicate.zip")); }); }),
             ("Reject unreferenced asset", async () => { await Zip(FilePath("unused.zip"), AssetName, extra: "assets/" + new string('a', 64) + ".png"); await Reject(async () => { await Read(FilePath("unused.zip")); }); }),
             ("Reject settings larger than 2 MiB", async () => { await Zip(FilePath("settings-bound.zip"), settings: "{\"padding\":\"" + new string('x', 2 * 1024 * 1024) + "\"}"); await Reject(async () => { await Read(FilePath("settings-bound.zip")); }); }),
@@ -117,7 +122,7 @@ sealed class ArchiveTests
                         rules.Add(new JsonObject { ["asset"] = name });
                         await using var stream = zip.CreateEntry(name).Open(); await stream.WriteAsync(bytes);
                     }
-                    await using (var stream = zip.CreateEntry("manifest.json").Open()) await stream.WriteAsync("{\"format\":\"TrayIconAssistant.Configuration\",\"version\":1}"u8.ToArray());
+                    await using (var stream = zip.CreateEntry("manifest.json").Open()) await stream.WriteAsync("{\"format\":\"ReTray.Configuration\",\"version\":1}"u8.ToArray());
                     await using (var stream = zip.CreateEntry("settings.json").Open()) await stream.WriteAsync(Encoding.UTF8.GetBytes(new JsonObject { ["rules"] = rules }.ToJsonString()));
                 }
                 await Reject(async () => { await Read(path); });
@@ -129,7 +134,7 @@ sealed class ArchiveTests
                 {
                     file.SetLength(263L * 1024 * 1024); file.Position = file.Length;
                     using var zip = new ZipArchive(file, ZipArchiveMode.Create);
-                    await using (var stream = zip.CreateEntry("manifest.json").Open()) await stream.WriteAsync("{\"format\":\"TrayIconAssistant.Configuration\",\"version\":1}"u8.ToArray());
+                    await using (var stream = zip.CreateEntry("manifest.json").Open()) await stream.WriteAsync("{\"format\":\"ReTray.Configuration\",\"version\":1}"u8.ToArray());
                     await using (var stream = zip.CreateEntry("settings.json").Open()) await stream.WriteAsync("{}"u8.ToArray());
                 }
                 await Reject(async () => { await Read(path); });
@@ -145,7 +150,7 @@ sealed class ArchiveTests
                         rows.Add(new JsonObject { ["asset"] = name });
                         await using var stream = zip.CreateEntry(name).Open(); await stream.WriteAsync(bytes);
                     }
-                    await using (var stream = zip.CreateEntry("manifest.json").Open()) await stream.WriteAsync("{\"format\":\"TrayIconAssistant.Configuration\",\"version\":1}"u8.ToArray());
+                    await using (var stream = zip.CreateEntry("manifest.json").Open()) await stream.WriteAsync("{\"format\":\"ReTray.Configuration\",\"version\":1}"u8.ToArray());
                     await using (var stream = zip.CreateEntry("settings.json").Open()) await stream.WriteAsync(Encoding.UTF8.GetBytes(new JsonObject { ["rules"] = rows }.ToJsonString()));
                 }
                 await Reject(async () => { await Read(FilePath("count.zip")); });

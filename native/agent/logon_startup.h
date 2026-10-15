@@ -7,7 +7,7 @@
 #include <vector>
 
 namespace tray {
-inline constexpr wchar_t StartupSource[] = L"CRYS74L.TrayIconAssistant/logon-v1";
+inline constexpr wchar_t StartupSource[] = L"CRYS74L.ReTray/logon-v1";
 struct TaskString {
     BSTR value{};
     explicit TaskString(const std::wstring& text) : value(SysAllocString(text.c_str())) {
@@ -38,7 +38,7 @@ inline std::wstring StartupUserSid() {
     winrt::check_bool(ConvertSidToStringSidW(reinterpret_cast<TOKEN_USER*>(data.data())->User.Sid, &sid));
     std::wstring result(sid); LocalFree(sid); return result;
 }
-inline std::wstring StartupTaskName() { return L"TrayIconAssistant.Logon." + StartupUserSid(); }
+inline std::wstring StartupTaskName() { return L"ReTray.Logon." + StartupUserSid(); }
 inline bool StartupPrincipalMatches(BSTR user, const std::wstring& expected) {
     if (!user) return false;
     if (!_wcsicmp(user, expected.c_str())) return true;
@@ -66,7 +66,8 @@ inline winrt::com_ptr<ITaskFolder> StartupTaskFolder() {
 // A same-name task without our source marker and user identity is a collision, not ours.
 inline DWORD SetLogonStartupResult(const std::filesystem::path& executable, bool enabled,
                                    const std::wstring& name,
-                                   const std::wstring& arguments = L"--background") {
+                                   const std::wstring& arguments = L"--background",
+                                   const std::wstring& sourceMarker = StartupSource) {
     try {
         auto folder = StartupTaskFolder();
         auto sid = StartupUserSid();
@@ -83,7 +84,7 @@ inline DWORD SetLogonStartupResult(const std::filesystem::path& executable, bool
             auto sourceResult = registration->get_Source(&source);
             auto userResult = principal->get_UserId(&user);
             bool ours = SUCCEEDED(sourceResult) && SUCCEEDED(userResult) && source && user &&
-                        !wcscmp(source, StartupSource) && StartupPrincipalMatches(user, sid);
+                        !wcscmp(source, sourceMarker.c_str()) && StartupPrincipalMatches(user, sid);
             SysFreeString(source); SysFreeString(user);
             if (!ours) return ERROR_ALREADY_EXISTS;
             if (!enabled) {
@@ -106,7 +107,7 @@ inline DWORD SetLogonStartupResult(const std::filesystem::path& executable, bool
         winrt::check_hresult(task->get_RegistrationInfo(registration.put()));
         winrt::check_hresult(registration->put_Source(TaskString(StartupSource)));
         winrt::check_hresult(registration->put_Author(TaskString(sid)));
-        winrt::check_hresult(registration->put_Description(TaskString(L"托盘图标助手：用户登录后立即启动原生后台")));
+        winrt::check_hresult(registration->put_Description(TaskString(L"ReTray：用户登录后立即启动原生后台")));
         winrt::com_ptr<IPrincipal> principal;
         winrt::check_hresult(task->get_Principal(principal.put()));
         winrt::check_hresult(principal->put_UserId(TaskString(sid)));
@@ -153,5 +154,11 @@ inline bool SetLogonStartup(const std::filesystem::path& executable, bool enable
     catch (...) { error = ERROR_NOT_ENOUGH_MEMORY; }
     SetLastError(error);
     return error == ERROR_SUCCESS;
+}
+inline DWORD RetireLegacyLogonStartup() {
+    // Exact former task + source + current user SID, never a task-folder sweep.
+    return SetLogonStartupResult({}, false,
+        L"TrayIconAssistant.Logon." + StartupUserSid(), L"--background",
+        L"CRYS74L.TrayIconAssistant/logon-v1");
 }
 }

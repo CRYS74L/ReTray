@@ -1072,11 +1072,27 @@ void StartupRunDeleteFailureRestoresTask() {
         CHECK(startupTaskEnabled == previous);
     }
 }
+void MenuUsesGenuineLightOutlines() {
+    const auto appRoot = fixtureRoot.parent_path().parent_path() /
+        L"ui" / L"ReTray.Wpf" / L"src" / L"LanDeviceMonitor.App";
+    tray_menu_typography::Prepare(appRoot, POINT{100, 100});
+    CHECK(tray_menu_typography::typeface.privateLoaded);
+    auto dc = CreateCompatibleDC(nullptr);
+    auto previous = SelectObject(dc, tray_menu_typography::typeface.font);
+    TEXTMETRICW metrics{}; const bool measured = GetTextMetricsW(dc, &metrics) != 0;
+    BYTE os2[8]{}; const auto size = GetFontData(dc, 0x322f534f, 0, os2, sizeof(os2));
+    wchar_t face[128]{}; GetTextFaceW(dc, 128, face);
+    SelectObject(dc, previous); DeleteDC(dc);
+    CHECK(measured && metrics.tmWeight == FW_LIGHT && !metrics.tmItalic);
+    CHECK(size != GDI_ERROR && (os2[4] * 256 + os2[5]) == FW_LIGHT);
+    CHECK(std::wstring(face) == L"Noto Sans SC Light");
+}
 int wmain(int argc, wchar_t** argv) {
     if (argc != 2) return 2;
     fixtureRoot = std::filesystem::path(argv[1]); std::filesystem::create_directories(fixtureRoot);
     int failed{};
-    for (const auto& test : {std::pair{"unresolved owner cannot poison later configuration saves", UnresolvedIdentityCannotPoisonConfiguration},
+    for (const auto& test : {std::pair{"menu selects genuine Light font without synthetic weight", MenuUsesGenuineLightOutlines},
+                            std::pair{"unresolved owner cannot poison later configuration saves", UnresolvedIdentityCannotPoisonConfiguration},
                             std::pair{"normalization failure does not commit configuration or revision", NormalizeFailureDoesNotCommitSettingsOrRevision},
                             std::pair{"Run registry preflight failure leaves task unchanged", StartupRunPreflightFailureCannotChangeTask},
                             std::pair{"Run retirement failure restores startup task", StartupRunDeleteFailureRestoresTask},

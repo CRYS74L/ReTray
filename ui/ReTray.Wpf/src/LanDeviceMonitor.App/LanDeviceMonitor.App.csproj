@@ -94,7 +94,7 @@
     <Resource Include="Assets\Fonts\Static\*.ttf">
       <Link>Assets\Fonts\WpfStatic\%(Filename)%(Extension)</Link>
     </Resource>
-    <Content Include="Assets\Fonts\Static\NotoSansSC-Regular.ttf;Assets\Fonts\Static\NotoSansSC-Medium.ttf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\Fonts\Static\NotoSansSC-Regular.ttf;Assets\Fonts\Static\NotoSansSC-Light.ttf;Assets\Fonts\Static\NotoSansSC-Medium.ttf" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\Fonts\OFL.txt;Assets\Fonts\noto-font-manifest.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup><Content Include="ThirdParty\react-desktop\LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>

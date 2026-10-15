@@ -41,7 +41,7 @@ inline const wchar_t* Data(UINT id) {
 inline int Scale(int value) { return MulDiv(value, typeface.dpi, 96); }
 inline void Prepare(const std::filesystem::path& root, POINT point) {
     if (!typeface.privateLoaded) {
-        typeface.path = (root / L"Assets" / L"Fonts" / L"Static" / L"NotoSansSC-Regular.ttf").wstring();
+        typeface.path = (root / L"Assets" / L"Fonts" / L"Static" / L"NotoSansSC-Light.ttf").wstring();
         typeface.privateLoaded = AddFontResourceExW(typeface.path.c_str(), FR_PRIVATE, nullptr) != 0;
     }
     auto monitor = MonitorFromPoint(point, MONITOR_DEFAULTTONEAREST);
@@ -56,9 +56,10 @@ inline void Prepare(const std::filesystem::path& root, POINT point) {
     if (typeface.font && typeface.dpi == dpiX) return;
     if (typeface.font) DeleteObject(typeface.font);
     typeface.dpi = dpiX;
-    typeface.font = CreateFontW(-Scale(13), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+    // Select the real Light face, rather than asking GDI to alter Regular's strokes.
+    typeface.font = CreateFontW(-Scale(13), 0, 0, 0, typeface.privateLoaded ? FW_LIGHT : FW_NORMAL, FALSE, FALSE, FALSE,
         DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
-        DEFAULT_PITCH | FF_SWISS, typeface.privateLoaded ? L"Noto Sans SC" : L"Segoe UI");
+        DEFAULT_PITCH | FF_SWISS, typeface.privateLoaded ? L"Noto Sans SC Light" : L"Segoe UI");
 }
 inline bool Measure(LPARAM argument) {
     auto item = reinterpret_cast<MEASUREITEMSTRUCT*>(argument);

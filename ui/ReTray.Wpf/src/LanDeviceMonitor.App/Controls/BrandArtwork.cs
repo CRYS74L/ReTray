@@ -111,8 +111,9 @@ public static class BrandArtwork
     }
 }
 
-// Use a modest normal-weight caption, centered by its ink rather than the
-// font's ascent/descent box. Snap the baseline at the monitor's actual DPI.
+// Use fractional glyph outlines and grayscale coverage on the translucent
+// title surface. Display grid fitting and an independently rounded baseline
+// made small letters look stepped and displaced them from the adjacent logo.
 public sealed class BrandCaption : FrameworkElement
 {
     public static readonly DependencyProperty ForegroundProperty = DependencyProperty.Register(
@@ -122,29 +123,37 @@ public sealed class BrandCaption : FrameworkElement
     public BrandCaption()
     {
         UseLayoutRounding = true;
-        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
-        TextOptions.SetTextRenderingMode(this, TextRenderingMode.Auto);
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Ideal);
+        TextOptions.SetTextRenderingMode(this, TextRenderingMode.Grayscale);
     }
-    private FormattedText Fit(out Rect ink)
+    private FormattedText Fit(out Rect ink, out double opticalCenter)
     {
         var typeface = new Typeface(TextElement.GetFontFamily(this), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
         var text = new FormattedText("ReTray", CultureInfo.CurrentUICulture,
             FlowDirection.LeftToRight, typeface, 13, Foreground, null,
-            TextFormattingMode.Display, VisualTreeHelper.GetDpi(this).PixelsPerDip);
+            TextFormattingMode.Ideal, VisualTreeHelper.GetDpi(this).PixelsPerDip);
         ink = text.BuildGeometry(new Point()).Bounds;
+        opticalCenter = ink.Top + ink.Height / 2;
+        // A descending y gives the word a much lower outline bound than the
+        // main letter bodies. Balance the full outline with the capital body,
+        // so a mathematically centered box does not leave the word looking high.
+        if (typeface.TryGetGlyphTypeface(out var glyph))
+            opticalCenter = (opticalCenter + text.Baseline - 13 * glyph.CapsHeight / 2) / 2;
         return text;
     }
     protected override Size MeasureOverride(Size availableSize)
     {
-        Fit(out var ink);
-        return new Size(ink.Width, 16);
+        Fit(out var ink, out _);
+        return new Size(Math.Ceiling(ink.Width + 2), 16);
     }
     protected override void OnRender(DrawingContext dc)
     {
-        var text = Fit(out var ink);
+        var text = Fit(out var ink, out var opticalCenter);
         var dpi = VisualTreeHelper.GetDpi(this);
         var x = Math.Round(-ink.Left * dpi.DpiScaleX) / dpi.DpiScaleX;
-        var y = Math.Round(((ActualHeight - ink.Height) / 2 - ink.Top) * dpi.DpiScaleY) / dpi.DpiScaleY;
+        // Keep the optical text center on the logo center. Do not round the
+        // baseline separately: at 125/150% that moves it by almost a pixel.
+        var y = ActualHeight / 2 - opticalCenter;
         dc.DrawText(text, new Point(x, y));
     }
 }

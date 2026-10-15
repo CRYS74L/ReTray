@@ -49,18 +49,40 @@ internal static class Program
         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
         using (var file = File.Create(Path.Combine(AppContext.BaseDirectory, "brand-vector-reference.png"))) encoder.Save(file);
 
-        var caption = new BrandCaption { Foreground = Brushes.Black, Width = 100, Height = 16 };
-        System.Windows.Documents.TextElement.SetFontFamily(caption, new FontFamily("Segoe UI"));
-        caption.Measure(new Size(100, 16)); caption.Arrange(new Rect(0, 0, 100, 16)); caption.UpdateLayout();
-        // Render the control directly. VisualBrush's default Fill would stretch
-        // the tight text bounds back to the logo height, hiding size regressions.
-        var textBitmap = new RenderTargetBitmap(100, 16, 96, 96, PixelFormats.Pbgra32); textBitmap.Render(caption);
-        var bytes = new byte[100 * 16 * 4]; textBitmap.CopyPixels(bytes, 400, 0);
-        var rows = Enumerable.Range(0, 16).Where(y => Enumerable.Range(0, 100).Any(x => bytes[(y * 100 + x) * 4 + 3] > 32)).ToArray();
-        Require(rows.Length > 0 && rows[^1] - rows[0] + 1 <= 14,
-            "Caption text is oversized");
-        Require(Math.Abs((rows[^1] + rows[0] + 1) / 2d - 8) <= 1,
-            "Caption ink is not vertically centered");
+        LanDeviceMonitor.Services.ThemeService.Apply("Light");
+        var family = (FontFamily)app.Resources["AppTextFont"];
+        var face = new Typeface(family, FontStyles.Normal, FontWeights.Normal, FontStretches.Normal);
+        var resolved = face.TryGetGlyphTypeface(out var glyph);
+        Console.WriteLine($"Caption actual family={family.Source}, base={family.BaseUri}, resolved={resolved}, simulations={glyph?.StyleSimulations}, uri={glyph?.FontUri}");
+        Require(resolved && glyph!.StyleSimulations == StyleSimulations.None &&
+            glyph.FontUri.ToString().EndsWith("/notosanssc-regular.ttf", StringComparison.OrdinalIgnoreCase),
+            "Caption must use genuine Regular outlines");
+        foreach (var scale in new[] { 1d, 1.25, 1.5, 2d })
+        {
+            var caption = new BrandCaption { Foreground = Brushes.Black, Width = 100, Height = 16 };
+            System.Windows.Documents.TextElement.SetFontFamily(caption, family);
+            VisualTreeHelper.SetRootDpi(caption, new DpiScale(scale, scale));
+            caption.Measure(new Size(100, 16)); caption.Arrange(new Rect(0, 0, 100, 16)); caption.UpdateLayout();
+            int width = (int)(100 * scale), height = (int)(16 * scale);
+            var textBitmap = new RenderTargetBitmap(width, height, 96 * scale, 96 * scale, PixelFormats.Pbgra32);
+            textBitmap.Render(caption);
+            var bytes = new byte[width * height * 4]; textBitmap.CopyPixels(bytes, width * 4, 0);
+            var rows = Enumerable.Range(0, height).Where(y => Enumerable.Range(0, width).Any(x => bytes[(y * width + x) * 4 + 3] > 32)).ToArray();
+            Require(rows.Length > 0 && rows[^1] - rows[0] + 1 <= 14 * scale, "Caption text is oversized");
+            double coverage = 0, moment = 0;
+            for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) {
+                var alpha = bytes[(y * width + x) * 4 + 3];
+                coverage += alpha; moment += alpha * (y + .5);
+            }
+            Require(rows[0] > 0 && rows[^1] < height - 1, "Caption descender is clipped");
+            Require(Math.Abs(moment / coverage - height / 2d) <= .8,
+                $"Caption visual mass is displaced at {scale * 100}%: center {moment / coverage}");
+            Require(bytes.Where((b, i) => i % 4 == 3 && b > 0 && b < 255).Count() > 25,
+                "Caption lost antialiased edge coverage");
+            encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(textBitmap));
+            using var file = File.Create(Path.Combine(AppContext.BaseDirectory, $"caption-{scale * 100}.png")); encoder.Save(file);
+            Console.WriteLine($"Caption {scale * 100}%: rows {rows[0]}–{rows[^1]}, visual center {moment / coverage:F2}, logo center {height / 2d}");
+        }
         LanDeviceMonitor.Services.ThemeService.Apply("Light");
         Require((Color)app.Resources["SwitchOnColor"] == (Color)ColorConverter.ConvertFromString("#C58CFF"),
             "Enabled switch lost the soft brand lavender");

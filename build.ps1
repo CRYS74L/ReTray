@@ -1,4 +1,4 @@
-param([ValidateSet('InputMethodLiveTests','CoreTests','BitmapTests','ProcessIdentityTests','Probe','Runtime','Agent','AgentVisibilityTests','AgentSystemTests','Bridge','BridgeRegistrationTests','BridgeTest','BridgeControls','Source','SettingsTests','StartupTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
+param([ValidateSet('InputMethodLiveTests','CoreTests','BitmapTests','ProcessIdentityTests','SnapshotLookupTests','Probe','Runtime','Agent','AgentVisibilityTests','AgentSystemTests','Bridge','BridgeRegistrationTests','BridgeTest','BridgeControls','Source','SettingsTests','StartupTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
 $ErrorActionPreference='Stop'
 $productRoot=$PSScriptRoot
 $projectVersion=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
@@ -42,6 +42,13 @@ if ($Target -eq 'ProcessIdentityTests') {
     $exe=Join-Path $outputRoot 'ProcessIdentityTests.exe'
     & $clang @commonArgs '-municode' (Join-Path $productRoot 'tests\process_identity_tests.cpp') '-o' $exe '-ladvapi32' '-lshell32'
     if($LASTEXITCODE -ne 0){throw 'Process identity tests build failed'}
+    & $exe
+    exit $LASTEXITCODE
+}
+if ($Target -eq 'SnapshotLookupTests') {
+    $exe=Join-Path $outputRoot 'SnapshotLookupTests.exe'
+    & $clang @commonArgs '-municode' (Join-Path $productRoot 'tests\native_snapshot_lookup_tests.cpp') (Join-Path $productRoot 'native\core\types.cpp') '-o' $exe '-luser32' '-lgdi32' '-lshell32' '-lole32'
+    if($LASTEXITCODE -ne 0){throw 'Snapshot lookup test build failed'}
     & $exe
     exit $LASTEXITCODE
 }

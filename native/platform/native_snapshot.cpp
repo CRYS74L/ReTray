@@ -190,6 +190,11 @@ class Reader {
     }
 };
 static uint64_t ModuleBase(uint32_t pid) {
+    // The injected bridge reads its own Taskbar module. Enumerating every
+    // loaded Explorer module for each icon command is unnecessary; validation
+    // of this module's PE/PDB/ABI still runs in Reader::image for every snapshot.
+    if (pid == GetCurrentProcessId())
+        return reinterpret_cast<uint64_t>(GetModuleHandleW(L"Taskbar.dll"));
     HANDLE snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, pid);
     if (snapshot == INVALID_HANDLE_VALUE)
         return 0;

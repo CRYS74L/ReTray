@@ -35,6 +35,13 @@ bool reconcileQueued{};
 uint64_t nextRegistration{};
 bool interactionsLocked{};
 bool opacityChanged{}, wasLayered{}, hadAlpha{};
+SnapshotResult ReadBridgeSnapshot() {
+    auto started = PerformanceMicros();
+    auto result = ReadSnapshot(adapter, GetCurrentProcessId(), state->epoch, false);
+    ++state->snapshotReads;
+    state->snapshotMicrosTotal += PerformanceMicros() - started;
+    return result;
+}
 BYTE savedAlpha{};
 COLORREF savedColor{};
 DWORD savedLayerFlags{};
@@ -364,7 +371,11 @@ void Publish(bool refreshOriginal, const WireEvent* event = nullptr) {
     TickInputMethodLogos();
     if (!state)
         return;
-    auto snapshot = ReadSnapshot(adapter, GetCurrentProcessId(), state->epoch, false);
+    struct Measurement {
+        BridgeState* target; uint64_t started{PerformanceMicros()};
+        ~Measurement() { ++target->publications; target->publishMicrosTotal += PerformanceMicros() - started; }
+    } measurement{state};
+    auto snapshot = ReadBridgeSnapshot();
     if (!snapshot.complete || snapshot.records.size() > MaxBridgeIcons) {
         state->lastError = ERROR_RETRY;
         return;
@@ -644,7 +655,13 @@ void ExecuteCommand() {
     if (!state)
         return;
     auto cmd = state->command;
-    auto start = GetTickCount64();
+    struct Measurement {
+        BridgeState* target; uint64_t started{PerformanceMicros()};
+        ~Measurement() {
+            target->lastCommandMicros = PerformanceMicros() - started;
+            ++target->commandsTotal; target->commandMicrosTotal += target->lastCommandMicros;
+        }
+    } measurement{state};
     DWORD error{};
     try {
         if (cmd.operation == BridgeOperation::Detach) {
@@ -669,6 +686,15 @@ void ExecuteCommand() {
             return;
         }
         if(cmd.operation==BridgeOperation::InputMethodLogo) {
+            // An original-mode startup policy has nothing to restore in a new
+            // bridge. Avoid two complete XAML control-tree discoveries for
+            // each saved original-mode profile; actual owned images and all
+            // transaction/rollback phases continue through the normal path.
+            if (cmd.index == 0 && !cmd.replacementIcon && !HasInputMethodLogos()) {
+                state->lastError = ERROR_SUCCESS;
+                InterlockedExchange(&state->replySequence, state->requestSequence);
+                return;
+            }
             const bool cachedTransaction=cmd.index==2 || cmd.index==3;
             bool ok=(cachedTransaction || ReadSystemControls(moduleBase,adapter,*state)) &&
                 UpdateInputMethodLogo(Utf8(cmd.inputProfileKey),reinterpret_cast<HICON>(cmd.replacementIcon),cmd.index);
@@ -693,7 +719,16 @@ void ExecuteCommand() {
             InterlockedExchange(&state->replySequence, state->requestSequence);
             return;
         }
-        auto snapshot = ReadSnapshot(adapter, GetCurrentProcessId(), state->epoch, false);
+        if (cmd.operation == BridgeOperation::Policy &&
+            ((cmd.clickEvent & ~(PolicyReplaceImage | PolicyClearImage | PolicyTip | PolicyVisibility | PolicyBehavior)) ||
+             ((cmd.clickEvent & PolicyReplaceImage) && (cmd.clickEvent & PolicyClearImage)) ||
+             ((cmd.clickEvent & PolicyVisibility) && (cmd.visibility < -1 || cmd.visibility > 1)) ||
+             ((cmd.clickEvent & PolicyBehavior) && (cmd.index < 0 || cmd.index > 1)))) {
+            state->lastError = ERROR_INVALID_PARAMETER;
+            InterlockedExchange(&state->replySequence, state->requestSequence);
+            return;
+        }
+        auto snapshot = ReadBridgeSnapshot();
         auto match =
             std::find_if(snapshot.records.begin(), snapshot.records.end(),
                          [&](const auto& r) { return SameIcon(r.identity, cmd.identity); });
@@ -715,7 +750,39 @@ void ExecuteCommand() {
                 } else
                     entry.record = *match;
                 ownOperation = true;
-                if (cmd.operation == BridgeOperation::Apply) {
+                if (cmd.operation == BridgeOperation::Policy) {
+                    if (cmd.clickEvent & PolicyReplaceImage) {
+                        auto replacement = CopyIcon(reinterpret_cast<HICON>(cmd.replacementIcon));
+                        if (!replacement) error = ERROR_INVALID_HANDLE;
+                        else {
+                            if (entry.replacement) DestroyIcon(entry.replacement);
+                            entry.replacement = replacement; entry.custom = true;
+                            entry.baseline = cmd.suppliedBaseline
+                                ? FrameBaseline{cmd.baselineWidth > 0 && cmd.baselineHeight > 0,
+                                                cmd.baselineFingerprint, cmd.baselineWidth, cmd.baselineHeight}
+                                : FrameBaseline{entry.source.origin == FrameOrigin::SourceLive && !entry.source.transparent,
+                                                entry.source.fingerprint, entry.source.width, entry.source.height};
+                            DrawPolicy(entry);
+                        }
+                    } else if (cmd.clickEvent & PolicyClearImage) {
+                        if (entry.customPainted) RestoreBitmap(entry);
+                        entry.custom = false; entry.customPainted = false;
+                        if (entry.replacement) { DestroyIcon(entry.replacement); entry.replacement = nullptr; }
+                    }
+                    if (cmd.clickEvent & PolicyBehavior) entry.swapButtons = cmd.index == 1;
+                    if (cmd.clickEvent & PolicyTip) {
+                        entry.customTip = cmd.tip;
+                        const bool changed = entry.tipChanged || !entry.customTip.empty();
+                        entry.tipChanged = !entry.customTip.empty();
+                        if (changed && !SetTip(*match, entry.tipChanged ? entry.customTip : entry.originalTip))
+                            error = ERROR_INVALID_DATA;
+                    }
+                    if (cmd.clickEvent & PolicyVisibility) {
+                        entry.visibility = cmd.visibility;
+                        if (!SetVisibility(*match, cmd.visibility == -1 ? entry.originalHidden : cmd.visibility == 1))
+                            error = ERROR_INVALID_DATA;
+                    }
+                } else if (cmd.operation == BridgeOperation::Apply) {
                     if (entry.replacement)
                         DestroyIcon(entry.replacement);
                     entry.replacement = CopyIcon(reinterpret_cast<HICON>(cmd.replacementIcon));
@@ -847,7 +914,6 @@ void ExecuteCommand() {
         ownOperation = false;
     }
     state->lastError = error;
-    state->lastCommandMicros = (GetTickCount64() - start) * 1000;
     InterlockedExchange(&state->replySequence, state->requestSequence);
 }
 LRESULT CALLBACK Subclass(HWND hwnd, UINT message, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {

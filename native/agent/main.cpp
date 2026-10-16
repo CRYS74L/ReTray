@@ -24,6 +24,7 @@
 #include <appmodel.h>
 #include <winrt/Windows.Foundation.h>
 #include <winrt/Windows.ApplicationModel.h>
+#include <windowsx.h>
 using namespace tray;
 namespace {
 constexpr UINT OwnCallback = WM_APP + 101, OpenMessage = WM_APP + 102, UpdateHotkeys = WM_APP + 103;
@@ -37,6 +38,8 @@ std::atomic<HWND> runtimeWindow{};
 std::atomic<DWORD> runtimeState{}; // 0 stopped, 1 starting, 2 ready, 3 stopping.
 std::atomic<bool> runtimeStopRequested{};
 std::atomic<bool> pendingInterfaceMenu{};
+std::atomic<LONG> pendingMenuX{}, pendingMenuY{};
+std::atomic<bool> pendingMenuPointValid{};
 bool embeddedRuntime{};
 bool runtimeThreadFailed{};
 
@@ -103,6 +106,7 @@ std::unordered_map<int, bool> environmentPolicies;
 std::array<bool, 10> environmentAvailable{};
 Json environmentOutcome = {{"success", true}};
 Json startupOutcome = {{"success", true}};
+Json startupPerformance;
 struct Request {
     Json input, output;
     HANDLE event{CreateEventW(nullptr, TRUE, FALSE, nullptr)};
@@ -394,9 +398,17 @@ void DispatchPendingInterfaceMenu(HWND target) {
     if (!target || !GetWindowThreadProcessId(target, &pid) || pid != GetCurrentProcessId())
         return;
     if (!pendingInterfaceMenu.exchange(false)) return;
+    POINT point{};
+    if (pendingMenuPointValid.exchange(false)) {
+        point.x = pendingMenuX.load(); point.y = pendingMenuY.load();
+    } else GetCursorPos(&point);
     AllowSetForegroundWindow(pid);
-    if (!PostMessageW(target, ShowDropdownMenuMessage, 0, 0))
+    if (!PostMessageW(target, ShowDropdownMenuMessage,
+                      static_cast<WPARAM>(static_cast<INT_PTR>(point.x)),
+                      static_cast<LPARAM>(point.y))) {
+        pendingMenuX = point.x; pendingMenuY = point.y; pendingMenuPointValid = true;
         pendingInterfaceMenu = true;
+    }
 }
 bool SetOwnIcon(bool reloadImage = true) {
     auto policy = settings["ownIcon"];
@@ -587,55 +599,42 @@ void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
         }
         return ok;
     };
-    if (rule && rule->enabled && !rule->asset.empty()) {
-        int size = row.sourceWidth
-                       ? row.sourceWidth
-                       : GetSystemMetricsForDpi(
-                             SM_CXSMICON, GetDpiForWindow(FindWindowW(L"Shell_TrayWnd", nullptr)));
-        auto image = LoadAsset(rule->asset, rule->assetIndex, size);
-        if (image) {
-            BridgeCommand cmd;
-            cmd.operation = BridgeOperation::Apply;
-            cmd.replacementIcon = reinterpret_cast<uint64_t>(image);
-            cmd.suppliedBaseline = true;
-            cmd.baselineFingerprint = rule->baselineFingerprint;
-            cmd.baselineWidth = rule->baselineWidth;
-            cmd.baselineHeight = rule->baselineHeight;
-            if (send(cmd)) {
-                auto preview = RasterizeIcon(image, FrameOrigin::Custom);
-                if (preview.outcome.success && !preview.frame.transparent)
-                    presentationFrames[key] = std::move(preview.frame);
-            }
-            DestroyIcon(image);
-        } else {
-            success = false;
-            error = ERROR_FILE_NOT_FOUND;
-        }
-    } else if (row.custom && rule && rule->enabled) {
-        BridgeCommand cmd;
-        cmd.operation = BridgeOperation::ClearImage;
-        send(cmd);
-    } else if (row.managed && !(rule && rule->enabled)) {
-        BridgeCommand cmd;
-        cmd.operation = BridgeOperation::Restore;
-        send(cmd);
-    }
-
     if (rule && rule->enabled) {
-        BridgeCommand cmd;
-        cmd.operation = BridgeOperation::Behavior;
-        cmd.index = 0;
-        send(cmd);
-        cmd = {};
-        cmd.operation = BridgeOperation::Tip;
-        wcsncpy_s(cmd.tip, std::size(cmd.tip), rule->tip.c_str(), _TRUNCATE);
-        send(cmd);
-    }
-    if (visibility != -1 || row.managed) {
-        BridgeCommand cmd;
-        cmd.operation = BridgeOperation::Visibility;
-        cmd.visibility = visibility;
-        send(cmd);
+        BridgeCommand policy;
+        policy.operation = BridgeOperation::Policy;
+        policy.clickEvent = PolicyTip | PolicyBehavior;
+        policy.index = 0;
+        wcsncpy_s(policy.tip, std::size(policy.tip), rule->tip.c_str(), _TRUNCATE);
+        HICON image{};
+        if (!rule->asset.empty()) {
+            int size = row.sourceWidth ? row.sourceWidth : GetSystemMetricsForDpi(
+                SM_CXSMICON, GetDpiForWindow(FindWindowW(L"Shell_TrayWnd", nullptr)));
+            image = LoadAsset(rule->asset, rule->assetIndex, size);
+            if (image) {
+                policy.clickEvent |= PolicyReplaceImage;
+                policy.replacementIcon = reinterpret_cast<uint64_t>(image);
+                policy.suppliedBaseline = true;
+                policy.baselineFingerprint = rule->baselineFingerprint;
+                policy.baselineWidth = rule->baselineWidth;
+                policy.baselineHeight = rule->baselineHeight;
+            } else { success = false; error = ERROR_FILE_NOT_FOUND; }
+        } else if (row.custom) policy.clickEvent |= PolicyClearImage;
+        if (visibility != -1 || row.managed) {
+            policy.clickEvent |= PolicyVisibility;
+            policy.visibility = visibility;
+        }
+        // One identity-checked Explorer callback applies the complete policy
+        // before publishing, instead of four scans and intermediate repaints.
+        if (send(policy) && image) {
+            auto preview = RasterizeIcon(image, FrameOrigin::Custom);
+            if (preview.outcome.success && !preview.frame.transparent)
+                presentationFrames[key] = std::move(preview.frame);
+        }
+        if (image) DestroyIcon(image);
+    } else if (row.managed) {
+        BridgeCommand command;
+        command.operation = BridgeOperation::Restore;
+        send(command);
     }
     outcomes[key] = Result(success, success ? "已生效" : "规则已保存，应用失败", error);
     if (success) {
@@ -781,6 +780,8 @@ bool ReconcileNativeCatalog(bool force = false) {
     return bridge.Command(command);
 }
 void Refresh() {
+    const auto refreshStarted = PerformanceMicros();
+    uint64_t attachMicros{};
     if (!ShouldRecover(lifecycle) || stopping)
         return;
     // Poll on the existing worker as well as reacting to normal shell refreshes.
@@ -796,8 +797,10 @@ void Refresh() {
         if (!ExplorerPid())
             return;
         bridge.Reset();
+        const auto attachStarted = PerformanceMicros();
         if (!bridge.Attach(adapter, root / L"ReTray.ShellBridge.dll"))
             return;
+        attachMicros = PerformanceMicros() - attachStarted;
         seenSequence = -1;
         lastCatalogRefresh = 0;
         registrations.clear();
@@ -809,8 +812,11 @@ void Refresh() {
         retryAfter.clear();
         SetOperationalState(lifecycle, SessionState::Ready);
     }
+    const auto environmentStarted = PerformanceMicros();
     ApplyEnvironment();
+    const auto inputStarted = PerformanceMicros();
     ApplyInputMethodIcons();
+    const auto catalogStarted = PerformanceMicros();
     if (!ReconcileNativeCatalog())
         return;
     if (activityDirty && GetTickCount64() - lastActivitySave >= 30000) {
@@ -896,6 +902,7 @@ void Refresh() {
             it = outcomes.erase(it);
         else
             ++it;
+    const auto policiesStarted = PerformanceMicros();
     for (auto& row : rows) {
         if (row.identity.ownerPid == GetCurrentProcessId())
             continue;
@@ -910,6 +917,22 @@ void Refresh() {
             roleBindings[IdentityKey(row.identity)] = {PersistentKey(found.rule->selector), found.provisional, row.registration};
         else roleBindings.erase(IdentityKey(row.identity));
         ApplyRule(row, found.rule);
+    }
+    // Commands publish a final, coherent native snapshot. Make the first UI
+    // catalog use that state instead of waiting another 500ms worker cycle.
+    bool finalComplete{};
+    auto finalRows = bridge.Snapshot(&finalComplete);
+    if (finalComplete) rows = std::move(finalRows);
+    if (startupPerformance.is_null()) {
+        const auto finished = PerformanceMicros();
+        startupPerformance = {{"firstRefreshMicros", finished - refreshStarted},
+            {"attachMicros", attachMicros}, {"environmentMicros", inputStarted - environmentStarted},
+            {"inputMethodMicros", catalogStarted - inputStarted},
+            {"catalogMicros", policiesStarted - catalogStarted}, {"policyMicros", finished - policiesStarted},
+            {"icons", rows.size()}, {"bridgeCommands", bridge.shared->commandsTotal},
+            {"bridgeCommandMicros", bridge.shared->commandMicrosTotal},
+            {"nativeSnapshots", bridge.shared->snapshotReads}, {"nativeSnapshotMicros", bridge.shared->snapshotMicrosTotal},
+            {"publications", bridge.shared->publications}, {"publishMicros", bridge.shared->publishMicrosTotal}};
     }
     ScheduleHotkeys();
 }
@@ -1495,6 +1518,7 @@ Json Handle(const Json& req) {
             {"environment", environmentOutcome},
             {"identity", identityOutcome},
             {"startup", startupOutcome},
+            {"startupPerformance", startupPerformance},
             {"hotkeyErrors", shortcuts},
             {"recovered", recovered},
             {"pid", GetCurrentProcessId()},
@@ -1882,10 +1906,13 @@ DWORD WINAPI Worker(void* context) {
         return ERROR_UNHANDLED_EXCEPTION;
     }
 }
-void TrayMenu() {
+void TrayMenu(const POINT* anchor = nullptr) {
+    POINT point{};
+    if (anchor) point = *anchor; else GetCursorPos(&point);
     if (embeddedRuntime) {
         // Every product menu is rendered by the managed host's shared dropdown
         // surface. Retain a click received before its HWND has been attached.
+        pendingMenuX = point.x; pendingMenuY = point.y; pendingMenuPointValid = true;
         pendingInterfaceMenu = true;
         DispatchPendingInterfaceMenu(uiWindow.load());
         return;
@@ -1897,8 +1924,6 @@ void TrayMenu() {
         if (previousDpi) SetThreadDpiAwarenessContext(previousDpi);
         return;
     }
-    POINT point{};
-    GetCursorPos(&point);
     tray_menu_typography::Prepare(root, point);
     constexpr const char* languages[]{"zh", "en", "zh-Hant", "ja"};
     tray_menu_typography::SetLanguage(languages[menuLanguageIndex.load()]);
@@ -1976,8 +2001,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     if (msg == OwnCallback) {
         auto event = LOWORD(lp);
-        if (event == WM_CONTEXTMENU)
-            TrayMenu();
+        if (event == WM_CONTEXTMENU) {
+            // NOTIFYICON_VERSION_4 includes the click position in wParam.
+            // Keyboard invocation uses (-1,-1); sample the cursor only then.
+            POINT point{GET_X_LPARAM(wp), GET_Y_LPARAM(wp)};
+            TrayMenu(point.x == -1 && point.y == -1 ? nullptr : &point);
+        }
         else if (event == NIN_SELECT || event == NIN_KEYSELECT || event == WM_LBUTTONUP ||
                  event == WM_LBUTTONDBLCLK) {
             if (!ownOpenQueued.exchange(true))

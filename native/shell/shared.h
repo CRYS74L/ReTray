@@ -2,10 +2,10 @@
 #include "../platform/native_snapshot.h"
 namespace tray {
 constexpr uint32_t BridgeMagic = 0x54494131;
-constexpr uint32_t BridgeSchema = 8;
+constexpr uint32_t BridgeSchema = 9;
 constexpr size_t MaxBridgeIcons = 256, MaxFramePixels = 4096;
-constexpr wchar_t InstallMessage[] = L"ReTray.Bridge.Install.8";
-constexpr wchar_t CommandMessage[] = L"ReTray.Bridge.Command.8";
+constexpr wchar_t InstallMessage[] = L"ReTray.Bridge.Install.9";
+constexpr wchar_t CommandMessage[] = L"ReTray.Bridge.Command.9";
 enum class BridgeOperation : uint32_t {
     Refresh = 1,
     Apply = 2,
@@ -23,7 +23,14 @@ enum class BridgeOperation : uint32_t {
     Invoke = 14,
     ClearImage = 15,
     SystemPolicy = 16,
-    InputMethodLogo = 17
+    InputMethodLogo = 17,
+    Policy = 18
+};
+// A complete rule reaches the Explorer UI thread in one command. Every flag is
+// explicit so an unreadable image cannot accidentally clear a valid old image.
+enum PolicyFlags : uint32_t {
+    PolicyReplaceImage = 1, PolicyClearImage = 2, PolicyTip = 4,
+    PolicyVisibility = 8, PolicyBehavior = 16
 };
 struct SystemControl {
     uint32_t id{}, instances{};
@@ -76,6 +83,8 @@ struct BridgeState {
         sessionEnding{};
     uint32_t count{};
     uint64_t events{}, lastSnapshotTick{}, lastCommandMicros{};
+    uint64_t commandsTotal{}, commandMicrosTotal{}, snapshotReads{}, snapshotMicrosTotal{},
+        publications{}, publishMicrosTotal{};
     uint32_t callbackMicros[512]{};
     uint32_t systemCount{};
     SystemControl systemControls[32]{};
@@ -83,8 +92,14 @@ struct BridgeState {
     BridgeCommand command;
     BridgeIcon icons[MaxBridgeIcons];
 };
+inline uint64_t PerformanceMicros() {
+    static const auto frequency = [] { LARGE_INTEGER value{}; QueryPerformanceFrequency(&value); return value.QuadPart; }();
+    LARGE_INTEGER value{}; QueryPerformanceCounter(&value);
+    return static_cast<uint64_t>(value.QuadPart / frequency) * 1000000 +
+           static_cast<uint64_t>(value.QuadPart % frequency) * 1000000 / frequency;
+}
 inline std::wstring MappingName(uint32_t session) {
-    return L"Local\\ReTray.Bridge.8." + std::to_wstring(session);
+    return L"Local\\ReTray.Bridge.9." + std::to_wstring(session);
 }
 inline std::wstring EndingEventName(uint32_t pid, uint64_t created) {
     return L"Local\\ReTray.Ending." + std::to_wstring(pid) + L"." + std::to_wstring(created);

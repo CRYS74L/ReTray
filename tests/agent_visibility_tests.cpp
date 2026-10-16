@@ -58,7 +58,13 @@ struct AgentTestBridgeClient {
         for (uint32_t i = 0; i < shared->count; ++i) {
             auto& row = shared->icons[i];
             if (!SameIcon(row.identity, command.identity)) continue;
-            if (command.operation == BridgeOperation::Visibility) {
+            if (command.operation == BridgeOperation::Policy) {
+                if (command.clickEvent & PolicyReplaceImage) row.custom = true;
+                if (command.clickEvent & PolicyClearImage) row.custom = false;
+                if (command.clickEvent & PolicyVisibility) row.placement = command.visibility == 1 ? 2 : 1;
+                row.managed = row.custom || ((command.clickEvent & PolicyVisibility) && command.visibility != -1) ||
+                    ((command.clickEvent & PolicyTip) && command.tip[0]);
+            } else if (command.operation == BridgeOperation::Visibility) {
                 row.placement = command.visibility == 1 ? 2 : 1;
                 row.managed = command.visibility != -1 || row.custom;
             } else if (command.operation == BridgeOperation::Move && command.location != -1) {
@@ -69,6 +75,7 @@ struct AgentTestBridgeClient {
                 row.custom = false;
             } else if (command.operation == BridgeOperation::Restore) {
                 row.custom = row.managed = false;
+                row.placement = row.sourceHidden ? 2 : 1;
             }
         }
         shared->snapshotSequence += 2;
@@ -288,12 +295,12 @@ void StoreUpgradeReappliesExistingPolicyWithoutRewritingSettings() {
         CHECK(row.custom && row.managed && settings["rules"] == original);
         bool image = false, tip = false;
         for (const auto& command : bridge.commands) {
-            if (command.operation == BridgeOperation::Apply) {
+            if (command.operation == BridgeOperation::Policy && (command.clickEvent & PolicyReplaceImage)) {
                 CHECK(command.identity.ownerPid == row.identity.ownerPid);
                 CHECK(command.baselineFingerprint == rule.baselineFingerprint);
                 image = true;
             }
-            if (command.operation == BridgeOperation::Tip && command.identity.ownerPid == row.identity.ownerPid) {
+            if (command.operation == BridgeOperation::Policy && (command.clickEvent & PolicyTip) && command.identity.ownerPid == row.identity.ownerPid) {
                 CHECK(command.tip == rule.tip); tip = true;
             }
         }
@@ -349,8 +356,21 @@ void ExplicitRuleReapplyRetriesOnlySelectedIcon() {
     CHECK(!first.value("success", true));
     auto second = Call("rule.apply", {{"rule", target}});
     CHECK(second.value("success", false)); CHECK(Target().custom);
-    auto commands = IconCommands(); CHECK(commands.size() == 8);
+    auto commands = IconCommands(); CHECK(commands.size() == 2);
     for (const auto& command : commands) CHECK(command.identity.ownerPid == 1000);
+}
+void MissingAssetKeepsTheOldImageAndAppliesOtherPolicyFields() {
+    ResetFixture();
+    auto rule = settings["rules"][0];
+    rule["asset"] = Utf8(fixtureRoot / L"missing-replacement.ico");
+    rule["visibility"] = 1; rule["tip"] = "updated tip";
+    auto reply = Call("rule.apply", {{"rule", rule}});
+    CHECK(!reply.value("success", true)); CHECK(reply["errorCode"] == ERROR_FILE_NOT_FOUND);
+    CHECK(Target().custom && Target().placement == 2);
+    auto commands = IconCommands(); CHECK(commands.size() == 1);
+    CHECK(commands[0].operation == BridgeOperation::Policy);
+    CHECK(!(commands[0].clickEvent & (PolicyReplaceImage | PolicyClearImage)));
+    CHECK(commands[0].clickEvent & PolicyVisibility); CHECK(commands[0].clickEvent & PolicyTip);
 }
 void SavedRepliesHaveCurrentRevision() {
     ResetFixture(); auto result = Call("icons.reorder", {{"keys", Json::array()}});
@@ -470,6 +490,36 @@ void OwnMenuUsesNativeDpiAndUpperRightAnchor() {
     CHECK((menuFlags & (TPM_RIGHTALIGN | TPM_CENTERALIGN)) == 0);
     CHECK(AreDpiAwarenessContextsEqual(menuDpi, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2));
     CHECK(AreDpiAwarenessContextsEqual(restored, DPI_AWARENESS_CONTEXT_UNAWARE));
+}
+void EmbeddedMenuPreservesCallbackAndPendingCoordinates() {
+    ResetFixture();
+    WNDCLASSW cls{}; cls.hInstance = GetModuleHandleW(nullptr); cls.lpfnWndProc = DefWindowProcW;
+    cls.lpszClassName = L"ReTray.IsolatedMenuCoordinates";
+    CHECK(RegisterClassW(&cls));
+    auto target = CreateWindowW(cls.lpszClassName, L"", 0, 0, 0, 0, 0, HWND_MESSAGE,
+                                nullptr, cls.hInstance, nullptr);
+    CHECK(target);
+    struct Cleanup {
+        HWND target; HINSTANCE instance;
+        ~Cleanup() {
+            embeddedRuntime = false; uiWindow = nullptr; pendingInterfaceMenu = false;
+            pendingMenuPointValid = false; DestroyWindow(target);
+            UnregisterClassW(L"ReTray.IsolatedMenuCoordinates", instance);
+        }
+    } cleanup{target, cls.hInstance};
+    embeddedRuntime = true; uiWindow = nullptr;
+    // The mouse can move before attachment. The saved negative screen position
+    // must remain intact across the deferred message, including sign extension.
+    POINT clicked{-735, 412}; TrayMenu(&clicked);
+    CHECK(pendingInterfaceMenu);
+    uiWindow = target; DispatchPendingInterfaceMenu(target);
+    MSG message{};
+    CHECK(PeekMessageW(&message, target, ShowDropdownMenuMessage, ShowDropdownMenuMessage, PM_REMOVE));
+    CHECK(static_cast<INT_PTR>(message.wParam) == clicked.x && message.lParam == clicked.y);
+    CHECK(!pendingInterfaceMenu);
+    WindowProc(nullptr, OwnCallback, MAKELPARAM(-511, -233), MAKELONG(WM_CONTEXTMENU, 1));
+    CHECK(PeekMessageW(&message, target, ShowDropdownMenuMessage, ShowDropdownMenuMessage, PM_REMOVE));
+    CHECK(static_cast<INT_PTR>(message.wParam) == -511 && message.lParam == -233);
 }
 void OwnRestartLaunchFailureKeepsCurrentAgentAndSettings() {
     ResetFixture(); root = fixtureRoot; auto before = settings;
@@ -629,7 +679,7 @@ void ImportRemovesPoliciesAndRestoresNativeState() {
     Refresh(); // Worker applies after the saved confirmation has already returned.
     bool cleared{}, restored{}, systemRestored{}, inputRestored{};
     for (const auto& command : bridge.commands) {
-        if (command.identity.ownerPid == 1000 && command.operation == BridgeOperation::Restore) cleared = true;
+        if (command.identity.ownerPid == 1000 && command.operation == BridgeOperation::Restore) cleared = restored = true;
         if (command.identity.ownerPid == 1000 && command.operation == BridgeOperation::Visibility && command.visibility == -1) restored = true;
         if (command.operation == BridgeOperation::SystemPolicy && command.location == 6 && command.visibility == 0) systemRestored = true;
         if (command.operation == BridgeOperation::InputMethodLogo && !command.replacementIcon) inputRestored = true;
@@ -838,7 +888,7 @@ void SameIdentityRecreationRestoresSavedPolicy() {
     renewed.custom = renewed.managed = false; renewed.placement = 1;
     bridge.shared->snapshotSequence += 2; Refresh();
     CHECK(Target().custom); CHECK(Target().placement == 2);
-    CHECK(IconCommands().size() == 4);
+    CHECK(IconCommands().size() == 1);
 }
 void SameIdentityRecreationCannotReuseOldBlinkPreview() {
     ResetFixture(); rules.clear(); applied.clear();
@@ -1133,6 +1183,7 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"immediate visibility and no replay", ImmediateVisibility},
                             std::pair{"unrelated saves do not replay", UnrelatedSavesKeepRulesApplied},
                             std::pair{"explicit rule reapply retries selected icon", ExplicitRuleReapplyRetriesOnlySelectedIcon},
+                            std::pair{"missing asset preserves image and applies remaining policy", MissingAssetKeepsTheOldImageAndAppliesOtherPolicyFields},
                             std::pair{"saved replies carry current revision", SavedRepliesHaveCurrentRevision},
                             std::pair{"legacy placement ignored", LegacyPlacementIgnored},
                             std::pair{"invalid visibility rejected before persist", InvalidVisibilityCannotPersist},
@@ -1144,6 +1195,7 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"own hide immediately shows again", OwnHiddenIconCanImmediatelyShowAgain},
                             std::pair{"own single click queues one UI activation", OwnSingleClickQueuesOneOpen},
                             std::pair{"own native menu DPI and upper right anchor", OwnMenuUsesNativeDpiAndUpperRightAnchor},
+                            std::pair{"embedded menu preserves signed callback and pending coordinates", EmbeddedMenuPreservesCallbackAndPendingCoordinates},
                             std::pair{"restart launch failure preserves current state", OwnRestartLaunchFailureKeepsCurrentAgentAndSettings},
                             std::pair{"restart requires both exits and honors cancellation", RestartWaitRequiresBothExitsAndHonorsCancellation}}) {
         try { test.second(); std::printf("PASS %s\n", test.first); }

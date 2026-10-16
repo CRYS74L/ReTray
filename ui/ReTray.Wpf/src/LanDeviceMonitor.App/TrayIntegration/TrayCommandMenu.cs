@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Interop;
+using System.Windows.Media;
 using System.Windows.Threading;
 using Localization = ReTray_App.Services.Localization;
 namespace ReTray_App.Controls;
@@ -11,27 +12,91 @@ namespace ReTray_App.Controls;
 public sealed class TrayCommandMenu
 {
     private ContextMenu? menu;
-    public void Show()
+    public void Show(Point? clickPosition = null)
     {
         if (App.IsExiting) return;
         if (menu is { IsOpen: true }) { menu.IsOpen = false; return; }
-        menu = new ContextMenu {
-            Style = (Style)Application.Current.FindResource("TrayDropdownMenuStyle"),
-            Placement = PlacementMode.MousePoint, HorizontalOffset = -12, StaysOpen = false
+        if (clickPosition is null) {
+            GetCursorPos(out var cursor);
+            clickPosition = new Point(cursor.X, cursor.Y);
+        }
+        var anchor = new ScreenAnchor(clickPosition.Value);
+        ContextMenu? ownedMenu = null;
+        try {
+            var openedMenu = new ContextMenu {
+                Style = (Style)Application.Current.FindResource("TrayDropdownMenuStyle"),
+                Placement = PlacementMode.Custom, PlacementTarget = anchor.Target,
+                PlacementRectangle = new Rect(0, 0, 0, 0), StaysOpen = false
+            };
+            menu = ownedMenu = openedMenu;
+            openedMenu.ApplyTemplate();
+            var surfaceMargin = Surface(openedMenu)?.Margin ?? SharedSurfaceMargin();
+            openedMenu.CustomPopupPlacementCallback = (popupSize, _, _) =>
+                [TrayMenuPlacement.Candidate(popupSize, Surface(openedMenu)?.Margin ?? surfaceMargin)];
+            openedMenu.Closed += (_, _) => {
+                openedMenu.PlacementTarget = null;
+                anchor.Dispose();
+                if (ReferenceEquals(menu, openedMenu)) menu = null;
+            };
+            // A popup can open while the main window is natively hidden in the tray.
+            // It owns keyboard focus and outside-click dismissal independently.
+            var labels = Labels(Localization.CurrentLanguage);
+            Add(labels[0], "TrayMenuOpen", () => { App.OpenInterface(); return Task.CompletedTask; });
+            Add(labels[1], "TrayMenuRestart", App.RestartAsync);
+            Add(labels[2], "TrayMenuExit", App.QuitAsync);
+            System.Windows.Automation.AutomationProperties.SetAutomationId(openedMenu, "ReTrayTrayMenu");
+            openedMenu.Opened += (_, _) => openedMenu.Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() => {
+                if (!ReferenceEquals(menu, openedMenu) || !openedMenu.IsOpen) return;
+                if (PresentationSource.FromVisual(openedMenu) is HwndSource source)
+                    SetForegroundWindow(source.Handle);
+                (openedMenu.Items[0] as MenuItem)?.Focus();
+            }));
+            openedMenu.IsOpen = true;
+        }
+        catch {
+            if (ownedMenu is not null) ownedMenu.PlacementTarget = null;
+            anchor.Dispose();
+            if (ReferenceEquals(menu, ownedMenu)) menu = null;
+            throw;
+        }
+    }
+    private static FrameworkElement? Surface(ContextMenu contextMenu)
+    {
+        if (VisualTreeHelper.GetChildrenCount(contextMenu) == 0) return null;
+        var content = VisualTreeHelper.GetChild(contextMenu, 0) as ContentControl;
+        content?.ApplyTemplate();
+        return content?.Template.FindName("DropdownSurface", content) as FrameworkElement;
+    }
+    private static Thickness SharedSurfaceMargin()
+    {
+        var probe = new ContentControl {
+            Template = (ControlTemplate)Application.Current.FindResource("DropdownSurfaceTemplate")
         };
-        // A popup can open while the main window is natively hidden in the tray.
-        // It owns keyboard focus and outside-click dismissal independently.
-        var labels = Labels(Localization.CurrentLanguage);
-        Add(labels[0], "TrayMenuOpen", () => { App.OpenInterface(); return Task.CompletedTask; });
-        Add(labels[1], "TrayMenuRestart", App.RestartAsync);
-        Add(labels[2], "TrayMenuExit", App.QuitAsync);
-        System.Windows.Automation.AutomationProperties.SetAutomationId(menu, "ReTrayTrayMenu");
-        menu.Opened += (_, _) => menu.Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() => {
-            if (menu?.IsOpen != true) return;
-            if (PresentationSource.FromVisual(menu) is HwndSource source) SetForegroundWindow(source.Handle);
-            (menu.Items[0] as MenuItem)?.Focus();
-        }));
-        menu.IsOpen = true;
+        probe.ApplyTemplate();
+        return ((FrameworkElement)probe.Template.FindName("DropdownSurface", probe)).Margin;
+    }
+    // The native click is captured once. This invisible source supplies WPF
+    // with a real placement target on that screen, independent of the main
+    // window's hidden position and of any later movement of the mouse.
+    private sealed class ScreenAnchor : IDisposable
+    {
+        public Border Target { get; } = new() { Background = Brushes.Transparent };
+        private readonly HwndSource source;
+        public ScreenAnchor(Point physicalPosition)
+        {
+            var parameters = new HwndSourceParameters("ReTray.MenuAnchor") {
+                WindowStyle = unchecked((int)0x80000000), // WS_POPUP, never WS_VISIBLE.
+                ExtendedWindowStyle = 0x08000080, // WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW.
+                Width = 1, Height = 1
+            };
+            parameters.SetPosition((int)Math.Round(physicalPosition.X), (int)Math.Round(physicalPosition.Y));
+            source = new HwndSource(parameters);
+            try {
+                source.RootVisual = Target;
+                Target.Measure(new Size(1, 1)); Target.Arrange(new Rect(0, 0, 1, 1));
+            } catch { source.Dispose(); throw; }
+        }
+        public void Dispose() => source.Dispose();
     }
     private void Add(string label, string id, Func<Task> action)
     {
@@ -54,4 +119,15 @@ public sealed class TrayCommandMenu
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(nint window);
+    [StructLayout(LayoutKind.Sequential)] private struct NativePoint {
+        public int X, Y;
+        public NativePoint(int x, int y) { X = x; Y = y; }
+    }
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out NativePoint point);
+}
+
+public static class TrayMenuPlacement
+{
+    public static CustomPopupPlacement Candidate(Size popupSize, Thickness surfaceMargin) => new(
+        new Point(-surfaceMargin.Left, -popupSize.Height + surfaceMargin.Bottom), PopupPrimaryAxis.None);
 }

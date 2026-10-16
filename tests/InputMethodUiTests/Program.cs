@@ -9,10 +9,17 @@ using LanDeviceMonitor.Controls;
 using ReTray_App;
 internal static class Program
 {
-    [STAThread] static int Main()
+    [STAThread] static int Main(string[] args)
     {
+        if (args.Contains("--hover-only"))
+        {
+            _ = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
+            try { HoverTests.Run(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         int failed=0;
         foreach(var (name,test) in new (string,Action)[]{
+            ("dropdown hover fades without dark-theme flashes or stale emphasis", RunHoverInIsolation),
             ("input method rows switch independently and retain selection",IndependentRows),
             ("selected replacement synchronizes the visible slider",SelectedFileUpdatesMode),
             ("locale switching preserves source labels and user bindings",LocaleRoundtrip),
@@ -26,9 +33,23 @@ internal static class Program
             ("caption uses body TextBlock rendering and genuine Regular face",BrandCaptionAndVector),
             ("capital R aligns with the icon center", CaptionReferenceTests.Run),
             ("tray commands and selectors share dropdown appearance", SharedDropdownAppearance),
+            ("tray menu anchors its visible lower left corner at the click", TrayPlacement),
             ("shutdown before runtime startup prevents a late native thread", RuntimeStartupCancellation)})
             try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e);}
         return failed==0?0:1;
+    }
+    private static void RunHoverInIsolation()
+    {
+        var start = new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!) {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true
+        };
+        start.ArgumentList.Add("--hover-only");
+        using var process = System.Diagnostics.Process.Start(start)!;
+        var output = process.StandardOutput.ReadToEndAsync();
+        var errors = process.StandardError.ReadToEndAsync();
+        Require(process.WaitForExit(20000), "Hover regression did not finish");
+        Console.Write(output.GetAwaiter().GetResult());
+        Require(process.ExitCode == 0, errors.GetAwaiter().GetResult());
     }
     private sealed class State : INotifyPropertyChanged
     {
@@ -60,6 +81,7 @@ internal static class Program
         Require(!source.Descendants().Any(e => (string?)e.Attribute("MouseRightButtonUp") == "TrayTitleMenu"),
             "Title bar still exposes the tray menu");
     }
+    private static void TrayPlacement() => TrayMenuPlacementTests.Run();
     private static void RuntimeStartupCancellation()
     {
         LanDeviceMonitor.Services.NativeRuntime.StopAsync().GetAwaiter().GetResult();
@@ -130,7 +152,7 @@ internal static class Program
             Console.WriteLine($"Caption {scale * 100}%: rows {rows[0]}–{rows[^1]}, visual center {moment / coverage:F2}, logo center {height / 2d}");
         }
         LanDeviceMonitor.Services.ThemeService.Apply("Light");
-        Require((Color)app.Resources["SwitchOnColor"] == (Color)ColorConverter.ConvertFromString("#D58FFF"),
+        Require((Color)app.Resources["SwitchOnColor"] == (Color)ColorConverter.ConvertFromString("#CF80FF"),
             "Enabled switch lost the soft brand lavender");
     }
     private static IconChoiceRow Row(State state)=>new(state,nameof(state.Original),()=>state.AssetPreview,

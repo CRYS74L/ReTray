@@ -2617,7 +2617,8 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         if (message == ShowDropdownMenuMessage)
         {
             handled = true;
-            _ = Dispatcher.BeginInvoke(new Action(_trayCommandMenu.Show));
+            var click = new System.Windows.Point(wordParameter.ToInt32(), longParameter.ToInt32());
+            _ = Dispatcher.BeginInvoke(new Action(() => _trayCommandMenu.Show(click)));
             return IntPtr.Zero;
         }
         if (message == OpenInterfaceMessage)

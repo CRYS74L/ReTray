@@ -8,7 +8,7 @@
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <WindowsPackageType>None</WindowsPackageType>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <AssemblyName>ReTray.App</AssemblyName>
+    <AssemblyName>ReTray</AssemblyName>
     <RootNamespace>LanDeviceMonitor</RootNamespace>
     <Product>ReTray</Product>
     <Company>CRYS74L</Company>
@@ -41,7 +41,7 @@
     <Compile Include="$(TraySharedSourceDirectory)\Services\ConfigurationArchive.cs" Link="Services\ConfigurationArchive.cs" />
     <Compile Include="$(TraySharedSourceDirectory)\Services\Localization.cs" Link="Services\Localization.cs" />
     <Compile Include="$(TraySharedSourceDirectory)\Services\Localization.Catalogs.cs" Link="Services\Localization.Catalogs.cs" />
-    <Content Include="$(TrayProductDirectory)\build\ReTray.Agent.exe" Link="ReTray.Agent.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="$(TrayProductDirectory)\build\ReTray.Runtime.dll" Link="ReTray.Runtime.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(TrayProductDirectory)\build\ReTray.Startup.exe" Link="ReTray.Startup.exe" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(TrayProductDirectory)\build\ReTray.ShellBridge.dll" Link="ReTray.ShellBridge.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(TrayProductDirectory)\native\platform\supported-adapters.json" Link="supported-adapters.json" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

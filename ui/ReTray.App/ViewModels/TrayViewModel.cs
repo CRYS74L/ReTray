@@ -9,6 +9,7 @@ using Microsoft.Windows.Storage.Pickers;
 using WriteableBitmap = Microsoft.UI.Xaml.Media.Imaging.WriteableBitmap;
 #endif
 using System.Collections.ObjectModel;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
@@ -27,6 +28,45 @@ public partial class TrayViewModel : ObservableObject
     private readonly Dictionary<string, (long Revision, JsonObject Data)> visibilityAcknowledgments = new();
 
     private bool polling, connectionError, initialized, initializing;
+    // Native thread creation precedes Shell bootstrap and its first queued
+    // request. Share one finite budget through the first successful catalog.
+    private readonly TimeSpan startupTimeout = TimeSpan.FromSeconds(30);
+    private Stopwatch? startupClock;
+    private bool startupComplete, startupDeadlineReached;
+    internal TrayViewModel(PipeClient pipe, TimeSpan startupTimeout) : this()
+    {
+        Pipe = pipe;
+        this.startupTimeout = startupTimeout;
+    }
+    private TimeSpan? StartupRequestTimeout()
+    {
+        if (startupComplete || startupDeadlineReached) return null;
+        startupClock ??= Stopwatch.StartNew();
+        var remaining = startupTimeout - startupClock.Elapsed;
+        if (remaining <= TimeSpan.Zero) {
+            startupDeadlineReached = true;
+            throw StartupTimeoutError();
+        }
+        return remaining;
+    }
+    private TimeoutException StartupTimeoutError(Exception? inner = null) =>
+        new($"ReTray 启动未在 {startupTimeout.TotalSeconds:0} 秒内完成，请重试连接。", inner);
+    private static bool ApplicationStopping => App.IsExiting
+#if TRAY_WPF
+        || LanDeviceMonitor.Services.NativeRuntime.IsStopRequested
+#endif
+        ;
+    private void ReportConnectionFailure(Exception exception)
+    {
+        if (ApplicationStopping) return;
+        if (!startupComplete && exception is TimeoutException) {
+            startupDeadlineReached = true;
+            exception = StartupTimeoutError(exception);
+        }
+        IsReady = false;
+        IsLoading = false;
+        ReportError(exception, true);
+    }
     private List<string> iconOrder = new();
     private IconRow? selected;
     public IconRow? Selected { get => selected; set { if (SetProperty(ref selected, value)) { OnPropertyChanged(nameof(HasSelection)); if(value != null) ReadEditor(value); } } }
@@ -126,11 +166,11 @@ public partial class TrayViewModel : ObservableObject
     }
     public async Task InitializeAsync(JsonObject? importedSettings = null)
     {
-        if (initializing) return;
+        if (initializing || ApplicationStopping) return;
         initializing = true;
         try
         {
-            initialized=false;var result = importedSettings==null?await Call("settings.read"):new JsonObject{["data"]=importedSettings.DeepClone()}; Settings = (JsonObject)result["data"]!.DeepClone();iconOrder=Settings["iconOrder"]?.AsArray().Select(x=>x!.GetValue<string>()).ToList()??new();
+            initialized=false;var result = importedSettings==null?await Call("settings.read", timeout: StartupRequestTimeout()):new JsonObject{["data"]=importedSettings.DeepClone()}; Settings = (JsonObject)result["data"]!.DeepClone();iconOrder=Settings["iconOrder"]?.AsArray().Select(x=>x!.GetValue<string>()).ToList()??new();
             Startup = Settings["startup"]?.GetValue<bool>() ?? false; OwnVisible = Settings["ownIcon"]!["visible"]!.GetValue<bool>(); OwnAsset = Settings["ownIcon"]!["asset"]!.GetValue<string>();
             OwnTip=Settings["ownIcon"]?["tip"]?.GetValue<string>()??"ReTray";OwnInList=Settings["ownIcon"]?["showInList"]?.GetValue<bool>()??true;
             Hotkeys=(JsonObject?)Settings["hotkeys"]?.DeepClone()??new();Hotkeys.Remove("restoreIcons");
@@ -149,21 +189,23 @@ public partial class TrayViewModel : ObservableObject
 #else
             var aumid = global::Windows.ApplicationModel.Package.Current.Id.FamilyName + "!App";
 #endif
-            await Call("settings.apply", new() { ["uiActivation"] = aumid }, importedSettings==null?null:TimeSpan.FromSeconds(60));
-            await Call("ui.attach", new() { ["hwnd"] = (long)App.WindowHandle }, importedSettings==null?null:TimeSpan.FromSeconds(60));
-            await RefreshAsync();initialized=true;
+            await Call("settings.apply", new() { ["uiActivation"] = aumid }, importedSettings==null?StartupRequestTimeout():TimeSpan.FromSeconds(60));
+            await Call("ui.attach", new() { ["hwnd"] = (long)App.WindowHandle }, importedSettings==null?StartupRequestTimeout():TimeSpan.FromSeconds(60));
+            initialized=true;await RefreshAsync();
         }
-        catch (Exception ex) { IsReady=false;IsLoading=false;ReportError(ex,true); }
+        catch (Exception ex) { ReportConnectionFailure(ex); }
         finally { initializing = false; }
     }
     public async Task RefreshAsync()
     {
-        if (polling || IsDragging) return; polling = true;var observedDrag=dragGeneration;
+        if (polling || IsDragging || ApplicationStopping) return; polling = true;var observedDrag=dragGeneration;
         try
         {
-            var health = await Call("status.read"); var h = health["data"]!; App.ObserveAgent(h["pid"]!.GetValue<int>()); if(!h["ready"]!.GetValue<bool>()||!h["connected"]!.GetValue<bool>()){IsReady=false;IsLoading=true;return;}
+            var health = await Call("status.read", timeout: StartupRequestTimeout()); var h = health["data"]!; App.ObserveAgent(h["pid"]!.GetValue<int>()); if(!h["ready"]!.GetValue<bool>()||!h["connected"]!.GetValue<bool>()){
+                if (!startupComplete && (startupDeadlineReached || startupClock?.Elapsed >= startupTimeout)) throw StartupTimeoutError();
+                IsReady=false;IsLoading=true;return;}
             if (!initialized && !initializing) { await InitializeAsync(); if (!initialized) return; }
-            var result = await Call("catalog.read");
+            var result = await Call("catalog.read", timeout: StartupRequestTimeout());
             if(IsDragging||observedDrag!=dragGeneration)return;
             var data = result["data"]!["icons"]!.AsArray(); var active = new HashSet<string>();var snapshotRevision=result["revision"]!.GetValue<long>();
             foreach (var item in data) { var j = item!.AsObject(); var key = j["key"]!.GetValue<string>(); active.Add(key);JsonObject? retained=null;if(visibilityAcknowledgments.TryGetValue(key,out var acknowledgment)){if(snapshotRevision<acknowledgment.Revision)retained=acknowledgment.Data;else visibilityAcknowledgments.Remove(key);}if(all.TryGetValue(key,out var row))row.Update(j,retained);else all[key]=new IconRow(j,retained); }
@@ -174,9 +216,9 @@ public partial class TrayViewModel : ObservableObject
                 var matches=all.Values.Where(r=>r.Executable.Equals(Selected.Executable,StringComparison.OrdinalIgnoreCase)&&r.Rule["selector"]?["uid"]?.ToJsonString()==prior["selector"]?["uid"]?.ToJsonString()&&r.Rule["selector"]?["guid"]?.ToJsonString()==prior["selector"]?["guid"]?.ToJsonString()&&r.Rule["pid"]?.ToJsonString()==prior["pid"]?.ToJsonString()&&r.Rule["created"]?.ToJsonString()==prior["created"]?.ToJsonString()).ToList();
                 Selected=matches.Count==1?matches[0]:null;
             }
-            IsReady=true;IsLoading=false;if(connectionError){Error="";connectionError=false;}
+            startupComplete=true;IsReady=true;IsLoading=false;if(connectionError){Error="";Status="";connectionError=false;}
         }
-        catch (Exception ex) { IsReady=false;IsLoading=false;ReportError(ex,true); }
+        catch (Exception ex) { ReportConnectionFailure(ex); }
         finally { polling = false; }
     }
     private void ReadEditor(IconRow row)
@@ -198,7 +240,7 @@ public partial class TrayViewModel : ObservableObject
     }
     public void ReportError(Exception ex,bool connection=false){Status=Localization.Text(ex.Message);Error=Localization.Text(ex.Message);connectionError=connection;}
     private async Task Execute(Func<Task> action) { try { Error="";connectionError=false;await action(); } catch (Exception ex) { ReportError(ex); } }
-    [RelayCommand] private async Task ReconnectAsync(){Pipe.AllowStart();if(!await FlushChangesAsync())return;IsReady=false;IsLoading=true;Error="";await InitializeAsync();}
+    [RelayCommand] private async Task ReconnectAsync(){Pipe.AllowStart();if(!await FlushChangesAsync())return;startupClock=Stopwatch.StartNew();startupComplete=false;startupDeadlineReached=false;IsReady=false;IsLoading=true;Error="";await InitializeAsync();}
     public static async Task<string?> ChooseAssetAsync()
     {
 #if TRAY_WPF

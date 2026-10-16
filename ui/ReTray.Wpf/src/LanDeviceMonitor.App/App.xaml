@@ -8,13 +8,13 @@
             <ResourceDictionary.MergedDictionaries>
                 <ResourceDictionary Source="Controls/AppleControls.xaml"/>
             </ResourceDictionary.MergedDictionaries>
-            <FontFamily x:Key="AppTextFont">pack://application:,,,/ReTray.App;component/Assets/Fonts/WpfStatic/#Noto Sans SC</FontFamily>
-            <FontFamily x:Key="AppIconFont">pack://application:,,,/ReTray.App;component/Assets/Fonts/#Segoe Fluent Icons</FontFamily>
+            <FontFamily x:Key="AppTextFont">pack://application:,,,/ReTray;component/Assets/Fonts/WpfStatic/#Noto Sans SC</FontFamily>
+            <FontFamily x:Key="AppIconFont">pack://application:,,,/ReTray;component/Assets/Fonts/#Segoe Fluent Icons</FontFamily>
             <Color x:Key="SegmentInactiveTextColor">#71717A</Color>
             <SolidColorBrush x:Key="SegmentInactiveTextBrush" Color="{DynamicResource SegmentInactiveTextColor}"/>
             <Color x:Key="SegmentTrackColor">#08000000</Color>
             <Color x:Key="SegmentSelectionColor">#EEFFFFFF</Color>
-            <Color x:Key="SwitchOnColor">#C183FF</Color><SolidColorBrush x:Key="SwitchOnBrush" Color="{DynamicResource SwitchOnColor}"/>
+            <Color x:Key="SwitchOnColor">#D58FFF</Color><SolidColorBrush x:Key="SwitchOnBrush" Color="{DynamicResource SwitchOnColor}"/>
             <Color x:Key="SwitchOffColor">#B3D1D1D6</Color>
             <SolidColorBrush x:Key="SegmentTrackBrush" Color="{DynamicResource SegmentTrackColor}"/>
             <SolidColorBrush x:Key="SegmentSelectionBrush" Color="{DynamicResource SegmentSelectionColor}"/>
@@ -375,6 +375,44 @@
                     </Grid>
                 <ControlTemplate.Triggers><MultiTrigger><MultiTrigger.Conditions><Condition Property="controls:InputPlaceholder.HasContent" Value="False"/><Condition Property="controls:InputPlaceholder.Suppressed" Value="False"/></MultiTrigger.Conditions><Setter TargetName="Placeholder" Property="Visibility" Value="Visible"/></MultiTrigger></ControlTemplate.Triggers></ControlTemplate></Setter.Value></Setter>
             </Style>
+            <ControlTemplate x:Key="DropdownSurfaceTemplate" TargetType="ContentControl">
+                <controls:RoundedCardBorder x:Name="DropdownSurface" MaxHeight="{TemplateBinding MaxHeight}" BorderThickness="1" CornerRadius="20" Padding="6" Margin="12,6,12,22">
+                    <Grid>
+                        <controls:RoundedCardBorder Margin="-7" Background="{DynamicResource StudioSurfaceBrush}" CornerRadius="20" IsHitTestVisible="False">
+                            <Border.Effect><DropShadowEffect BlurRadius="22" ShadowDepth="6" Direction="270" Opacity="0.07" Color="Black"/></Border.Effect>
+                        </controls:RoundedCardBorder>
+                        <controls:RoundedCardBorder Margin="-7" Background="{DynamicResource StudioSurfaceBrush}" BorderBrush="{DynamicResource InputBorderBrush}" BorderThickness="1" CornerRadius="20" IsHitTestVisible="False"/>
+                        <ContentPresenter/>
+                    </Grid>
+                </controls:RoundedCardBorder>
+            </ControlTemplate>
+            <Style x:Key="DropdownItemBaseStyle" TargetType="Control">
+                <Setter Property="controls:StudioControlMotion.Enabled" Value="True"/>
+                <Setter Property="FontFamily" Value="{StaticResource AppTextFont}"/><Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="Normal"/>
+                <Setter Property="Padding" Value="9,0"/><Setter Property="Margin" Value="0,1"/><Setter Property="MinHeight" Value="0"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            </Style>
+            <Style x:Key="DropdownCommandStyle" TargetType="MenuItem" BasedOn="{StaticResource DropdownItemBaseStyle}">
+                <Setter Property="Height" Value="28"/><Setter Property="Padding" Value="15,0"/>
+                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuItem">
+                    <Grid x:Name="StudioRoot">
+                        <controls:RoundedCardBorder x:Name="StudioSurface" CornerRadius="{Binding ActualHeight, RelativeSource={RelativeSource Self}, Converter={StaticResource CapsuleRadius}}"/>
+                        <Grid Margin="{TemplateBinding Padding}">
+                            <TextBlock Text="{TemplateBinding Header}" Style="{StaticResource BodyTextStyle}" FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}" FontWeight="{TemplateBinding FontWeight}" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center"/>
+                        </Grid>
+                    </Grid>
+                </ControlTemplate></Setter.Value></Setter>
+            </Style>
+            <Style x:Key="TrayDropdownMenuStyle" TargetType="ContextMenu">
+                <Setter Property="FontFamily" Value="{StaticResource AppTextFont}"/><Setter Property="FontSize" Value="14"/>
+                <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
+                <Setter Property="Padding" Value="0"/><Setter Property="MinWidth" Value="170"/>
+                <Setter Property="HasDropShadow" Value="False"/><Setter Property="UseLayoutRounding" Value="False"/>
+                <Setter Property="ItemContainerStyle" Value="{StaticResource DropdownCommandStyle}"/>
+                <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContextMenu">
+                    <ContentControl Template="{StaticResource DropdownSurfaceTemplate}"><StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Cycle"/></ContentControl>
+                </ControlTemplate></Setter.Value></Setter>
+            </Style>
             <Style TargetType="ComboBox">
                 <Setter Property="FontFamily" Value="{StaticResource AppTextFont}"/><Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="Normal"/>
                 <Setter Property="FocusVisualStyle" Value="{x:Null}"/><Setter Property="Padding" Value="13,0"/><Setter Property="MinHeight" Value="44"/><Setter Property="MaxDropDownHeight" Value="378"/>
@@ -395,19 +433,13 @@
                         </ControlTemplate></ToggleButton.Template>
                     </ToggleButton>
                     <controls:AnimatedSelectPopup x:Name="PART_Popup" IsOpen="{TemplateBinding IsDropDownOpen}" Placement="Custom" PlacementTarget="{Binding RelativeSource={RelativeSource TemplatedParent}}" AllowsTransparency="True" Focusable="False" PopupAnimation="None">
-                        <controls:RoundedCardBorder MaxHeight="{TemplateBinding MaxDropDownHeight}" BorderThickness="1" CornerRadius="20" Padding="6" Margin="12,6,12,22">
-                            <Grid>
-                                <controls:RoundedCardBorder Margin="-7" Background="{DynamicResource StudioSurfaceBrush}" CornerRadius="20" IsHitTestVisible="False">
-                                    <Border.Effect><DropShadowEffect BlurRadius="22" ShadowDepth="6" Direction="270" Opacity="0.07" Color="Black"/></Border.Effect>
-                                </controls:RoundedCardBorder>
-                                <controls:RoundedCardBorder Margin="-7" Background="{DynamicResource StudioSurfaceBrush}" BorderBrush="{DynamicResource InputBorderBrush}" BorderThickness="1" CornerRadius="20" IsHitTestVisible="False" />
-                                <ScrollViewer Style="{DynamicResource WindowsSettingsScrollViewerStyle}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" PreviewMouseWheel="ComboBoxDropDown_PreviewMouseWheel" CanContentScroll="False"><ItemsPresenter/></ScrollViewer>
-                            </Grid>
-                        </controls:RoundedCardBorder>
+                        <ContentControl Template="{StaticResource DropdownSurfaceTemplate}" MaxHeight="{TemplateBinding MaxDropDownHeight}">
+                            <ScrollViewer Style="{DynamicResource WindowsSettingsScrollViewerStyle}" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled" PreviewMouseWheel="ComboBoxDropDown_PreviewMouseWheel" CanContentScroll="False"><ItemsPresenter/></ScrollViewer>
+                        </ContentControl>
                     </controls:AnimatedSelectPopup>
                 </Grid></ControlTemplate></Setter.Value></Setter>
                 <!-- The popup already paints StudioSurfaceBrush behind its items. -->
-                <Setter Property="ItemContainerStyle"><Setter.Value><Style TargetType="ComboBoxItem"><Style.Resources><Style TargetType="TextBlock" BasedOn="{StaticResource BodyTextStyle}"><Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ComboBoxItem}}"/><Setter Property="FontFamily" Value="{Binding FontFamily, RelativeSource={RelativeSource AncestorType=ComboBoxItem}}"/><Setter Property="FontSize" Value="{Binding FontSize, RelativeSource={RelativeSource AncestorType=ComboBoxItem}}"/></Style></Style.Resources>
+                <Setter Property="ItemContainerStyle"><Setter.Value><Style TargetType="ComboBoxItem" BasedOn="{StaticResource DropdownItemBaseStyle}"><Style.Resources><Style TargetType="TextBlock" BasedOn="{StaticResource BodyTextStyle}"><Setter Property="Foreground" Value="{Binding Foreground, RelativeSource={RelativeSource AncestorType=ComboBoxItem}}"/><Setter Property="FontFamily" Value="{Binding FontFamily, RelativeSource={RelativeSource AncestorType=ComboBoxItem}}"/><Setter Property="FontSize" Value="{Binding FontSize, RelativeSource={RelativeSource AncestorType=ComboBoxItem}}"/></Style></Style.Resources>
                     <Setter Property="controls:StudioControlMotion.Enabled" Value="True"/><Setter Property="FontFamily" Value="{StaticResource AppTextFont}"/><Setter Property="FontSize" Value="14"/><Setter Property="FontWeight" Value="Normal"/>
                     <Setter Property="Padding" Value="9,0"/><Setter Property="Margin" Value="0,1"/><Setter Property="MinHeight" Value="0"/><Setter Property="FocusVisualStyle" Value="{x:Null}"/><Setter Property="HorizontalContentAlignment" Value="Stretch"/>
                     <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ComboBoxItem">

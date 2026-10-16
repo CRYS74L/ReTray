@@ -47,7 +47,7 @@ public static class StudioControlMotion
         private bool _pressed;
         private bool _keyboardFocus;
         private bool IsSelect => _control is ToggleButton;
-        private bool IsItem => _control is ComboBoxItem;
+        private bool IsItem => _control is ComboBoxItem or System.Windows.Controls.MenuItem;
         private bool IsInput => !IsSelect && !IsItem && !GetUseSelectorSurface(_control);
 
         internal MotionState(Control control)
@@ -191,7 +191,7 @@ public static class StudioControlMotion
             if (_surface is null) return;
             UpdateCapsuleRadius();
             var enabled = _control.IsEnabled;
-            var hover = enabled && (_control.IsMouseOver || _control is ComboBoxItem { IsHighlighted: true });
+            var hover = enabled && (_control.IsMouseOver || _control is ComboBoxItem { IsHighlighted: true } or System.Windows.Controls.MenuItem { IsHighlighted: true });
             var focus = enabled && (_owner?.IsKeyboardFocusWithin ?? _control.IsKeyboardFocusWithin);
             var selected = _control is ComboBoxItem { IsSelected: true };
             var pressed = enabled && _pressed;

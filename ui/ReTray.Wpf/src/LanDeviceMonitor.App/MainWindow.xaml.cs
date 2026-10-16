@@ -87,6 +87,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
 
     private const int WindowMessageSystemCommand = 0x0112;
     private const int SystemCommandMinimize = 0xF020;
+    private readonly ReTray_App.Controls.TrayCommandMenu _trayCommandMenu = new();
+    private static readonly int ShowDropdownMenuMessage = unchecked((int)RegisterWindowMessage("ReTray.ShowDropdownMenu.v1"));
+    private static readonly int OpenInterfaceMessage = unchecked((int)RegisterWindowMessage("ReTray.OpenInterface.v1"));
     private static readonly int ExitInterfaceMessage = unchecked((int)RegisterWindowMessage("ReTray.ExitInterface.v1"));
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern uint RegisterWindowMessage(string name);
@@ -2583,13 +2586,6 @@ public partial class MainWindow : Window, INotifyPropertyChanged
             });
     }
 
-    private async void TrayTitleMenu(object sender, MouseButtonEventArgs e)
-    {
-        if (trayEditor) return;
-        e.Handled = true;
-        try { await TrayPage.Vm.Pipe.RequestAsync("assistant.menu"); }
-        catch (Exception error) { TrayPage.Vm.ReportError(error); }
-    }
     private void TrayTitleDrag(object sender, MouseButtonEventArgs e)
     {
         if (e.LeftButton == MouseButtonState.Pressed) { e.Handled = true; DragMove(); }
@@ -2618,6 +2614,18 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         IntPtr longParameter,
         ref bool handled)
     {
+        if (message == ShowDropdownMenuMessage)
+        {
+            handled = true;
+            _ = Dispatcher.BeginInvoke(new Action(_trayCommandMenu.Show));
+            return IntPtr.Zero;
+        }
+        if (message == OpenInterfaceMessage)
+        {
+            handled = true;
+            _ = Dispatcher.BeginInvoke(new Action(ReTray_App.App.OpenInterface));
+            return IntPtr.Zero;
+        }
         if (message == ExitInterfaceMessage)
         {
             handled = true;

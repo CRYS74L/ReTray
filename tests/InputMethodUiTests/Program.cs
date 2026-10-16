@@ -23,7 +23,10 @@ internal static class Program
             ("P3 power matches approved proportions and has an unbroken arc",PowerMatchesPreview),
             ("page placeholders match controls and loading visibility",PagePlaceholders),
             ("list dividers keep constant coverage through fractional scrolling",DividerScrollStability),
-            ("caption uses body TextBlock rendering and genuine Regular face",BrandCaptionAndVector)})
+            ("caption uses body TextBlock rendering and genuine Regular face",BrandCaptionAndVector),
+            ("capital R aligns with the icon center", CaptionReferenceTests.Run),
+            ("tray commands and selectors share dropdown appearance", SharedDropdownAppearance),
+            ("shutdown before runtime startup prevents a late native thread", RuntimeStartupCancellation)})
             try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e);}
         return failed==0?0:1;
     }
@@ -34,6 +37,38 @@ internal static class Program
         private bool mode;
         public bool UseReplacement{get=>mode;set{mode=value;PropertyChanged?.Invoke(this,new(nameof(UseReplacement)));}}
         public event PropertyChangedEventHandler? PropertyChanged;
+    }
+    private static void SharedDropdownAppearance()
+    {
+        var app = Application.Current ?? new Application();
+        LanDeviceMonitor.Services.ThemeService.Apply("Light");
+        var shared = (ControlTemplate)app.Resources["DropdownSurfaceTemplate"];
+        var combo = new ComboBox { Style = (Style)app.Resources[typeof(ComboBox)] }; combo.ApplyTemplate();
+        var popup = (LanDeviceMonitor.Controls.AnimatedSelectPopup)combo.Template.FindName("PART_Popup", combo);
+        Require(popup.Child is ContentControl selectorSurface && ReferenceEquals(selectorSurface.Template, shared),
+            "Selector popup stopped using the shared dropdown frame");
+        var menu = new ContextMenu { Style = (Style)app.Resources["TrayDropdownMenuStyle"] };
+        menu.ApplyTemplate();
+        Require(VisualTreeHelper.GetChild(menu, 0) is ContentControl traySurface && ReferenceEquals(traySurface.Template, shared),
+            "Tray menu frame differs from the selector frame");
+        var itemBase = (Style)app.Resources["DropdownItemBaseStyle"];
+        Require(ReferenceEquals(combo.ItemContainerStyle.BasedOn, itemBase) &&
+            ReferenceEquals(menu.ItemContainerStyle.BasedOn, itemBase), "Menu entries no longer share dropdown typography and motion");
+        Require(menu.FontFamily.Source == combo.FontFamily.Source && menu.FontSize == combo.FontSize &&
+            menu.FontWeight == combo.FontWeight, "Tray typography differs from selector typography");
+        var source = System.Xml.Linq.XDocument.Load(Path.Combine(AppContext.BaseDirectory, "WindowTemplates.xaml"));
+        Require(!source.Descendants().Any(e => (string?)e.Attribute("MouseRightButtonUp") == "TrayTitleMenu"),
+            "Title bar still exposes the tray menu");
+    }
+    private static void RuntimeStartupCancellation()
+    {
+        LanDeviceMonitor.Services.NativeRuntime.StopAsync().GetAwaiter().GetResult();
+        try { LanDeviceMonitor.Services.NativeRuntime.StartAsync().GetAwaiter().GetResult(); }
+        catch (OperationCanceledException) {
+            Require(!LanDeviceMonitor.Services.NativeRuntime.IsActive, "A runtime thread escaped startup cancellation");
+            return;
+        }
+        throw new Exception("A runtime was allowed to start after shutdown");
     }
     private static void BrandCaptionAndVector()
     {
@@ -61,6 +96,7 @@ internal static class Program
         {
             var source = System.Xml.Linq.XDocument.Load(Path.Combine(AppContext.BaseDirectory, "WindowTemplates.xaml"));
             var element = source.Descendants().Single(e => (string?)e.Attribute(System.Xml.Linq.XName.Get("Name", "http://schemas.microsoft.com/winfx/2006/xaml")) == "TitleBrandCaption");
+            foreach (var attached in element.Attributes().Where(a => a.Name.LocalName == "CaptionLetterAlignment.Reference").ToArray()) attached.Remove();
             var caption = (TextBlock)System.Windows.Markup.XamlReader.Parse(element.ToString());
             Require(caption.GetType() == typeof(TextBlock) && ReferenceEquals(caption.Style, app.Resources["BodyTextStyle"]),
                 "Caption must use the ordinary body TextBlock style without custom text drawing");
@@ -85,8 +121,8 @@ internal static class Program
                 coverage += alpha; moment += alpha * (y + .5);
             }
             Require(rows[0] > 0 && rows[^1] < height - 1, "Caption descender is clipped");
-            Require(Math.Abs(moment / coverage - height / 2d) <= .8,
-                $"Caption visual mass is displaced at {scale * 100}%: center {moment / coverage}");
+            Require(moment / coverage > height / 4d && moment / coverage < height * .75,
+                "Ordinary caption text escaped the title row");
             Require(bytes.Where((b, i) => i % 4 == 3 && b > 0 && b < 255).Count() > 25,
                 "Caption lost antialiased edge coverage");
             encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(textBitmap));
@@ -94,7 +130,7 @@ internal static class Program
             Console.WriteLine($"Caption {scale * 100}%: rows {rows[0]}–{rows[^1]}, visual center {moment / coverage:F2}, logo center {height / 2d}");
         }
         LanDeviceMonitor.Services.ThemeService.Apply("Light");
-        Require((Color)app.Resources["SwitchOnColor"] == (Color)ColorConverter.ConvertFromString("#C183FF"),
+        Require((Color)app.Resources["SwitchOnColor"] == (Color)ColorConverter.ConvertFromString("#D58FFF"),
             "Enabled switch lost the soft brand lavender");
     }
     private static IconChoiceRow Row(State state)=>new(state,nameof(state.Original),()=>state.AssetPreview,
@@ -243,7 +279,7 @@ internal static class Program
         var source=System.Xml.Linq.XDocument.Load(System.IO.Path.Combine(AppContext.BaseDirectory,"WindowTemplates.xaml"));
         var dictionary=new System.Xml.Linq.XElement(source.Root!.Name.Namespace+"ResourceDictionary",
             source.Root.Attributes().Where(a=>a.IsNamespaceDeclaration).Select(a=>new System.Xml.Linq.XAttribute(a.Name,
-                a.Value.StartsWith("clr-namespace:") && !a.Value.Contains(";assembly=")?a.Value+";assembly=ReTray.App":a.Value)),
+                a.Value.StartsWith("clr-namespace:") && !a.Value.Contains(";assembly=")?a.Value+";assembly=ReTray":a.Value)),
             source.Descendants().Where(e=>e.Name.LocalName=="Style" &&
                 new[]{"DeviceListScrollViewerStyle","DeviceListBoxStyle","FooterCircleButtonStyle"}.Contains((string?)e.Attribute(x+"Key"))));
         // MainPage supplies its own item container, so omit the LAN-specific one.
@@ -333,10 +369,10 @@ internal static class Program
         var source=System.Xml.Linq.XDocument.Load(System.IO.Path.Combine(AppContext.BaseDirectory,"EditorTemplates.xaml"));
         var xml=new System.Xml.Linq.XElement(source.Descendants().Single(e=>(string?)e.Attribute("Grid.ColumnSpan")=="3" && (string?)e.Attribute("Height")=="0.5"));
         if(xml.Name.NamespaceName.StartsWith("clr-namespace:"))
-            xml.Name=System.Xml.Linq.XNamespace.Get(xml.Name.NamespaceName+";assembly=ReTray.App")+xml.Name.LocalName;
+            xml.Name=System.Xml.Linq.XNamespace.Get(xml.Name.NamespaceName+";assembly=ReTray")+xml.Name.LocalName;
         var wrapper=new System.Xml.Linq.XElement(source.Root!.Name.Namespace+"Grid",
             source.Root.Attributes().Where(a=>a.IsNamespaceDeclaration).Select(a=>new System.Xml.Linq.XAttribute(a.Name,
-                a.Value.StartsWith("clr-namespace:")?a.Value+";assembly=ReTray.App":a.Value)),xml);
+                a.Value.StartsWith("clr-namespace:")?a.Value+";assembly=ReTray":a.Value)),xml);
         xml.SetAttributeValue("Background","White");
         foreach(double scale in new[]{1d,1.25,1.5,2d})foreach(byte alpha in new byte[]{176,48}) {
             var parsed=(Grid)System.Windows.Markup.XamlReader.Parse(wrapper.ToString());

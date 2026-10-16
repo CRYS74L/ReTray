@@ -17,7 +17,7 @@ public static class BrandArtwork
     private static DrawingImage Create()
     {
         using var stream = Application.GetResourceStream(new Uri(
-            "/ReTray.App;component/Assets/BrandLogo.svg", UriKind.Relative))!.Stream;
+            "/ReTray;component/Assets/BrandLogo.svg", UriKind.Relative))!.Stream;
         var svg = XDocument.Load(stream);
         var elements = svg.Descendants().Where(e => e.Attribute("id") != null)
             .ToDictionary(e => (string)e.Attribute("id")!);

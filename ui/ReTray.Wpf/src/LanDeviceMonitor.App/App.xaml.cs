@@ -16,6 +16,8 @@ public partial class App : System.Windows.Application
     private WindowPlacementService? _windowPlacementService;
     private bool _hasExited;
     private bool _isShowingMainWindow;
+    private bool _placementRestored;
+    private bool _showWhenReady;
 
     internal static bool ShouldShowMainWindow(
         bool hasExited,
@@ -37,22 +39,18 @@ public partial class App : System.Windows.Application
     protected override async void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        // The native agent owns the one-time, lossless migration, including
-        // rebasing managed custom-icon paths. Run it before reading the theme.
-        using (var migration = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+        try
         {
-            FileName = Path.Combine(AppContext.BaseDirectory, "ReTray.Agent.exe"),
-            Arguments = "--migrate-data",
-            UseShellExecute = false,
-            CreateNoWindow = true
-        }))
+            // A successor must not read/migrate data or claim single-instance
+            // ownership until its validated predecessor has completely exited.
+            await WaitForRestartParentAsync(e.Args);
+            NativeRuntime.MigrateData();
+        }
+        catch (Exception exception)
         {
-            if (migration is null || !migration.WaitForExit(15000) || migration.ExitCode != 0)
-            {
-                System.Windows.MessageBox.Show("ReTray 配置迁移未完成。原配置已保留，请检查数据目录和访问权限。", "ReTray");
-                Shutdown(1);
-                return;
-            }
+            System.Windows.MessageBox.Show(exception.Message, "ReTray");
+            Shutdown(1);
+            return;
         }
         var startHidden = e.Args.Contains(
             "--background",
@@ -64,7 +62,7 @@ public partial class App : System.Windows.Application
             await SingleInstanceService.SignalPrimaryAsync();
             _singleInstanceService.Dispose();
             _singleInstanceService = null;
-            Environment.Exit(0);
+            Shutdown(0);
             return;
         }
 
@@ -74,6 +72,14 @@ public partial class App : System.Windows.Application
 
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         ThemeService.Apply(ReadTrayThemeMode());
+        try {
+            using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ReTray", "settings.json")));
+            if (saved.RootElement.TryGetProperty("language", out var language) &&
+                language.GetString() is "zh" or "en" or "zh-Hant" or "ja")
+                ReTray_App.Services.Localization.CurrentLanguage = language.GetString()!;
+        } catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
+
 
         // The original window retains its native frame and material lifecycle.
         // Notification registration, LAN monitoring, and the source NotifyIcon
@@ -99,7 +105,6 @@ public partial class App : System.Windows.Application
                 : "\"" + Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe") +
                   "\" \"shell:AppsFolder\\" + activation + "\"";
             TaskbarBranding.Apply(new WindowInteropHelper(_mainWindow).Handle, taskbarIcon, relaunch);
-            _windowPlacementService.Restore();
             MicaWindowService.Apply(
                 _mainWindow,
                 ThemeService.ResolveIsDark(ThemeService.CurrentMode));
@@ -122,9 +127,26 @@ public partial class App : System.Windows.Application
                     }
                 }));
         };
-        if (!startHidden)
+        try
         {
-            _mainWindow.Show();
+            // Ensure the activation/message target also exists for --background.
+            // The existing window keeps the same HWND when hidden to the tray.
+            var handle = new WindowInteropHelper(_mainWindow).EnsureHandle();
+            NativeRuntime.AttachInterface(handle);
+            await NativeRuntime.StartAsync();
+            if (_hasExited) return;
+            if (!startHidden || _showWhenReady)
+            {
+                RestorePlacementOnce();
+                _mainWindow.Show();
+            }
+        }
+        catch (Exception exception)
+        {
+            if (_hasExited) return;
+            try { await NativeRuntime.StopAsync(); } catch { }
+            System.Windows.MessageBox.Show(exception.Message, "ReTray");
+            ExitApplication();
         }
 
     }
@@ -197,10 +219,23 @@ public partial class App : System.Windows.Application
             }));
     }
 
-    private void ShowMainWindow()
+    private void RestorePlacementOnce()
+    {
+        if (_placementRestored) return;
+        _placementRestored = true;
+        _windowPlacementService?.Restore();
+    }
+
+    internal void ShowMainWindow()
     {
         if (_isShowingMainWindow || _mainWindow is null || _hasExited)
         {
+            return;
+        }
+
+        if (!NativeRuntime.IsReady)
+        {
+            _showWhenReady = true;
             return;
         }
 
@@ -209,6 +244,7 @@ public partial class App : System.Windows.Application
         {
             if (ShouldShowMainWindow(_hasExited, true, _mainWindow.IsVisible))
             {
+                RestorePlacementOnce();
                 _mainWindow.Show();
             }
 
@@ -242,7 +278,6 @@ public partial class App : System.Windows.Application
 
         _hasExited = true;
         ReTray_App.App.PrepareForProcessExit();
-        ArmForcedExitFallback();
         _windowPlacementService?.SaveNow();
         _mainWindow?.PrepareForExit();
         _notificationService?.Dispose();
@@ -254,8 +289,7 @@ public partial class App : System.Windows.Application
         _windowPlacementService = null;
         MicaWindowService.Dispose();
 
-        // 不再先进入可能等待窗口和 COM 组件的 WPF Shutdown 流程。
-        Environment.Exit(0);
+        Shutdown(0);
     }
 
     internal void CompleteInterfaceExit() => ExitApplication();
@@ -266,6 +300,9 @@ public partial class App : System.Windows.Application
         {
             _hasExited = true;
             ReTray_App.App.PrepareForProcessExit();
+            // Handles direct WPF shutdown paths as well as normal QuitAsync.
+            // StopAsync never captures the UI dispatcher while joining.
+            try { NativeRuntime.StopAsync().GetAwaiter().GetResult(); } catch { }
             _windowPlacementService?.SaveNow();
             _mainWindow?.PrepareForExit();
             _notificationService?.Dispose();
@@ -278,18 +315,41 @@ public partial class App : System.Windows.Application
         base.OnExit(e);
     }
 
-    private static void ArmForcedExitFallback()
+    private static async Task WaitForRestartParentAsync(string[] arguments)
     {
-        var watchdog = new Thread(() =>
+        int index = Array.FindIndex(arguments, value =>
+            string.Equals(value, "--restart-after", StringComparison.OrdinalIgnoreCase));
+        if (index < 0) return;
+        if (index + 1 >= arguments.Length ||
+            !int.TryParse(arguments[index + 1], out int processId) ||
+            processId <= 0 || processId == Environment.ProcessId)
+            throw new IOException("ReTray 重启参数无效。");
+
+        System.Diagnostics.Process predecessor;
+        try { predecessor = System.Diagnostics.Process.GetProcessById(processId); }
+        catch (ArgumentException) { return; } // Already exited before startup reached this point.
+        using (predecessor)
+        using (var current = System.Diagnostics.Process.GetCurrentProcess())
         {
-            Thread.Sleep(900);
-            _ = TerminateProcess(GetCurrentProcess(), 0);
-        })
-        {
-            IsBackground = true,
-            Name = "ReTray.ExitWatchdog"
-        };
-        watchdog.Start();
+            string? actual;
+            try
+            {
+                if (predecessor.HasExited) return;
+                actual = predecessor.MainModule?.FileName;
+                if (predecessor.SessionId != current.SessionId || actual is null ||
+                    !string.Equals(Path.GetFullPath(actual), Path.GetFullPath(Environment.ProcessPath!),
+                        StringComparison.OrdinalIgnoreCase))
+                    throw new IOException("ReTray 重启来源的会话或安装路径不匹配。");
+            }
+            catch (System.ComponentModel.Win32Exception) when (predecessor.HasExited) { return; }
+            catch (InvalidOperationException) when (predecessor.HasExited) { return; }
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+            try { await predecessor.WaitForExitAsync(timeout.Token); }
+            catch (OperationCanceledException exception)
+            {
+                throw new IOException("ReTray 原进程尚未退出，已取消本次重启。", exception);
+            }
+        }
     }
 
     [DllImport("user32.dll")]
@@ -300,10 +360,4 @@ public partial class App : System.Windows.Application
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ShowWindow(IntPtr windowHandle, int command);
 
-    [DllImport("kernel32.dll")]
-    private static extern IntPtr GetCurrentProcess();
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool TerminateProcess(IntPtr processHandle, uint exitCode);
 }

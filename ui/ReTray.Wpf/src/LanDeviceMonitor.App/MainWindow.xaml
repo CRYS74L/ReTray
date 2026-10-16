@@ -10,7 +10,7 @@
         FontFamily="{StaticResource AppTextFont}"
         Width="440" Height="720"
         MinWidth="300" MinHeight="260"
-        Icon="/ReTray.App;component/Assets/WindowIcon.ico"
+        Icon="/ReTray;component/Assets/WindowIcon.ico"
         WindowStartupLocation="CenterScreen"
         StateChanged="Window_StateChanged"
         Closing="Window_Closing"
@@ -441,7 +441,7 @@
                                         ToolTipService.IsEnabled="False"
                                         AutomationProperties.Name="返回设备列表"/>
 
-<StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" UseLayoutRounding="True" shell:WindowChrome.IsHitTestVisibleInChrome="True" MouseRightButtonUp="TrayTitleMenu" MouseLeftButtonDown="TrayTitleDrag"><Image x:Name="TitleBrandIcon" Source="{x:Static controls:BrandArtwork.Image}" Width="16" Height="16" Margin="0,0,10,0" SnapsToDevicePixels="True"/><TextBlock x:Name="TitleBrandCaption" Text="ReTray" Style="{StaticResource BodyTextStyle}" FontSize="13" Margin="0,0,0,3" VerticalAlignment="Center" UseLayoutRounding="False" SnapsToDevicePixels="False" AutomationProperties.Name="ReTray"/></StackPanel>
+<StackPanel Orientation="Horizontal" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="14,0,0,0" UseLayoutRounding="True" shell:WindowChrome.IsHitTestVisibleInChrome="True" MouseLeftButtonDown="TrayTitleDrag"><Image x:Name="TitleBrandIcon" Source="{x:Static controls:BrandArtwork.Image}" Width="16" Height="16" Margin="0,0,10,0" SnapsToDevicePixels="True"/><TextBlock x:Name="TitleBrandCaption" Text="ReTray" Style="{StaticResource BodyTextStyle}" FontSize="13" controls:CaptionLetterAlignment.Reference="{Binding ElementName=TitleBrandIcon}" VerticalAlignment="Center" UseLayoutRounding="False" SnapsToDevicePixels="False" AutomationProperties.Name="ReTray"/></StackPanel>
             <StackPanel Orientation="Horizontal"
                         HorizontalAlignment="Right">
                 <Button Style="{StaticResource CaptionButtonStyle}"

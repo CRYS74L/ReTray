@@ -13,7 +13,7 @@
   <Identity
     Name="CRYS74L.ReTray"
     Publisher="CN=CRYS74L"
-    Version="0.1.46.0" />
+    Version="0.1.47.0" />
 
   <mp:PhoneIdentity PhoneProductId="F009C149-FCFD-4A90-BC35-8C4C3C8AD211" PhonePublisherId="00000000-0000-0000-0000-000000000000"/>
 
@@ -39,8 +39,8 @@
 
   <Applications>
     <Application Id="App"
-      Executable="$targetnametoken$.exe"
-      EntryPoint="$targetentrypoint$">
+      Executable="ReTray.exe"
+      EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="ReTray"
         Description="整理 Windows 托盘，保留原应用交互与动态状态。"
@@ -51,16 +51,10 @@
         <uap:SplashScreen Image="Assets\SplashScreen.png" />
       </uap:VisualElements>
       <Extensions>
-        <desktop:Extension Category="windows.startupTask" Executable="ReTray.Agent.exe" EntryPoint="Windows.FullTrustApplication">
+        <desktop:Extension Category="windows.startupTask" Executable="ReTray.exe" EntryPoint="Windows.FullTrustApplication">
           <desktop:StartupTask TaskId="ReTrayStartup" Enabled="false" DisplayName="ReTray" />
         </desktop:Extension>
       </Extensions>
-    </Application>
-    <Application Id="Background" Executable="ReTray.Agent.exe" EntryPoint="Windows.FullTrustApplication">
-      <uap:VisualElements DisplayName="ReTray" Description="ReTray后台"
-        BackgroundColor="transparent" AppListEntry="none"
-        Square150x150Logo="Assets\Square150x150Logo.scale-200.png"
-        Square44x44Logo="Assets\Square44x44Logo.scale-200.png" />
     </Application>
   </Applications>
 

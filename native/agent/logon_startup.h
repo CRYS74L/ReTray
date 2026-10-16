@@ -107,7 +107,7 @@ inline DWORD SetLogonStartupResult(const std::filesystem::path& executable, bool
         winrt::check_hresult(task->get_RegistrationInfo(registration.put()));
         winrt::check_hresult(registration->put_Source(TaskString(StartupSource)));
         winrt::check_hresult(registration->put_Author(TaskString(sid)));
-        winrt::check_hresult(registration->put_Description(TaskString(L"ReTray：用户登录后立即启动原生后台")));
+        winrt::check_hresult(registration->put_Description(TaskString(L"ReTray：用户登录后立即启动")));
         winrt::com_ptr<IPrincipal> principal;
         winrt::check_hresult(task->get_Principal(principal.put()));
         winrt::check_hresult(principal->put_UserId(TaskString(sid)));

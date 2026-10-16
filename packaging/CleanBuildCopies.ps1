@@ -4,7 +4,7 @@ $productRoot=Split-Path $PSScriptRoot -Parent
 $publishRoot=[System.IO.Path]::GetFullPath((Join-Path $productRoot 'publish'))
 $distRoot=[System.IO.Path]::GetFullPath((Join-Path $productRoot 'dist'))
 $version=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
-$activePaths=@(Get-Process -Name 'ReTray.App','ReTray.Agent' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path)
+$activePaths=@(Get-Process -Name 'ReTray','ReTray.App','ReTray.Agent' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path)
 # A loose MSIX registration points at its build directory even while the app is
 # stopped. Never remove that directory just because no process is using it.
 try {

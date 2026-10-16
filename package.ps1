@@ -8,12 +8,13 @@ $common=Join-Path (Split-Path (Split-Path $productRoot -Parent) -Parent) '【Com
 $dotnet=Join-Path $common 'DotNet\sdk-10\dotnet.exe'
 if(!(Test-Path -LiteralPath $dotnet)){$dotnet=(Get-Command dotnet -ErrorAction Stop).Source}
 $env:PATH=(Split-Path $dotnet -Parent)+';'+$env:PATH
-if(!$SkipNative){foreach($target in @('Agent','Bridge')){& (Join-Path $productRoot 'build.ps1') -Target $target;if($LASTEXITCODE -ne 0){throw "Native $target failed"}}}
+if(!$SkipNative){foreach($target in @('Runtime','Bridge')){& (Join-Path $productRoot 'build.ps1') -Target $target;if($LASTEXITCODE -ne 0){throw "Native $target failed"}}}
 $publishRoot=[System.IO.Path]::GetFullPath((Join-Path $productRoot 'publish'))
 $layout=[System.IO.Path]::GetFullPath((Join-Path $publishRoot ($version+'-origin'+$BuildSuffix+'\layout')))
 if(!$layout.StartsWith($publishRoot+[System.IO.Path]::DirectorySeparatorChar,[System.StringComparison]::OrdinalIgnoreCase)){throw 'Publish layout must remain inside this product publish directory'}
 if(Test-Path -LiteralPath $layout){
-    $usingLayout=@(Get-Process -Name 'ReTray.App','ReTray.Agent' -ErrorAction SilentlyContinue | Where-Object {
+    # Include old executable names so an upgrade never overwrites a running old layout.
+    $usingLayout=@(Get-Process -Name 'ReTray','ReTray.App','ReTray.Agent' -ErrorAction SilentlyContinue | Where-Object {
         $_.Path -and $_.Path.StartsWith($layout+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)
     })
     $registered=Get-AppxPackage -Name 'CRYS74L.ReTray' -ErrorAction Stop
@@ -34,11 +35,17 @@ try{
     & $dotnet publish $originProject -c Release -r win-x64 --self-contained true -p:Platform=x64 -p:WindowsAppSDKSelfContained=true -p:PublishTrimmed=false -p:PublishReadyToRun=false -p:DebugType=None -p:DebugSymbols=false -o $layout -v:minimal
     if($LASTEXITCODE -ne 0){throw 'UI publish failed'}
 }finally{Pop-Location}
+foreach($required in @('ReTray.exe','ReTray.Runtime.dll','ReTray.ShellBridge.dll','ReTray.Startup.exe')) {
+    if(!(Test-Path -LiteralPath (Join-Path $layout $required) -PathType Leaf)){throw "Unified application payload is missing $required"}
+}
+foreach($obsolete in @('ReTray.App.exe','ReTray.Agent.exe','ReTray.Backend.exe')) {
+    if(Test-Path -LiteralPath (Join-Path $layout $obsolete)){throw "Obsolete separate-process payload found: $obsolete"}
+}
 $manifest=Join-Path $layout 'AppxManifest.xml'
 $doc=[xml](Get-Content -LiteralPath (Join-Path $productRoot 'ui\ReTray.App\Package.appxmanifest') -Raw)
 $doc.Package.Identity.Version=$version+'.0'
 $mainApplication=$doc.Package.Applications.Application | Where-Object Id -eq 'App'
-$mainApplication.Executable='ReTray.App.exe'
+$mainApplication.Executable='ReTray.exe'
 $mainApplication.EntryPoint='Windows.FullTrustApplication'
 $doc.Package.Resources.Resource.Language='zh-CN'
 # Index the SVG-derived scale/targetsize PNGs explicitly, including every scale
@@ -48,9 +55,6 @@ $mainApplication.VisualElements.Square150x150Logo='Assets\Square150x150Logo.png'
 $mainApplication.VisualElements.Square44x44Logo='Assets\Square44x44Logo.png'
 $mainApplication.VisualElements.DefaultTile.Wide310x150Logo='Assets\Wide310x150Logo.png'
 $mainApplication.VisualElements.SplashScreen.Image='Assets\SplashScreen.png'
-$backgroundApplication=$doc.Package.Applications.Application | Where-Object Id -eq 'Background'
-$backgroundApplication.VisualElements.Square150x150Logo='Assets\Square150x150Logo.png'
-$backgroundApplication.VisualElements.Square44x44Logo='Assets\Square44x44Logo.png'
 foreach($legal in @('LICENSE','NOTICE.md','README.md')) {
     Copy-Item -LiteralPath (Join-Path $productRoot $legal) -Destination $layout -Force
 }

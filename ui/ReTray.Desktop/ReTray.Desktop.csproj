@@ -4,7 +4,7 @@
     <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
     <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
     <UseWPF>true</UseWPF>
-    <AssemblyName>ReTray.App</AssemblyName>
+    <AssemblyName>ReTray</AssemblyName>
     <RootNamespace>ReTray_App</RootNamespace>
     <DefineConstants>$(DefineConstants);TRAY_WPF</DefineConstants>
     <ApplicationManifest>app.manifest</ApplicationManifest>

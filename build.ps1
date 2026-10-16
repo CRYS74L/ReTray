@@ -1,4 +1,4 @@
-param([ValidateSet('InputMethodLiveTests','CoreTests','BitmapTests','ProcessIdentityTests','Probe','Agent','AgentVisibilityTests','AgentSystemTests','Bridge','BridgeRegistrationTests','BridgeTest','BridgeControls','Source','SettingsTests','StartupTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
+param([ValidateSet('InputMethodLiveTests','CoreTests','BitmapTests','ProcessIdentityTests','Probe','Runtime','Agent','AgentVisibilityTests','AgentSystemTests','Bridge','BridgeRegistrationTests','BridgeTest','BridgeControls','Source','SettingsTests','StartupTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
 $ErrorActionPreference='Stop'
 $productRoot=$PSScriptRoot
 $projectVersion=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
@@ -12,7 +12,7 @@ $commonArgs=@('-std=c++20','-O2','-static','-DUNICODE','-D_UNICODE','-DWIN32_LEA
 $cppWinrt=Join-Path $workspaceBase '【Common】\WindowsSDK\10.0.28000.2705\microsoft.windows.sdk.cpp\c\Include\10.0.28000.0\cppwinrt'
 $commonArgs+=@('-fms-extensions','-Wno-nonportable-include-path','-I',$cppWinrt)
 $commonArgs+=@('-include',(Join-Path $outputRoot 'product_version.h'))
-if ($Target -in @('Agent','Probe')) {
+if ($Target -in @('Agent','Runtime','Probe')) {
     & (Join-Path $productRoot 'packaging/build-assets.ps1')
     $brandHeader=@(
         ('#define RETRAY_FILE_VERSION '+($projectVersion.Replace('.',','))+',0'),
@@ -105,11 +105,24 @@ if ($Target -eq 'StartupTests') {
     & $exe
     exit $LASTEXITCODE
 }
-if ($Target -eq 'Agent') {
+if ($Target -in @('Agent','Runtime')) {
     & $clang @commonArgs '-municode' '-mwindows' (Join-Path $productRoot 'native\agent\startup_launcher.cpp') '-o' (Join-Path $outputRoot 'ReTray.Startup.exe') '-lole32' '-lshell32' '-luuid'
     if($LASTEXITCODE -ne 0){throw 'Startup launcher build failed'}
-    & $clang @commonArgs '-municode' '-mwindows' (Join-Path $productRoot 'native\agent\main.cpp') (Join-Path $productRoot 'native\platform\input_profiles.cpp') (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\shell\bridge_client.cpp') '-o' (Join-Path $outputRoot 'ReTray.Agent.exe') '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt' '-ladvapi32' '-lbcrypt' '-lgdiplus' '-lbcrypt' '-luuid' '-lversion'
-    if($LASTEXITCODE -ne 0){throw 'Agent build failed'}
+    # Agent remains an isolated executable fixture for native acceptance tests.
+    # Production builds host Runtime inside the one ReTray.exe process.
+    $nativeMode=@('-municode','-mwindows')
+    $nativeOutput=Join-Path $outputRoot 'ReTray.Agent.exe'
+    $nativeArgs=$commonArgs
+    if($Target -eq 'Runtime') {
+        $runtimeResource=Join-Path $outputRoot 'runtime-brand.res'
+        & $windres '-DRETRAY_NATIVE_DLL' '-I' $outputRoot '-i' (Join-Path $productRoot 'packaging/native-brand.rc') '-o' $runtimeResource '-O' 'coff'
+        if($LASTEXITCODE -ne 0){throw 'ReTray runtime version resource failed'}
+        $nativeArgs=@($commonArgs | Where-Object {$_ -ne $resource})+$runtimeResource
+        $nativeMode=@('-shared','-DRETRAY_EMBEDDED_RUNTIME')
+        $nativeOutput=Join-Path $outputRoot 'ReTray.Runtime.dll'
+    }
+    & $clang @nativeArgs @nativeMode (Join-Path $productRoot 'native\agent\main.cpp') (Join-Path $productRoot 'native\platform\input_profiles.cpp') (Join-Path $productRoot 'native\agent\settings.cpp') (Join-Path $productRoot 'native\core\rule_engine.cpp') (Join-Path $productRoot 'native\core\notify_patch.cpp') (Join-Path $productRoot 'native\core\types.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\shell\bridge_client.cpp') '-o' $nativeOutput '-luser32' '-lgdi32' '-lshell32' '-lole32' '-loleaut32' '-lruntimeobject' '-lbcrypt' '-ladvapi32' '-lgdiplus' '-luuid' '-lversion'
+    if($LASTEXITCODE -ne 0){throw "$Target build failed"}
     Copy-Item -LiteralPath (Join-Path $productRoot 'native\platform\supported-adapters.json') -Destination $outputRoot -Force
     exit 0
 }

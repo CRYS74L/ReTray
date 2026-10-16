@@ -33,7 +33,7 @@ public sealed class SettingsIcon : FrameworkElement
     {
         if(geometries.TryGetValue(kind,out var cached))return cached;
         var name=kind.ToString().ToLowerInvariant();
-        var uri=new Uri($"/ReTray.App;component/Assets/SettingsIcons/{name}.svg",UriKind.Relative);
+        var uri=new Uri($"/ReTray;component/Assets/SettingsIcons/{name}.svg",UriKind.Relative);
         using var stream=Application.GetResourceStream(uri)!.Stream;
         var svg=XDocument.Load(stream);
         var root=svg.Root!;

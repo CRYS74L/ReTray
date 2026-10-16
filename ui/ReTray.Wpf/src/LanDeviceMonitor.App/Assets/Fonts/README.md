@@ -8,7 +8,7 @@
 
 `Static/` 内的九个 TTF 是从同一源文件在 `wght=100,200,...,900` 上完整实例化的真实字形，没有裁剪字符、手工加粗或假粗体。字体的字形顺序、30,890 个 cmap 码位、31,036 个 glyph、版权及许可记录均保留。TrueType 的整数坐标固定会产生最多一个字体单位的抽样轮廓舍入差，不能据此承诺每台电脑的像素渲染完全相同。
 
-`AppTextFont` 仅引用 `pack://application:,,,/ReTray.App;component/Assets/Fonts/WpfStatic/#Noto Sans SC`，避免原 VF、旧字体与兼容实例混在同一目录参与选择。源目录 `Static/` 通过 Resource Link 映射到 `WpfStatic/`，使 WPF 嵌入字体与原生菜单的外部 Content 路径独立，防止字体选择依赖外部文件。100–900 的九档分别为 Thin、ExtraLight、Light、Regular、Medium、SemiBold、Bold、ExtraBold、Black。这里支持九档真实字重；WPF 未实现对任意连续轴值的插值。此接入没有修改正文的 14 DIP 字号或现有文字渲染参数。
+`AppTextFont` 仅引用 `pack://application:,,,/ReTray;component/Assets/Fonts/WpfStatic/#Noto Sans SC`，避免原 VF、旧字体与兼容实例混在同一目录参与选择。源目录 `Static/` 通过 Resource Link 映射到 `WpfStatic/`，使 WPF 嵌入字体与原生菜单的外部 Content 路径独立，防止字体选择依赖外部文件。100–900 的九档分别为 Thin、ExtraLight、Light、Regular、Medium、SemiBold、Bold、ExtraBold、Black。这里支持九档真实字重；WPF 未实现对任意连续轴值的插值。此接入没有修改正文的 14 DIP 字号或现有文字渲染参数。
 
 完整实例化后删除静态 TTF 的变体 `STAT` 表，使 WPF 从真实的 OS/2 权重与 typographic family 信息枚举字重。原 VF 的 `STAT` 与其他所有源文件字节不变。
 

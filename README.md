@@ -30,7 +30,7 @@ ReTray 是一个 Windows 11 托盘管理工具，帮助你隐藏或显示图标�
 ## 开始使用
 
 **免安装构建：** 将整个 `ReTray-<版本>-win-x64.zip` 解压到固定目录，运行
-`ReTray.App.exe`。不要只复制单个 EXE，后台程序、桥接 DLL、字体和图标需要保留。
+`ReTray.exe`。界面与托盘管理运行在同一进程中；请保留同目录的运行库、桥接 DLL、字体和图标，不要只复制单个 EXE。
 
 **MSIX 构建：** 使用发行包附带的安装脚本。脚本会请求管理员权限，将附带的
 CRYS74L 开发证书导入本机 TrustedPeople，再为当前用户安装软件。仅在你信任此构建时执行。
@@ -76,13 +76,13 @@ npm ci --prefix packaging
 ./packaging/build-assets.ps1
 ./build.ps1 -Target CoreTests
 ./build.ps1 -Target SettingsTests
-./build.ps1 -Target Agent
+./build.ps1 -Target Runtime
 ./build.ps1 -Target Bridge
 ./package.ps1 -SkipNative
 ```
 
 主界面构建入口是 `ui/ReTray.Wpf/src/LanDeviceMonitor.App/LanDeviceMonitor.App.csproj`。
-`native/agent` 负责配置与后台，`native/shell` 负责受支持的 Shell 桥接，`tests` 保存回归检查。
+`native/agent` 编译为同进程加载的 `ReTray.Runtime.dll`，负责配置与托盘管理；`native/shell` 负责受支持的 Shell 桥接，`tests` 保存回归检查。`Agent` 构建目标仅为原生隔离验收保留，不进入发行包。
 包和免安装文件输出到 `dist/<版本>`，运行布局输出到 `publish/<版本>-origin/layout`。
 历史设计与问题分析放在 `docs`，README 仅介绍当前产品。
 

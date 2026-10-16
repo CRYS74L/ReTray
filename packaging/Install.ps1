@@ -1,7 +1,7 @@
 #Requires -RunAsAdministrator
 $ErrorActionPreference='Stop'
 $packages=@(Get-ChildItem -LiteralPath $PSScriptRoot -Filter 'ReTray-*-x64.msix')
-if($packages.Count -ne 1){throw 'Expected exactly one assistant package'}
+if($packages.Count -ne 1){throw 'Expected exactly one ReTray package'}
 $certificate=Join-Path $PSScriptRoot 'development-certificate.cer'
 $cert=[Security.Cryptography.X509Certificates.X509Certificate2]::new($certificate)
 if($cert.Subject -ne 'CN=CRYS74L'){throw 'Unexpected package publisher'}
@@ -18,7 +18,7 @@ $shortcutPath=Join-Path ([Environment]::GetFolderPath('Desktop')) 'ReTray.lnk'
 if(Test-Path -LiteralPath $shortcutPath) {
     $existing=$shell.CreateShortcut($shortcutPath)
     if($existing.Arguments -notmatch 'CRYS74L\.ReTray' -and
-       [IO.Path]::GetFileName($existing.TargetPath) -ne 'ReTray.App.exe') {
+       [IO.Path]::GetFileName($existing.TargetPath) -notin @('ReTray.exe','ReTray.App.exe')) {
         throw 'An unrelated ReTray desktop shortcut already exists; it was preserved.'
     }
 }

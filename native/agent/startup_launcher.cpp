@@ -9,7 +9,7 @@ int WINAPI wWinMain(HINSTANCE, HINSTANCE, PWSTR, int) {
     if (!args || count != 2) { if (args) LocalFree(args); return 1; }
     std::wstring application(args[1]); LocalFree(args);
     if (!application.starts_with(L"CRYS74L.ReTray_") ||
-        !application.ends_with(L"!Background")) return 1;
+        !application.ends_with(L"!App")) return 1;
     if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))) return 1;
     IApplicationActivationManager* manager{};
     auto result = CoCreateInstance(CLSID_ApplicationActivationManager, nullptr,

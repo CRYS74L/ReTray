@@ -29,8 +29,16 @@ namespace {
 constexpr UINT OwnCallback = WM_APP + 101, OpenMessage = WM_APP + 102, UpdateHotkeys = WM_APP + 103;
 const UINT ExitInterfaceMessage = RegisterWindowMessageW(L"ReTray.ExitInterface.v1");
 const UINT ShowTrayMenuMessage = RegisterWindowMessageW(L"ReTray.ShowMenu.v1");
+const UINT OpenInterfaceMessage = RegisterWindowMessageW(L"ReTray.OpenInterface.v1");
+const UINT ShowDropdownMenuMessage = RegisterWindowMessageW(L"ReTray.ShowDropdownMenu.v1");
 HWND window{};
 std::atomic<HWND> uiWindow{};
+std::atomic<HWND> runtimeWindow{};
+std::atomic<DWORD> runtimeState{}; // 0 stopped, 1 starting, 2 ready, 3 stopping.
+std::atomic<bool> runtimeStopRequested{};
+std::atomic<bool> pendingInterfaceMenu{};
+bool embeddedRuntime{};
+bool runtimeThreadFailed{};
 
 HANDLE stopEvent{}, pipeThread{}, workerThread{}, workEvent{}, endingEvent{}, singleton{},
     restartHandoff{};
@@ -343,6 +351,15 @@ void RegisterRequestedHotkeys() {
     hotkeyErrors = Json::array();
 }
 void OpenUI() {
+    if (embeddedRuntime) {
+        // The managed application owns the only process and its visible window.
+        // Never activate a second copy of that executable from its native thread.
+        auto target = uiWindow.load();
+        DWORD pid{};
+        if (target && GetWindowThreadProcessId(target, &pid) && pid == GetCurrentProcessId())
+            PostMessageW(target, OpenInterfaceMessage, 0, 0);
+        return;
+    }
     auto name = Wide(settings.value("uiActivation", std::string{}));
     IApplicationActivationManager* manager{};
     if (!name.empty() && SUCCEEDED(CoCreateInstance(CLSID_ApplicationActivationManager, nullptr, CLSCTX_LOCAL_SERVER,
@@ -361,7 +378,7 @@ void OpenUI() {
     if (!length || length >= module.size())
         return;
     module.resize(length);
-    auto executable = std::filesystem::path(module).parent_path() / L"ReTray.App.exe";
+    auto executable = std::filesystem::path(module).parent_path() / L"ReTray.exe";
     std::wstring command = L"\"" + executable.wstring() + L"\"";
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
@@ -371,6 +388,15 @@ void OpenUI() {
         CloseHandle(process.hThread);
         CloseHandle(process.hProcess);
     }
+}
+void DispatchPendingInterfaceMenu(HWND target) {
+    DWORD pid{};
+    if (!target || !GetWindowThreadProcessId(target, &pid) || pid != GetCurrentProcessId())
+        return;
+    if (!pendingInterfaceMenu.exchange(false)) return;
+    AllowSetForegroundWindow(pid);
+    if (!PostMessageW(target, ShowDropdownMenuMessage, 0, 0))
+        pendingInterfaceMenu = true;
 }
 bool SetOwnIcon(bool reloadImage = true) {
     auto policy = settings["ownIcon"];
@@ -427,7 +453,7 @@ bool SetOwnIcon(bool reloadImage = true) {
 }
 bool SetStartup(bool enabled, bool previousEnabled) {
     startupOutcome.erase("rollbackFailed");
-    std::filesystem::path startupExecutable = root / L"ReTray.Agent.exe";
+    std::filesystem::path startupExecutable = root / (embeddedRuntime ? L"ReTray.exe" : L"ReTray.Agent.exe");
     std::wstring startupArguments = L"--background";
     UINT32 packageNameLength{};
     bool packaged = GetCurrentPackageFullName(&packageNameLength, nullptr) == ERROR_INSUFFICIENT_BUFFER;
@@ -461,14 +487,14 @@ bool SetStartup(bool enabled, bool previousEnabled) {
         wchar_t local[32768]{};
         GetEnvironmentVariableW(L"LOCALAPPDATA", local, std::size(local));
         startupExecutable = std::filesystem::path(local) / L"Packages" / family.data() /
-                            L"LocalState" / L"Startup" / L"ReTray.Startup-v2.exe";
+                            L"LocalState" / L"Startup" / L"ReTray.Startup-v3.exe";
         try { std::filesystem::create_directories(startupExecutable.parent_path()); }
         catch (...) { SetLastError(ERROR_CANNOT_MAKE); return false; }
-        // v2 carries the transparent color branding. It is otherwise a small,
+        // v3 activates the unified App identity. It is otherwise a small,
         // version-independent activator that never reads personal settings.
         if (!CopyFileW((root / L"ReTray.Startup.exe").c_str(), startupExecutable.c_str(), TRUE) &&
             GetLastError() != ERROR_FILE_EXISTS) return false;
-        startupArguments = L"\"" + std::wstring(family.data()) + L"!Background\"";
+        startupArguments = L"\"" + std::wstring(family.data()) + L"!App\"";
     }
     auto scheduled = SetLogonStartupResult(startupExecutable, enabled, StartupTaskName(), startupArguments);
     if (scheduled != ERROR_SUCCESS) {
@@ -1012,7 +1038,8 @@ HANDLE AssistantUiProcess(HWND hwnd, DWORD access = PROCESS_QUERY_LIMITED_INFORM
     DWORD currentPid{};
     GetWindowThreadProcessId(hwnd, &currentPid);
     if (!read || currentPid != pid ||
-        _wcsicmp(path, (root / L"ReTray.App.exe").c_str()) != 0) {
+        _wcsicmp(path, (root / L"ReTray.exe").c_str()) != 0 ||
+        (embeddedRuntime && pid != GetCurrentProcessId())) {
         CloseHandle(process);
         return nullptr;
     }
@@ -1065,6 +1092,9 @@ bool WaitForRestartExit(HANDLE oldAgent, HANDLE oldUi, HANDLE cancel, DWORD time
     return WaitForSingleObject(cancel, 0) == WAIT_TIMEOUT;
 }
 DWORD RestartAssistant() {
+    // Embedded restart is owned by the managed host, including pending edits
+    // and its parent-process handoff. The test-only executable retains its path.
+    if (embeddedRuntime) return ERROR_NOT_SUPPORTED;
     if (restartHandoff) {
         if (WaitForSingleObject(restartHandoff, 0) == WAIT_TIMEOUT) return ERROR_SUCCESS;
         CloseHandle(restartHandoff);
@@ -1416,6 +1446,7 @@ Json Handle(const Json& req) {
         auto hwnd = reinterpret_cast<HWND>(d.at("hwnd").get<uintptr_t>());
         if (!IsAssistantUi(hwnd)) return Result(false, "界面窗口身份不匹配", ERROR_INVALID_WINDOW_HANDLE);
         uiWindow = hwnd;
+        if (embeddedRuntime) DispatchPendingInterfaceMenu(hwnd);
     } else if (method == "assistant.menu") {
         bool ok = PostMessageW(window, ShowTrayMenuMessage, 0, 0) != FALSE;
         return Result(ok, "ReTray菜单", ok ? ERROR_SUCCESS : GetLastError());
@@ -1782,7 +1813,7 @@ DWORD WINAPI Serve(void*) {
     LocalFree(sd);
     return 0;
 }
-DWORD WINAPI Worker(void*) {
+DWORD WorkerLoop(void*) {
     CoInitializeEx(nullptr, COINIT_MULTITHREADED);
     auto start = SessionState::Starting;
     lifecycle.state.compare_exchange_strong(start, SessionState::WaitingForShell);
@@ -1842,7 +1873,23 @@ DWORD WINAPI Worker(void*) {
     CoUninitialize();
     return 0;
 }
+DWORD WINAPI Worker(void* context) {
+    try { return WorkerLoop(context); }
+    catch (...) {
+        // Native exceptions may not cross a Win32 thread entry and terminate
+        // the managed host. The window's health timer observes this failure.
+        CoUninitialize();
+        return ERROR_UNHANDLED_EXCEPTION;
+    }
+}
 void TrayMenu() {
+    if (embeddedRuntime) {
+        // Every product menu is rendered by the managed host's shared dropdown
+        // surface. Retain a click received before its HWND has been attached.
+        pendingInterfaceMenu = true;
+        DispatchPendingInterfaceMenu(uiWindow.load());
+        return;
+    }
     // Keep native menu routing while using the bundled Noto font at the cursor's DPI.
     auto previousDpi = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     HMENU menu = CreatePopupMenu();
@@ -1903,6 +1950,14 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return 0;
     }
     if (msg == WM_TIMER) {
+        if (wp == 3 && !stopping && ((workerThread && WaitForSingleObject(workerThread, 0) == WAIT_OBJECT_0) ||
+                        (pipeThread && WaitForSingleObject(pipeThread, 0) == WAIT_OBJECT_0))) {
+            // A failed native service thread must end this runtime so its host
+            // can perform a single graceful application shutdown.
+            runtimeThreadFailed = true;
+            PostMessageW(hwnd, WM_CLOSE, 0, 0);
+            return 0;
+        }
         if (wp == 2) {
             KillTimer(hwnd, 2);
             PostMessageW(hwnd, WM_CLOSE, 0, 0);
@@ -1935,6 +1990,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         // thread before posting WM_QUIT, otherwise shutdown can strand here
         // after the worker/pipe have already stopped.
         EndMenu();
+        if (embeddedRuntime) runtimeState = 3;
         stopping = true;
         if (lifecycle.state != SessionState::SessionEnding)
             lifecycle.state = SessionState::UserStopping;
@@ -1953,17 +2009,17 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 } // namespace
-int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
-    // The Agent is a separate executable; the App.exe DPI manifest does not cover it.
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+int RunApplication(HINSTANCE instance, int argc, wchar_t** args, bool embedded) {
+    embeddedRuntime = embedded;
+    // The embedded host owns process DPI awareness. Its native thread still
+    // needs the matching context for tray/menu geometry.
+    if (!embedded) SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
     ProcessIdToSessionId(GetCurrentProcessId(), &session);
-    int argc{};
-    auto args = CommandLineToArgvW(GetCommandLineW(), &argc);
     UINT32 startupPackageLength{};
     // The legacy manifest entry invokes Agent without arguments. Deliberate UI
     // launches and the new activator explicitly pass --background or --open.
-    bool legacyAutomaticLaunch = argc == 1 &&
+    bool legacyAutomaticLaunch = !embedded && argc == 1 &&
         GetCurrentPackageFullName(&startupPackageLength, nullptr) == ERROR_INSUFFICIENT_BUFFER;
     bool background = true;
     bool restartWaiting{}, migrateOnly{}, explicitData{};
@@ -1985,18 +2041,17 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         } else if (std::wstring(args[i]) == L"--migrate-data")
             migrateOnly = true;
         else if (std::wstring(args[i]) == L"--restart-wait") {
-            if (i + 3 >= argc) { LocalFree(args); return 1; }
+            if (i + 3 >= argc) return 1;
             restartWaiting = true;
             for (auto& handle : restartHandles) {
                 auto value = args[++i];
                 wchar_t* end{};
                 auto integer = wcstoull(value, &end, 10);
-                if (!*value || *end || *value == L'-') { LocalFree(args); return 1; }
+                if (!*value || *end || *value == L'-') return 1;
                 handle = reinterpret_cast<HANDLE>(static_cast<uintptr_t>(integer));
             }
         }
     }
-    LocalFree(args);
     if (!explicitData) {
         try { MigrateLegacyData(std::filesystem::path(local)); }
         catch (...) { return ERROR_WRITE_FAULT; }
@@ -2015,23 +2070,60 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         if (!finished) return 1;
         background = false;
     }
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    const auto initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    if (FAILED(initialized)) return static_cast<DWORD>(initialized);
+    const auto windowClass = embedded ? L"ReTray.Runtime" : L"ReTray.Agent";
+    auto cleanup = [&] {
+        if (embedded) runtimeState = 3;
+        stopping = true;
+        runtimeWindow = nullptr;
+        if (stopEvent) SetEvent(stopEvent);
+        if (workEvent) SetEvent(workEvent);
+        if (pipeThread) {
+            // Cancel again if the server raced shutdown and entered another
+            // synchronous Connect/Read/Write/Flush after the previous cancel.
+            while (WaitForSingleObject(pipeThread, 25) == WAIT_TIMEOUT)
+                CancelSynchronousIo(pipeThread);
+            CloseHandle(pipeThread); pipeThread = nullptr;
+        }
+        if (workerThread) {
+            // This module stays loaded until every worker returns. In-process
+            // shutdown must never call ExitProcess or leave detached workers.
+            WaitForSingleObject(workerThread, INFINITE);
+            CloseHandle(workerThread); workerThread = nullptr;
+        }
+        // Also cover a worker that failed before reaching its normal cleanup.
+        bridge.Reset();
+        if (ownAdded && window) {
+            NOTIFYICONDATAW icon{}; icon.cbSize = sizeof(icon); icon.hWnd = window; icon.uID = 1;
+            Shell_NotifyIconW(NIM_DELETE, &icon); ownAdded = false;
+        }
+        if (ownImage) { DestroyIcon(ownImage); ownImage = nullptr; }
+        if (window) {
+            KillTimer(window, 3);
+            DestroyWindow(window); window = nullptr;
+        }
+        UnregisterClassW(windowClass, instance);
+        for (auto handle : {workEvent, endingEvent, stopEvent, singleton, restartHandoff})
+            if (handle) CloseHandle(handle);
+        workEvent = endingEvent = stopEvent = singleton = restartHandoff = nullptr;
+        CoUninitialize();
+    };
     auto sd = CurrentUserSecurity();
-    if (!sd)
-        return 1;
+    if (!sd) { cleanup(); return 1; }
     SECURITY_ATTRIBUTES security{sizeof(security), sd, FALSE};
     singleton = CreateMutexW(&security, FALSE,
-                             (L"Local\\ReTray.Agent." + std::to_wstring(session)).c_str());
+                             ((embedded ? L"Local\\ReTray.Runtime." : L"Local\\ReTray.Agent.") +
+                              std::to_wstring(session)).c_str());
     auto mutexError = GetLastError();
     if (sd)
         LocalFree(sd);
-    if (!singleton)
-        return 1;
+    if (!singleton) { cleanup(); return 1; }
     if (mutexError == ERROR_ALREADY_EXISTS) {
         if (!background)
-            PostMessageW(FindWindowW(L"ReTray.Agent", nullptr), OpenMessage, 0, 0);
-        CloseHandle(singleton);
-        return 0;
+            PostMessageW(FindWindowW(windowClass, nullptr), OpenMessage, 0, 0);
+        cleanup();
+        return embedded ? ERROR_ALREADY_EXISTS : 0;
     }
     try {
         settingsPath = dataRoot / L"settings.json";
@@ -2053,8 +2145,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         configRevision = settings.value("revision", uint64_t{});
         UpdateMenuLanguageSnapshot();
         if (legacyAutomaticLaunch && !settings.value("startup", false)) {
-            CloseHandle(singleton);
-            CoUninitialize();
+            cleanup();
             return 0;
         }
         // Refresh the action after a package update and migrate the old enabled mechanism.
@@ -2098,12 +2189,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
             throw std::runtime_error("Ending signal unavailable");
         stopEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
         workEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+        if (!stopEvent || !workEvent)
+            throw std::runtime_error("Runtime events unavailable");
         WNDCLASSW wc{};
         wc.hInstance = instance;
         wc.lpfnWndProc = WindowProc;
-        wc.lpszClassName = L"ReTray.Agent";
-        RegisterClassW(&wc);
-        window = CreateWindowW(wc.lpszClassName, L"ReTray后台", WS_OVERLAPPED, 0, 0, 0, 0,
+        wc.lpszClassName = windowClass;
+        if (!RegisterClassW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
+            throw std::runtime_error("Runtime window class unavailable");
+        window = CreateWindowW(wc.lpszClassName, L"ReTray", WS_OVERLAPPED, 0, 0, 0, 0,
                                nullptr, nullptr, instance, nullptr);
         if (!window)
             throw std::runtime_error("Session window unavailable");
@@ -2112,37 +2206,93 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
         pipeThread = CreateThread(nullptr, 0, Serve, nullptr, 0, nullptr);
         if (!workerThread || !pipeThread)
             throw std::runtime_error("Worker unavailable");
-        if (!background)
+        if (!SetTimer(window, 3, 250, nullptr))
+            throw std::runtime_error("Runtime health timer unavailable");
+        if (embedded) {
+            runtimeWindow = window;
+            runtimeState = 2;
+            if (runtimeStopRequested) PostMessageW(window, WM_CLOSE, 0, 0);
+        }
+        if (!background && !embedded)
             PostJob("internal.openUi");
         MSG message{};
-        while (GetMessageW(&message, nullptr, 0, 0) > 0) {
+        BOOL messageResult{};
+        while ((messageResult = GetMessageW(&message, nullptr, 0, 0)) > 0) {
             TranslateMessage(&message);
             DispatchMessageW(&message);
         }
-        if (pipeThread) {
-            CancelSynchronousIo(pipeThread);
-            WaitForSingleObject(pipeThread, 100);
-            CloseHandle(pipeThread);
-        }
-        if (workerThread) {
-            if (WaitForSingleObject(workerThread, 900) != WAIT_OBJECT_0)
-                ExitProcess(0);
-            CloseHandle(workerThread);
-        }
-        DestroyWindow(window);
-        CloseHandle(workEvent);
-        CloseHandle(endingEvent);
-        CloseHandle(stopEvent);
-        CloseHandle(singleton);
-        if (restartHandoff) CloseHandle(restartHandoff);
-
-        CoUninitialize();
-        return 0;
+        cleanup();
+        return messageResult < 0 || runtimeThreadFailed ? 1 : 0;
     } catch (...) {
-        if (singleton)
-            CloseHandle(singleton);
-        if (restartHandoff) CloseHandle(restartHandoff);
-        CoUninitialize();
+        cleanup();
         return 1;
     }
 }
+
+#ifdef RETRAY_EMBEDDED_RUNTIME
+// The host invokes these exports directly, outside the loader lock. There is
+// deliberately no DllMain startup, shutdown, UI work or thread creation.
+extern "C" __declspec(dllexport) DWORD WINAPI ReTrayMigrateData(const wchar_t* localAppData) {
+    try {
+        wchar_t local[32768]{};
+        if (!localAppData || !*localAppData) {
+            auto length = GetEnvironmentVariableW(L"LOCALAPPDATA", local, std::size(local));
+            if (!length || length >= std::size(local)) return ERROR_PATH_NOT_FOUND;
+            localAppData = local;
+        }
+        auto location = std::filesystem::path(localAppData);
+        if (!location.is_absolute()) return ERROR_BAD_PATHNAME;
+        MigrateLegacyData(location);
+        return ERROR_SUCCESS;
+    } catch (...) { return ERROR_WRITE_FAULT; }
+}
+extern "C" __declspec(dllexport) DWORD WINAPI ReTrayRunBackend(const wchar_t* dataDirectory) {
+    // A stopped runtime is restarted by launching a fresh managed application.
+    // Reusing its process-wide catalog/bridge globals is intentionally rejected.
+    static std::atomic<bool> entered{};
+    if (entered.exchange(true)) return ERROR_ALREADY_INITIALIZED;
+    runtimeState = 1;
+    DWORD result{};
+    try {
+        wchar_t executable[] = L"ReTray.exe", background[] = L"--background", data[] = L"--data";
+        std::wstring directory = dataDirectory ? dataDirectory : L"";
+        if (!directory.empty() && !std::filesystem::path(directory).is_absolute())
+            result = ERROR_BAD_PATHNAME;
+        else {
+            wchar_t* arguments[] = {executable, background, data, directory.data()};
+            result = RunApplication(GetModuleHandleW(nullptr), directory.empty() ? 2 : 4,
+                                    arguments, true);
+        }
+    } catch (...) { result = ERROR_UNHANDLED_EXCEPTION; }
+    runtimeWindow = nullptr;
+    runtimeState = 0;
+    return result;
+}
+extern "C" __declspec(dllexport) BOOL WINAPI ReTrayRequestStop() {
+    runtimeStopRequested = true;
+    auto target = runtimeWindow.load();
+    if (!target) return TRUE; // Startup observes the latched request before pumping.
+    runtimeState = 3;
+    return PostMessageW(target, WM_CLOSE, 0, 0);
+}
+extern "C" __declspec(dllexport) DWORD WINAPI ReTrayRuntimeState() {
+    return runtimeState.load();
+}
+extern "C" __declspec(dllexport) BOOL WINAPI ReTraySetInterfaceWindow(HWND target) {
+    DWORD pid{};
+    if (!target || !GetWindowThreadProcessId(target, &pid) || pid != GetCurrentProcessId())
+        return FALSE;
+    uiWindow = target;
+    DispatchPendingInterfaceMenu(target);
+    return TRUE;
+}
+#else
+int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
+    int argc{};
+    auto args = CommandLineToArgvW(GetCommandLineW(), &argc);
+    if (!args) return 1;
+    auto result = RunApplication(instance, argc, args, false);
+    LocalFree(args);
+    return result;
+}
+#endif

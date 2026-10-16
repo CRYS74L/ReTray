@@ -3,7 +3,7 @@ ReTray：本机开发构建。
 这是开发阶段的自签名 MSIX，不是受信任 CA 签名的正式发行包。安装将向本机 TrustedPeople 添加包内的 CRYS74L 开发证书，并为当前用户安装软件。需要管理员确认。
 安装完成后从 Windows 开始菜单打开“ReTray”。启动即应用保存的图标设定；普通关闭窗口会收起界面并继续后台工作。从托盘选择退出，会提交修改、退出后台并撤销软件的图标策略。托盘菜单提供打开 ReTray、重新启动和退出。
 
-也可直接使用同目录的 ReTray-<版本>-win-x64.zip：完整解压后运行 ReTray.App.exe，无需导入证书。配置保存在 %LOCALAPPDATA%\ReTray，首次升级会保留并迁移旧配置。
+也可直接使用同目录的 ReTray-<版本>-win-x64.zip：完整解压后运行 ReTray.exe，无需导入证书。界面与托盘管理运行在同一进程中，请保留同目录运行库与资源。配置保存在 %LOCALAPPDATA%\ReTray，首次升级会保留并迁移旧配置。
 
 ReTray 采用 GPL-3.0-only；协议与第三方声明见 LICENSE、NOTICE.md。源码：https://github.com/CRYS74L/ReTray
 

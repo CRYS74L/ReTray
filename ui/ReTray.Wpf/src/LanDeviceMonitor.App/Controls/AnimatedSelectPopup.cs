@@ -22,7 +22,13 @@ public sealed class AnimatedSelectPopup : Popup
          new CustomPopupPlacement(new System.Windows.Point(-12, -popup.Height), PopupPrimaryAxis.Horizontal)];
         Opened += (_, _) =>
         {
-            if (Child is System.Windows.Controls.Border surface && PlacementTarget is System.Windows.Controls.ComboBox owner)
+            var surface = Child as System.Windows.Controls.Border;
+            if (Child is System.Windows.Controls.ContentControl content)
+            {
+                content.ApplyTemplate();
+                surface = content.Template.FindName("DropdownSurface", content) as System.Windows.Controls.Border;
+            }
+            if (surface is not null && PlacementTarget is System.Windows.Controls.ComboBox owner)
             {
                 var dpi = VisualTreeHelper.GetDpi(surface).DpiScaleX;
                 var border = surface.UseLayoutRounding

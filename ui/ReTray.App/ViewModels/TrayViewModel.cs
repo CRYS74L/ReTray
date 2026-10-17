@@ -259,8 +259,7 @@ public partial class TrayViewModel : ObservableObject
         var file = await picker.PickSingleFileAsync(); if (file == null) return null;
         var path = file.Path;
 #endif
-        var info = new FileInfo(path); if (info.Length > 32 * 1024 * 1024) throw new IOException("图标资源不能超过 32 MB。");
-        var bytes = await File.ReadAllBytesAsync(path); var directory = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ReTray", "Assets"); Directory.CreateDirectory(directory); var target = Path.Combine(directory, Convert.ToHexString(SHA256.HashData(bytes)) + Path.GetExtension(path).ToLowerInvariant()); if (!File.Exists(target)) await File.WriteAllBytesAsync(target, bytes); return target;
+        return await ManagedIconStorage.StoreAsync(path);
     }
     [RelayCommand] private Task ChooseIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) { UseReplacement = true; AssetIndex = 0; Asset = path; } });
     [RelayCommand] private void UseOriginalAsset() { UseReplacement=false; }

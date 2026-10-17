@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable>
+    <DefineConstants>$(DefineConstants);TRAY_WPF;RETRAY_PORTABLE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../ui/ReTray.App/Services/ManagedIconStorage.cs" Link="ManagedIconStorage.cs" />
+    <Compile Include="../../ui/ReTray.App/Services/ConfigurationArchive.cs" Link="ConfigurationArchive.cs" />
+    <Compile Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/Services/ApplicationPaths.cs" Link="ApplicationPaths.cs" />
+  </ItemGroup>
+</Project>

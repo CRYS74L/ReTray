@@ -38,9 +38,7 @@ public sealed class DeviceRepository
 
     public DeviceRepository()
     {
-        var dataDirectory = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ReTray");
+        var dataDirectory = ApplicationPaths.DataDirectory;
         _statePath = Path.Combine(dataDirectory, "state.json");
     }
 

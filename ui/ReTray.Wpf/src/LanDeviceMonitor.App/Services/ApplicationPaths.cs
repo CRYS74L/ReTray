@@ -15,6 +15,7 @@ public static class ApplicationPaths
     public static string ExecutableDirectory => Path.GetDirectoryName(Environment.ProcessPath!)!;
     public static string DataDirectory => IsPortable ? Path.Combine(ExecutableDirectory, "Data") :
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ReTray");
+    public static string ManagedAssetsDirectory => Path.Combine(DataDirectory, "Assets");
 
     // Windows App SDK single-file publishing requires IncludeAllContentForSelfExtract;
     // the extracted assembly directory holds native libraries and physical content.
@@ -44,8 +45,10 @@ public static class ApplicationPaths
 
     // Only content-addressed managed image references are relocated. Application
     // executable selectors and arbitrary external image paths are left intact.
-    public static void RebaseManagedAssets(string directory)
+    public static void RebaseManagedAssets(string directory, string? legacyAssetsDirectory = null)
     {
+        var legacy = Path.GetFullPath(legacyAssetsDirectory ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ReTray", "Assets"));
         foreach (var name in new[] { "settings.json", "settings.json.bak" })
         {
             var path = Path.Combine(directory, name);
@@ -64,6 +67,24 @@ public static class ApplicationPaths
                             var file = Path.GetFileName(original);
                             var hash = Path.GetFileNameWithoutExtension(file);
                             var destination = Path.Combine(directory, "Assets", file);
+                            if (hash.Length == 64 && hash.All(Uri.IsHexDigit) && !File.Exists(destination) &&
+                                Path.IsPathFullyQualified(original) && File.Exists(original) &&
+                                string.Equals(Path.GetDirectoryName(Path.GetFullPath(original)), legacy, StringComparison.OrdinalIgnoreCase))
+                            {
+                                using var input = new FileStream(original, FileMode.Open, FileAccess.Read, FileShare.Read);
+                                if (input.Length <= 32 * 1024 * 1024)
+                                {
+                                    var bytes = new byte[(int)input.Length];
+                                    input.ReadExactly(bytes);
+                                    if (Convert.ToHexString(SHA256.HashData(bytes)).Equals(hash, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                                        var temporary = destination + ".migration-" + Guid.NewGuid().ToString("N");
+                                        try { File.WriteAllBytes(temporary, bytes); File.Move(temporary, destination); }
+                                        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+                                    }
+                                }
+                            }
                             if (hash.Length == 64 && hash.All(Uri.IsHexDigit) && File.Exists(destination) &&
                                 Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(destination))).Equals(hash, StringComparison.OrdinalIgnoreCase) &&
                                 !string.Equals(original, destination, StringComparison.OrdinalIgnoreCase))

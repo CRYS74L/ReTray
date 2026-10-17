@@ -50,6 +50,7 @@
     <Compile Include="$(TraySharedSourceDirectory)\ViewModels\TrayViewModel.Autosave.cs" Link="ViewModels\TrayViewModel.Autosave.cs" />
     <Compile Include="$(TraySharedSourceDirectory)\Services\PipeClient.cs" Link="Services\PipeClient.cs" />
     <Compile Include="$(TraySharedSourceDirectory)\Services\ConfigurationArchive.cs" Link="Services\ConfigurationArchive.cs" />
+    <Compile Include="$(TraySharedSourceDirectory)\Services\ManagedIconStorage.cs" Link="Services\ManagedIconStorage.cs" />
     <Compile Include="$(TraySharedSourceDirectory)\Services\Localization.cs" Link="Services\Localization.cs" />
     <Compile Include="$(TraySharedSourceDirectory)\Services\Localization.Catalogs.cs" Link="Services\Localization.Catalogs.cs" />
     <Content Include="$(TrayProductDirectory)\build\ReTray.Runtime.dll" Link="ReTray.Runtime.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

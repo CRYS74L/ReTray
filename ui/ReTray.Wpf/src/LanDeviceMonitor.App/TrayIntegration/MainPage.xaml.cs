@@ -129,8 +129,7 @@ public partial class MainPage : UserControl
             if(MessageBox.Show(Window.GetWindow(this),Localization.Text("导入将替换当前配置，并自动备份原配置。是否继续？"),
                 Localization.Text("导入配置"),MessageBoxButton.YesNo,MessageBoxImage.Question,MessageBoxResult.No)!=MessageBoxResult.Yes)return;
             if(!await FlushChangesAsync())return;
-            var managed=Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"ReTray","Assets");
-            var candidate=await package.InstallAssetsAsync(managed);
+            var candidate=await ManagedIconStorage.ImportAsync(package);
             var current=await Vm.Pipe.RequestAsync("settings.read");CheckConfigurationReply(current);
             JsonObject reply;
             try { reply=await Vm.Pipe.RequestAsync("settings.import",new(){["settings"]=candidate,["expectedRevision"]=current["revision"]!.GetValue<long>()}); }

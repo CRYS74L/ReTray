@@ -283,8 +283,11 @@
                   <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Style.Triggers><DataTrigger Binding="{Binding ConfigurationStatus}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
                 </TextBlock>
               </StackPanel>
-              <TextBlock Grid.Row="2" FontSize="12" HorizontalAlignment="Center" Margin="0,8,0,16">
-                <Hyperlink x:Name="VersionLink" NavigateUri="https://github.com/CRYS74L/ReTray" RequestNavigate="VersionLink_RequestNavigate" ToolTip="https://github.com/CRYS74L/ReTray" Foreground="{DynamicResource MutedTextBrush}" AutomationProperties.AutomationId="SoftwareVersion">
+              <TextBlock x:Name="VersionText" Grid.Row="2" FontSize="12" Foreground="{DynamicResource MutedTextBrush}" HorizontalAlignment="Center" Margin="0,8,0,16">
+                <TextBlock.ToolTip>
+                  <ToolTip x:Name="VersionToolTip" Placement="Custom" Content="https://github.com/CRYS74L/ReTray" />
+                </TextBlock.ToolTip>
+                <Hyperlink x:Name="VersionLink" NavigateUri="https://github.com/CRYS74L/ReTray" RequestNavigate="VersionLink_RequestNavigate" Foreground="{Binding Foreground, ElementName=VersionText}" AutomationProperties.AutomationId="SoftwareVersion">
                   <Hyperlink.Style>
                     <Style TargetType="Hyperlink">
                       <Setter Property="TextDecorations" Value="{x:Null}" />

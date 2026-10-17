@@ -45,6 +45,8 @@ public partial class MainPage : UserControl
     {
         InitializeComponent(); DataContext = Vm;
         VersionLink.Inlines.Add($"v{typeof(MainPage).Assembly.GetName().Version!.ToString(3)}");
+        VersionToolTip.PlacementTarget = VersionText;
+        VersionToolTip.CustomPopupPlacementCallback = PlaceVersionToolTip;
         ThemeChoice.Items.Add("跟随系统"); ThemeChoice.Items.Add("浅色"); ThemeChoice.Items.Add("深色"); ThemeChoice.SelectedIndex = 0;
         foreach(var name in Localization.LanguageNames)LanguageChoice.Items.Add(name); LanguageChoice.SelectedIndex = 0;
         CreateSystemRows(); CreateLoadingRows();
@@ -72,6 +74,9 @@ public partial class MainPage : UserControl
 
         UpdatePresentation();
     }
+    private static CustomPopupPlacement[] PlaceVersionToolTip(Size popupSize, Size targetSize, Point offset) =>
+        [new CustomPopupPlacement(new Point((targetSize.Width - popupSize.Width) / 2, -popupSize.Height - 8), PopupPrimaryAxis.Horizontal)];
+
     private void VersionLink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs args)
     {
         args.Handled = true;

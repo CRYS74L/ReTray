@@ -57,7 +57,7 @@ public static class NativeRuntime
 
     private static void Run()
     {
-        try { completion!.TrySetResult(ReTrayRunBackend(null)); }
+        try { completion!.TrySetResult(ReTrayRunBackend(ApplicationPaths.IsPortable ? ApplicationPaths.DataDirectory : null)); }
         catch (Exception exception) { completion!.TrySetException(exception); }
         finally { Completed?.Invoke(null, EventArgs.Empty); }
     }

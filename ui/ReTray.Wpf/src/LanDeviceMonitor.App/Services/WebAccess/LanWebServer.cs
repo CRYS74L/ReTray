@@ -140,7 +140,7 @@ internal sealed class LanWebServer : IAsyncDisposable
         {
             var port = preferredPort == 0 ? 0 : 1024 + (preferredPort - 1024 + attempt) % (65536 - 1024);
             if (port == 0 && !loopbackOnly) throw new ArgumentException("动态端口仅用于本机测试。");
-            var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { Args = [], ContentRootPath = AppContext.BaseDirectory });
+            var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions { Args = [], ContentRootPath = ApplicationPaths.ResourceDirectory });
             builder.Logging.ClearProviders();
             builder.WebHost.ConfigureKestrel(k =>
             {
@@ -212,7 +212,7 @@ internal sealed class LanWebServer : IAsyncDisposable
             foreach (var file in files)
             {
                 var name = file.Value;
-                app.MapGet(file.Key, () => Results.File(Path.Combine(AppContext.BaseDirectory, "Web", name), name.EndsWith(".js") ? "text/javascript" : name.EndsWith(".css") ? "text/css" : name.EndsWith(".png") ? "image/png" : name.EndsWith(".webmanifest") ? "application/manifest+json" : "text/html; charset=utf-8"));
+                app.MapGet(file.Key, () => Results.File(Path.Combine(ApplicationPaths.ResourceDirectory, "Web", name), name.EndsWith(".js") ? "text/javascript" : name.EndsWith(".css") ? "text/css" : name.EndsWith(".png") ? "image/png" : name.EndsWith(".webmanifest") ? "application/manifest+json" : "text/html; charset=utf-8"));
             }
             try
             {

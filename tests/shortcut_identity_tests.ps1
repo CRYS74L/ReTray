@@ -1,4 +1,4 @@
-param([Parameter(Mandatory)][string]$LayoutPath)
+param([Parameter(Mandatory)][string]$LayoutPath,[switch]$Portable)
 $ErrorActionPreference='Stop'
 $project=Split-Path $PSScriptRoot -Parent
 . (Join-Path $project 'packaging/Shortcut.ps1')
@@ -6,7 +6,7 @@ $fixture=Join-Path $project ('artifacts/shortcut-identity-'+[Guid]::NewGuid().To
 New-Item -ItemType Directory -Path $fixture -Force | Out-Null
 $linkPath=Join-Path $fixture 'ReTray.lnk'
 $brand=Join-Path $fixture 'Branding'
-$family='CRYS74L.ReTray_fh3g15a7mygna'
+$family=if($Portable){''}else{'CRYS74L.ReTray_fh3g15a7mygna'}
 function Require([bool]$Condition,[string]$Message) { if(!$Condition) { throw $Message } }
 foreach($iteration in 1..2) {
     Write-ReTrayDesktopShortcut -InstallLocation $LayoutPath -PackageFamilyName $family -ShortcutPath $linkPath -BrandDirectory $brand

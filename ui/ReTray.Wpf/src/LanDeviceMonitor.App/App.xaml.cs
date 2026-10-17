@@ -41,11 +41,11 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         try
         {
-            if (PackageActivation.RedirectIfInstalled(e.Args)) { Shutdown(0); return; }
+            if (!ApplicationPaths.IsPortable && PackageActivation.RedirectIfInstalled(e.Args)) { Shutdown(0); return; }
             // A successor must not read/migrate data or claim single-instance
             // ownership until its validated predecessor has completely exited.
             await WaitForRestartParentAsync(e.Args);
-            NativeRuntime.MigrateData();
+            if (!ApplicationPaths.IsPortable) NativeRuntime.MigrateData();
         }
         catch (Exception exception)
         {
@@ -72,10 +72,12 @@ public partial class App : System.Windows.Application
 
 
         DispatcherUnhandledException += App_DispatcherUnhandledException;
+        try { ApplicationPaths.PrepareData(); }
+        catch (Exception error) { System.Windows.MessageBox.Show(error.Message, "ReTray"); Shutdown(1); return; }
         ThemeService.Apply(ReadTrayThemeMode());
         try {
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ReTray", "settings.json")));
+                ApplicationPaths.DataDirectory, "settings.json")));
             if (saved.RootElement.TryGetProperty("language", out var language) &&
                 language.GetString() is "zh" or "en" or "zh-Hant" or "ja")
                 ReTray_App.Services.Localization.CurrentLanguage = language.GetString()!;
@@ -93,9 +95,8 @@ public partial class App : System.Windows.Application
         _windowPlacementService = new WindowPlacementService(_mainWindow);
         _mainWindow.SourceInitialized += (_, _) =>
         {
-            var sourceIcon = Path.Combine(AppContext.BaseDirectory, "Assets", "WindowIcon.ico");
-            var brandDirectory = Path.Combine(Environment.GetFolderPath(
-                Environment.SpecialFolder.LocalApplicationData), "ReTray", "Branding");
+            var sourceIcon = Path.Combine(ApplicationPaths.ResourceDirectory, "Assets", "WindowIcon.ico");
+            var brandDirectory = Path.Combine(ApplicationPaths.DataDirectory, "Branding");
             Directory.CreateDirectory(brandDirectory);
             var taskbarIcon = Path.Combine(brandDirectory, "WindowIcon-" + typeof(App).Assembly.GetName().Version!.ToString(3) + ".ico");
             if (!File.Exists(taskbarIcon) || !File.ReadAllBytes(taskbarIcon).AsSpan().SequenceEqual(File.ReadAllBytes(sourceIcon)))
@@ -136,6 +137,7 @@ public partial class App : System.Windows.Application
             var handle = new WindowInteropHelper(_mainWindow).EnsureHandle();
             NativeRuntime.AttachInterface(handle);
             await NativeRuntime.StartAsync();
+            _ = Task.Run(ApplicationPaths.PruneOldBundleCaches);
             if (_hasExited) return;
             if (!startHidden || _showWhenReady)
             {
@@ -158,8 +160,7 @@ public partial class App : System.Windows.Application
         try
         {
             var settingsPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "ReTray", "settings.json");
+                ApplicationPaths.DataDirectory, "settings.json");
             using var settings = JsonDocument.Parse(File.ReadAllText(settingsPath));
             return settings.RootElement.TryGetProperty("theme", out var theme)
                 ? theme.GetString() switch
@@ -183,9 +184,7 @@ public partial class App : System.Windows.Application
     {
         try
         {
-            var directory = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "ReTray");
+            var directory = ApplicationPaths.DataDirectory;
             Directory.CreateDirectory(directory);
             File.WriteAllText(Path.Combine(directory, "ui-crash.log"), e.Exception.ToString());
         }

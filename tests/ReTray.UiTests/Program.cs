@@ -25,7 +25,8 @@ internal static class Program
             ("window taskbar branding overrides package artwork with valid relaunch metadata", TaskbarIdentity),
             ("single executable relaunch, package directory identity and menu labels", PackageRelaunch),
             ("taskbar branding rejects windows owned by another process", RejectForeignWindow),
-            ("own row uses product identity rather than the agent executable name", OwnProductName)
+            ("own row uses product identity rather than the agent executable name", OwnProductName),
+            ("portable profile relocation preserves image content and executable selectors", PortableRelocation)
         })
         {
             try { test(); Console.WriteLine($"PASS {name}"); }
@@ -43,6 +44,34 @@ internal static class Program
             "System theme must follow SystemUsesLightTheme, even when AppsUseLightTheme differs");
         Require(LanDeviceMonitor.Services.ThemeService.ResolveIsDark("Dark"), "Explicit dark was lost");
         Require(!LanDeviceMonitor.Services.ThemeService.ResolveIsDark("Light"), "Explicit light was lost");
+    }
+    private static void PortableRelocation()
+    {
+        var directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ReTray-portable-" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(System.IO.Path.Combine(directory, "Assets"));
+        try
+        {
+            byte[] bytes = [1, 7, 13, 21];
+            string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes));
+            string asset = System.IO.Path.Combine(directory, "Assets", hash + ".png");
+            System.IO.File.WriteAllBytes(asset, bytes);
+            var value = new JsonObject { ["uiActivation"]="old-package!App", ["rules"] = new JsonArray {
+                new JsonObject { ["asset"] = @"C:\OldPortable\Data\Assets\" + hash + ".png", ["selector"] = new JsonObject { ["executable"]=@"C:\Apps\Example.exe" } },
+                new JsonObject { ["asset"] = @"C:\Personal\external.ico" } } };
+            string primary = System.IO.Path.Combine(directory, "settings.json");
+            string backup = System.IO.Path.Combine(directory, "settings.json.bak");
+            System.IO.File.WriteAllText(primary, value.ToJsonString());
+            System.IO.File.WriteAllText(backup, "damaged backup remains recoverable");
+            LanDeviceMonitor.Services.ApplicationPaths.RebaseManagedAssets(directory);
+            var saved = JsonNode.Parse(System.IO.File.ReadAllText(primary))!;
+            Require(saved["rules"]![0]!["asset"]!.GetValue<string>() == asset, "Managed image did not follow the portable directory");
+            Require(saved["rules"]![0]!["selector"]!["executable"]!.GetValue<string>() == @"C:\Apps\Example.exe", "Application executable selector was rewritten");
+            Require(saved["rules"]![1]!["asset"]!.GetValue<string>() == @"C:\Personal\external.ico", "External image was rewritten");
+            Require(saved["uiActivation"]!.GetValue<string>() == "", "Portable app retained installed activation identity");
+            Require(System.IO.File.ReadAllText(backup) == "damaged backup remains recoverable", "Damaged backup was overwritten");
+            Require(System.IO.File.ReadAllBytes(asset).SequenceEqual(bytes), "Image content changed");
+        }
+        finally { System.IO.Directory.Delete(directory, true); }
     }
     private static void OwnProductName()
     {

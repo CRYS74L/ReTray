@@ -1,16 +1,17 @@
-# Shared by the installer and development deployment. Target the package's
-# native activation launcher, so Explorer's "Open file location" opens ReTray.
+# Shared by packaged and portable deployments. Target the actual application.
 function Write-ReTrayDesktopShortcut {
     param(
         [Parameter(Mandatory)][string]$InstallLocation,
-        [Parameter(Mandatory)][string]$PackageFamilyName,
+        [string]$PackageFamilyName='',
         [string]$ShortcutPath=(Join-Path ([Environment]::GetFolderPath('Desktop')) 'ReTray.lnk'),
-        [string]$BrandDirectory=(Join-Path $env:LOCALAPPDATA 'ReTray/Branding')
+        [string]$BrandDirectory=(Join-Path $env:LOCALAPPDATA 'ReTray/Branding'),
+        [string]$IconPath='',
+        [string]$AppUserModelId='CRYS74L.ReTray.Desktop'
     )
     $ErrorActionPreference='Stop'
-    if($PackageFamilyName -notmatch '^CRYS74L\.ReTray_[A-Za-z0-9]+$') { throw 'Unexpected ReTray package family' }
+    if($PackageFamilyName -and $PackageFamilyName -notmatch '^CRYS74L\.ReTray_[A-Za-z0-9]+$') { throw 'Unexpected ReTray package family' }
     $launcher=Join-Path $InstallLocation 'ReTray.exe'
-    $icon=Join-Path $InstallLocation 'Assets/DesktopIcon.ico'
+    $icon=if($AppUserModelId -eq 'CRYS74L.ReTray.Window'){$launcher}elseif($IconPath){$IconPath}elseif($PackageFamilyName){Join-Path $InstallLocation 'Assets/DesktopIcon.ico'}else{Join-Path $InstallLocation 'Data/Branding/DesktopIcon.ico'}
     foreach($required in @($launcher,$icon)) {
         if(!(Test-Path -LiteralPath $required -PathType Leaf)) { throw "ReTray shortcut payload is missing $required" }
     }
@@ -23,8 +24,10 @@ function Write-ReTrayDesktopShortcut {
         }
     }
     New-Item -ItemType Directory -Path $BrandDirectory -Force | Out-Null
-    $desktopIcon=Join-Path $BrandDirectory 'DesktopIcon.ico'
-    Copy-Item -LiteralPath $icon -Destination $desktopIcon -Force
+    $desktopIcon=if($AppUserModelId -eq 'CRYS74L.ReTray.Window'){$launcher}else{Join-Path $BrandDirectory 'DesktopIcon.ico'}
+    if(![IO.Path]::GetFullPath($icon).Equals([IO.Path]::GetFullPath($desktopIcon),[StringComparison]::OrdinalIgnoreCase)) {
+        Copy-Item -LiteralPath $icon -Destination $desktopIcon -Force
+    }
     $shortcut=$shell.CreateShortcut($ShortcutPath)
     $shortcut.TargetPath=$launcher
     $shortcut.Arguments='--show'
@@ -84,5 +87,5 @@ namespace ReTray.Packaging {
 }
 '@
     }
-    [ReTray.Packaging.ShortcutIdentity]::Write($ShortcutPath,'CRYS74L.ReTray.Desktop')
+    [ReTray.Packaging.ShortcutIdentity]::Write($ShortcutPath,$AppUserModelId)
 }

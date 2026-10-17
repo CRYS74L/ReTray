@@ -14,6 +14,7 @@ tools/
 .vs/
 publish/
 dist/
+portable/
 *.pfx
 *.key
 *.cer

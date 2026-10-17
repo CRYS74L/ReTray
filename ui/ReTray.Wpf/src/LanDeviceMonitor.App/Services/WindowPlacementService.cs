@@ -26,8 +26,7 @@ internal sealed class WindowPlacementService : IDisposable
     {
         _window = window;
         _placementPath = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "ReTray",
+            ApplicationPaths.DataDirectory,
             "window-placement.json");
         _saveTimer = new DispatcherTimer(
             TimeSpan.FromMilliseconds(300),

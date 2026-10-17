@@ -24,6 +24,17 @@
     <DefineConstants>$(DefineConstants);TRAY_WPF</DefineConstants>
     <ApplicationIcon>Assets\AppIcon.ico</ApplicationIcon>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(ReTrayPortable)' == 'true'">
+    <DefineConstants>$(DefineConstants);RETRAY_PORTABLE</DefineConstants>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <IncludeAllContentForSelfExtract>true</IncludeAllContentForSelfExtract>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
@@ -70,6 +81,7 @@
     <Resource Include="Assets\BrandLogo.svg" />
     <Content Include="Assets\WindowIcon.ico;Assets\WindowIcon.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\DesktopIcon.ico" Condition="'$(ReTrayPortable)' == 'true'" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Remove="Assets\SystemIcon.ico" />
     <Resource Include="Assets\SystemIcon.ico" />
   </ItemGroup>

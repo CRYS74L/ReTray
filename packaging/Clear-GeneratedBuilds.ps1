@@ -33,6 +33,9 @@ $removed=0L
 foreach($candidate in $candidates) {
     if($candidate.Version -in $keep -and $candidate.Directory.FullName -in $latest){continue}
     $target=[IO.Path]::GetFullPath($candidate.Directory.FullName)
+    # A portable folder that has been used contains personal data. Build
+    # retention must never remove that profile, even when its EXE is old.
+    if(Test-Path -LiteralPath (Join-Path $target 'layout/Data')){continue}
     $prefix=$target+[IO.Path]::DirectorySeparatorChar
     if(!$target.StartsWith($candidate.Parent+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Build cleanup escaped its output directory'}
     if(@($protected | Where-Object {$_ -eq $target -or $_.StartsWith($prefix,[StringComparison]::OrdinalIgnoreCase)}).Count){continue}

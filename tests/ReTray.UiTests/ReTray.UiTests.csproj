@@ -16,6 +16,7 @@
     <Compile Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/Services/ThemeService.cs" Link="ThemeService.cs" />
     <Compile Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/Services/TaskbarBranding.cs" Link="TaskbarBranding.cs" />
     <Compile Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/Services/PackageActivation.cs" Link="PackageActivation.cs" />
+    <Compile Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/Services/ApplicationPaths.cs" Link="ApplicationPaths.cs" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
   </ItemGroup>
 </Project>

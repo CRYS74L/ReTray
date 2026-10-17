@@ -17,9 +17,7 @@
 任务栏和桌面均直接运行根目录的 ReTray 主程序；主程序在读取配置前确认已安装包的身份。桌面标识不创建第二个常驻进程。
 窗口重启图标的缓存文件按软件版本命名，不清除系统全局图标缓存。
 
-发布目录只有一个 `ReTray.exe`，位于根目录，直接运行 `runtime/ReTray.dll` 应用程序集；没有额外的 ReTray 启动器。
-运行依赖集中在 `runtime`，包图像集中在 `Assets`。微软运行库附带的 `createdump.exe`、`RestartAgent.exe` 是其诊断/恢复工具，不是 ReTray 的第二个入口。
-全部 78 份包 PNG、所有 scale/targetsize/深浅主题版本均保留，`runtime/Assets` 不再重复复制这些包图像。界面图形和文字的渲染方式不随文件整理改变。
-此布局不是单文件程序，不能只复制主程序 EXE。
-
-验证时应同时检查生成资源、Windows 提取出的应用/EXE/快捷方式图标、运行窗口图标及实际任务栏显示；文件正确不等于 Shell 当前显示一定正确。
+当前便携版的发布目录只有 `ReTray.exe`。ICO、字体和全部运行依赖包含在 EXE 中；用户目录不再需要 runtime 和 Assets。
+微软运行库内部的 `createdump.exe`、`RestartAgent.exe` 保留原名和功能，通过 .NET 的单文件缓存加载，不是独立部署的 ReTray 后台程序。
+便携版采用 Win32 ICO 显示 EXE、任务栏和快捷方式；旧 MSIX 的外部 scale/targetsize PNG 继续保留在源项目中，便携版不依赖这些外部包文件。
+用户配置、自定义图标和快捷方式使用的品牌图标在旁边的 Data 中。移植 Data 会重定位内容寻址的图标路径，图像字节保持不变。

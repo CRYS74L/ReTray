@@ -168,7 +168,7 @@ public sealed class TrayService : IDisposable
     private static Icon LoadSystemIcon()
     {
         var systemIconPath = Path.Combine(
-            AppContext.BaseDirectory,
+            ApplicationPaths.ResourceDirectory,
             "Assets",
             "AppIcon.ico");
         if (File.Exists(systemIconPath))

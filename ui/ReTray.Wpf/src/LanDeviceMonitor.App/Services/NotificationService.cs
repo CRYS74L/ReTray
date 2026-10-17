@@ -280,7 +280,7 @@ public sealed class NotificationService : IDisposable
 
     private static Uri GetIconUri()
     {
-        var iconPath = Path.Combine(AppContext.BaseDirectory, IconRelativePath);
+        var iconPath = Path.Combine(ApplicationPaths.ResourceDirectory, IconRelativePath);
         if (!File.Exists(iconPath))
         {
             throw new FileNotFoundException("Windows 系统通知图标不存在", iconPath);

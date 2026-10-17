@@ -52,8 +52,8 @@ internal static class Program
        System.Globalization.CultureInfo.CurrentUICulture,t.FlowDirection,
        new Typeface(t.FontFamily,t.FontStyle,t.FontWeight,t.FontStretch),t.FontSize,Brushes.Black,
        VisualTreeHelper.GetDpi(t).PixelsPerDip).WidthIncludingTrailingWhitespace).First();
-   if(!menu.Items.Cast<MenuItem>().Any(i=>Equals(i.Header,"打开ReTray")))
-       throw new InvalidOperationException("Open command omitted the product name");
+   if(!menu.Items.Cast<MenuItem>().Any(i=>Equals(i.Header,"打开")))
+       throw new InvalidOperationException("Open command was not restored");
    var ink=new FormattedText(text.Text,System.Globalization.CultureInfo.CurrentUICulture,text.FlowDirection,
        new Typeface(text.FontFamily,text.FontStyle,text.FontWeight,text.FontStretch),text.FontSize,Brushes.Black,
        VisualTreeHelper.GetDpi(text).PixelsPerDip);

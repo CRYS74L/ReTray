@@ -40,12 +40,19 @@ try{
 foreach($required in @('ReTray.exe','ReTray.Runtime.dll','ReTray.ShellBridge.dll')) {
     if(!(Test-Path -LiteralPath (Join-Path $runtime $required) -PathType Leaf)){throw "Unified application payload is missing $required"}
 }
-Copy-Item -LiteralPath (Join-Path $productRoot 'build/ReTray.Startup.exe') -Destination (Join-Path $layout 'ReTray.exe') -Force
-# The root has exactly one launchable entry. Shell artwork remains outside the
-# private runtime because the package resource index resolves it directly.
+# Use the .NET SDK's apphost writer to bind the actual executable directly to
+# runtime/ReTray.dll. There is no wrapper process or second ReTray.exe.
+$resolvedHost=(& $dotnet msbuild $originProject -p:RuntimeIdentifier=win-x64 -p:Platform=x64 -t:ResolveFrameworkReferences -getItem:ResolvedAppHostPack -v:quiet | Out-String | ConvertFrom-Json)
+if($LASTEXITCODE -ne 0){throw 'Apphost runtime resolution failed'}
+$template=$resolvedHost.Items.ResolvedAppHostPack[0].Path
+if(!$template){throw 'Restored .NET apphost template missing'}
+$sdkVersion=(& $dotnet --version).Trim()
+Add-Type -Path (Join-Path (Split-Path $dotnet -Parent) ('sdk/'+$sdkVersion+'/Microsoft.NET.HostModel.dll'))
+[Microsoft.NET.HostModel.AppHost.HostWriter]::CreateAppHost($template,(Join-Path $layout 'ReTray.exe'),'runtime/ReTray.dll',$true,(Join-Path $runtime 'ReTray.dll'),$false,$false,$null)
+Remove-Item -LiteralPath (Join-Path $runtime 'ReTray.exe')
 $shellAssets=Join-Path $layout 'Assets'
 New-Item -ItemType Directory -Path $shellAssets -Force | Out-Null
-foreach($image in Get-ChildItem -LiteralPath (Join-Path $runtime 'Assets') -File) {
+foreach($image in Get-ChildItem -LiteralPath (Join-Path $productRoot 'ui/ReTray.App/Assets') -File) {
     if($image.Name -match '^(StoreLogo|Square44x44Logo|Square150x150Logo|Wide310x150Logo|SplashScreen)[.-]' -or $image.Name -eq 'DesktopIcon.ico') {
         $name=$image.Name.Replace('StoreLogo','ReTrayStore').Replace('Square44x44Logo','ReTrayAppList').Replace('Square150x150Logo','ReTrayTile').Replace('Wide310x150Logo','ReTrayWide').Replace('SplashScreen','ReTraySplash')
         Copy-Item -LiteralPath $image.FullName -Destination (Join-Path $shellAssets $name)
@@ -58,8 +65,8 @@ $manifest=Join-Path $layout 'AppxManifest.xml'
 $doc=[xml](Get-Content -LiteralPath (Join-Path $productRoot 'ui\ReTray.App\Package.appxmanifest') -Raw)
 $doc.Package.Identity.Version=$version+'.0'
 $mainApplication=$doc.Package.Applications.Application | Where-Object Id -eq 'App'
-$mainApplication.Executable='runtime\ReTray.exe'
-$mainApplication.Extensions.Extension.Executable='runtime\ReTray.exe'
+$mainApplication.Executable='ReTray.exe'
+$mainApplication.Extensions.Extension.Executable='ReTray.exe'
 $mainApplication.EntryPoint='Windows.FullTrustApplication'
 $doc.Package.Resources.Resource.Language='zh-CN'
 # Index the SVG-derived scale/targetsize PNGs explicitly, including every scale
@@ -73,6 +80,12 @@ foreach($legal in @('LICENSE','NOTICE.md','README.md')) {
     Copy-Item -LiteralPath (Join-Path $productRoot $legal) -Destination $layout -Force
 }
 $doc.Save($manifest)
+$productEntries=@(Get-ChildItem -LiteralPath $layout -Recurse -File -Filter 'ReTray*.exe')
+if($productEntries.Count -ne 1 -or $productEntries[0].FullName -ne (Join-Path $layout 'ReTray.exe')) {
+    throw 'The distribution must contain exactly one ReTray executable at its root'
+}
+$duplicateShellImages=@(Get-ChildItem -LiteralPath (Join-Path $runtime 'Assets') -File | Where-Object {$_.Name -match '^(StoreLogo|Square44x44Logo|Square150x150Logo|Wide310x150Logo|SplashScreen|ReTrayAppList|ReTrayTile)[.-]'})
+if($duplicateShellImages.Count){throw 'Shell icon resources were duplicated in runtime/Assets'}
 $signing=Join-Path $productRoot 'artifacts\signing'
 New-Item -ItemType Directory -Force -Path $signing | Out-Null
 $certificate=Join-Path $signing 'development.pfx'

@@ -1146,6 +1146,21 @@ void MenuUsesGenuineLightOutlines() {
     CHECK(size != GDI_ERROR && (os2[4] * 256 + os2[5]) == FW_LIGHT);
     CHECK(std::wstring(face) == L"Noto Sans SC Light");
 }
+void EmbeddedUiIdentityUsesProcessNotRuntimeDirectory() {
+    auto previousRoot = root;
+    const bool previousEmbedded = embeddedRuntime;
+    auto target = CreateWindowExW(0, L"STATIC", L"ReTray identity fixture", WS_POPUP,
+        0, 0, 1, 1, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    if (!target) throw std::runtime_error("create identity fixture");
+    embeddedRuntime = true;
+    root = previousRoot / L"runtime-assets-only";
+    const bool ownAccepted = IsAssistantUi(target);
+    const bool foreignRejected = !IsAssistantUi(GetDesktopWindow());
+    embeddedRuntime = previousEmbedded;
+    root = previousRoot;
+    DestroyWindow(target);
+    if (!ownAccepted || !foreignRejected) throw std::runtime_error("embedded UI must validate exact process independently of resource path");
+}
 int wmain(int argc, wchar_t** argv) {
     if (argc != 2) return 2;
     fixtureRoot = std::filesystem::path(argv[1]); std::filesystem::create_directories(fixtureRoot);
@@ -1203,6 +1218,7 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"own visibility keeps normal rules", OwnVisibilityDoesNotCreateRule},
                             std::pair{"own hide immediately shows again", OwnHiddenIconCanImmediatelyShowAgain},
                             std::pair{"own single click queues one UI activation", OwnSingleClickQueuesOneOpen},
+                            std::pair{"embedded UI identity survives moving runtime assets", EmbeddedUiIdentityUsesProcessNotRuntimeDirectory},
                             std::pair{"own native menu DPI and upper right anchor", OwnMenuUsesNativeDpiAndUpperRightAnchor},
                             std::pair{"embedded menu preserves signed callback and pending coordinates", EmbeddedMenuPreservesCallbackAndPendingCoordinates},
                             std::pair{"restart launch failure preserves current state", OwnRestartLaunchFailureKeepsCurrentAgentAndSettings},

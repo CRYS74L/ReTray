@@ -170,7 +170,7 @@ public sealed class TrayService : IDisposable
         var systemIconPath = Path.Combine(
             AppContext.BaseDirectory,
             "Assets",
-            "SystemIcon.ico");
+            "AppIcon.ico");
         if (File.Exists(systemIconPath))
         {
             var dpi = GetDpiForSystem();

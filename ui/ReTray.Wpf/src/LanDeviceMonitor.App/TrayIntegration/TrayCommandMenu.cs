@@ -132,10 +132,10 @@ public sealed class TrayCommandMenu
         menu!.Items.Add(item);
     }
     public static string[] Labels(string language) => language switch {
-        "en" => ["Open ReTray", "Restart", "Exit"],
-        "zh-Hant" => ["開啟ReTray", "重新啟動", "退出"],
-        "ja" => ["ReTrayを開く", "再起動", "終了"],
-        _ => ["打开ReTray", "重新启动", "退出"]
+        "en" => ["Open", "Restart", "Exit"],
+        "zh-Hant" => ["開啟", "重新啟動", "退出"],
+        "ja" => ["開く", "再起動", "終了"],
+        _ => ["打开", "重新启动", "退出"]
     };
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

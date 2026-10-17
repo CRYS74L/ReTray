@@ -60,32 +60,18 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Shell PNGs are packaged once by package.ps1, not as WPF/PRI output. -->
+    <Content Remove="Assets\**\*.png" />
+    <None Remove="Assets\**\*.png;Assets\**\*.ico" />
     <None Remove="Assets\AppIcon.ico" />
     <Resource Include="Assets\AppIcon.ico" />
     <None Remove="Assets\WindowIcon.ico;Assets\TrayBlack.ico;Assets\TrayWhite.ico" />
     <Resource Include="Assets\WindowIcon.ico" />
     <Resource Include="Assets\BrandLogo.svg" />
-    <Content Include="Assets\DesktopIcon.ico;Assets\WindowIcon.ico;Assets\TrayBlack.ico;Assets\TrayWhite.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="Assets\WindowIcon.png;Assets\Square44x44Logo.targetsize-*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <Content Include="Assets\WindowIcon.ico;Assets\WindowIcon.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="Assets\*Logo*.png;Assets\SplashScreen*.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <None Remove="Assets\AppIcon.png" />
-    <Content Include="Assets\AppIcon.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
     <None Remove="Assets\SystemIcon.ico" />
     <Resource Include="Assets\SystemIcon.ico" />
-    <Content Include="Assets\SystemIcon.ico">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <None Remove="Assets\SystemIcon.png" />
-    <Content Include="Assets\SystemIcon.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-    <None Remove="Assets\ExecutableIcon.png" />
-    <Content Include="Assets\ExecutableIcon.png">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
   </ItemGroup>
   <ItemGroup>
     <None Remove="Assets\Fonts\*.ttc;Assets\Fonts\*.ttf;Assets\Fonts\Static\*.ttf;Assets\Fonts\Variable\*.ttf" />
@@ -107,7 +93,6 @@
   <ItemGroup>
     <Content Include="$(TrayProductDirectory)\LICENSE" Link="LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(TrayProductDirectory)\NOTICE.md" Link="NOTICE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-    <Content Include="$(TrayProductDirectory)\assets\branding\*.svg" Link="Branding\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(TrayProductDirectory)\third_party\minhook\LICENSE.txt" Link="ThirdParty\minhook\LICENSE.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="$(TrayProductDirectory)\third_party\nlohmann\LICENSE.MIT" Link="ThirdParty\nlohmann\LICENSE.MIT" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>

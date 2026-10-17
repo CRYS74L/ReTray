@@ -41,6 +41,7 @@ public partial class App : System.Windows.Application
         base.OnStartup(e);
         try
         {
+            if (PackageActivation.RedirectIfInstalled(e.Args)) { Shutdown(0); return; }
             // A successor must not read/migrate data or claim single-instance
             // ownership until its validated predecessor has completely exited.
             await WaitForRestartParentAsync(e.Args);
@@ -99,9 +100,8 @@ public partial class App : System.Windows.Application
             var taskbarIcon = Path.Combine(brandDirectory, "WindowIcon-" + typeof(App).Assembly.GetName().Version!.ToString(3) + ".ico");
             if (!File.Exists(taskbarIcon) || !File.ReadAllBytes(taskbarIcon).AsSpan().SequenceEqual(File.ReadAllBytes(sourceIcon)))
                 File.Copy(sourceIcon, taskbarIcon, overwrite: true);
-            var activation = ReTray_App.App.UiActivationId;
-            var relaunch = TaskbarBranding.CreateRelaunchCommand(AppContext.BaseDirectory,
-                Environment.ProcessPath ?? throw new IOException("无法确定 ReTray 启动路径。"), activation);
+            var relaunch = TaskbarBranding.CreateRelaunchCommand(
+                Environment.ProcessPath ?? throw new IOException("无法确定 ReTray 启动路径。"));
             TaskbarBranding.Apply(new WindowInteropHelper(_mainWindow).Handle, taskbarIcon, relaunch);
             // Shell activation can supply a shortcut icon to the new HWND.
             // Explicitly refresh WPF's owned HICONs after the first render too.

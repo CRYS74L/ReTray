@@ -120,8 +120,6 @@ if ($Target -eq 'StartupTests') {
     exit $LASTEXITCODE
 }
 if ($Target -in @('Agent','Runtime')) {
-    & $clang @commonArgs '-municode' '-mwindows' (Join-Path $productRoot 'native\agent\startup_launcher.cpp') '-o' (Join-Path $outputRoot 'ReTray.Startup.exe') '-lole32' '-lshell32' '-luuid'
-    if($LASTEXITCODE -ne 0){throw 'Startup launcher build failed'}
     # Agent remains an isolated executable fixture for native acceptance tests.
     # Production builds host Runtime inside the one ReTray.exe process.
     $nativeMode=@('-municode','-mwindows')

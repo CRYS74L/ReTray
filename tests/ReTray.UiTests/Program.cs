@@ -23,7 +23,7 @@ internal static class Program
             ("owner identity recovery reenables bound tray toggle", IdentityRecovery),
             ("system theme follows Windows mode independently of app mode", WindowsTheme),
             ("window taskbar branding overrides package artwork with valid relaunch metadata", TaskbarIdentity),
-            ("packaged relaunch uses native activation instead of Explorer", PackageRelaunch),
+            ("single executable relaunch, package directory identity and menu labels", PackageRelaunch),
             ("taskbar branding rejects windows owned by another process", RejectForeignWindow),
             ("own row uses product identity rather than the agent executable name", OwnProductName)
         })
@@ -74,31 +74,12 @@ internal static class Program
 
     private static void PackageRelaunch()
     {
-        string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ReTray-launch-" + Guid.NewGuid().ToString("N"));
-        System.IO.Directory.CreateDirectory(directory);
-        try
-        {
-            string launcher = System.IO.Path.Combine(directory, "ReTray.exe");
-            System.IO.File.WriteAllText(launcher, "fixture");
-            var command = LanDeviceMonitor.Services.TaskbarBranding.CreateRelaunchCommand(directory,
-                @"C:\ReTray\ReTray.exe", "CRYS74L.ReTray_test!App");
-            Require(command == "\"" + launcher + "\" \"CRYS74L.ReTray_test!App\" --show",
-                "Packaged relaunch lost package activation or targets Explorer");
-            Require(LanDeviceMonitor.Services.TaskbarBranding.CreateRelaunchCommand(
-                System.IO.Path.Combine(directory, "runtime"), @"C:\ReTray\runtime\ReTray.exe",
-                "CRYS74L.ReTray_test!App") == command, "Nested runtime did not relaunch the public root entry");
-            Require(LanDeviceMonitor.Services.TaskbarBranding.CreateRelaunchCommand(directory,
-                @"C:\ReTray\ReTray.exe", "") == "\"C:\\ReTray\\ReTray.exe\"", "Portable relaunch changed");
-            System.IO.File.Delete(launcher);
-            try {
-                LanDeviceMonitor.Services.TaskbarBranding.CreateRelaunchCommand(directory,
-                    @"C:\ReTray\ReTray.exe", "CRYS74L.ReTray_test!App");
-                throw new InvalidOperationException("Missing package launcher silently used an unpackaged identity");
-            } catch (System.IO.FileNotFoundException) { }
-        }
-        finally { System.IO.Directory.Delete(directory, true); }
+        var command = LanDeviceMonitor.Services.TaskbarBranding.CreateRelaunchCommand(@"C:\Apps\ReTray\ReTray.exe");
+        Require(command == "\"C:\\Apps\\ReTray\\ReTray.exe\" --show", "Relaunch did not use the actual root executable");
+        Require(LanDeviceMonitor.Services.PackageActivation.SameDirectory(@"C:\Apps\ReTray\", @"c:\apps\retray"), "Directory identity lost case/trailing separator tolerance");
+        Require(!LanDeviceMonitor.Services.PackageActivation.SameDirectory(@"C:\Apps\ReTray", @"C:\Apps\ReTray-copy"), "A separate ZIP copy was mistaken for the installed package");
+        Require(!LanDeviceMonitor.Services.PackageActivation.MatchesInstalledDirectory(System.IO.Path.GetTempPath()), "An unrelated folder was redirected to the installed package");
     }
-
     private static void RejectForeignWindow()
     {
         // The desktop HWND belongs to Explorer; rejection must happen before

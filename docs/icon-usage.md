@@ -14,10 +14,12 @@
 | README | `retray-readme.svg`，白底、细淡灰色描边、居中 |
 
 运行窗口使用 `CRYS74L.ReTray.Window`，桌面快捷方式使用 `CRYS74L.ReTray.Desktop`。
-窗口的重启命令仍通过包激活进入同一个 ReTray 应用，桌面标识不创建第二个常驻进程。
+任务栏和桌面均直接运行根目录的 ReTray 主程序；主程序在读取配置前确认已安装包的身份。桌面标识不创建第二个常驻进程。
 窗口重启图标的缓存文件按软件版本命名，不清除系统全局图标缓存。
 
-发布目录根部只有一个 `ReTray.exe` 启动入口。运行依赖集中在 `runtime`，包图像集中在 `Assets`。
-入口启动后即退出，界面和托盘管理属于同一常驻进程。此布局不是单文件程序，不能只复制入口 EXE。
+发布目录只有一个 `ReTray.exe`，位于根目录，直接运行 `runtime/ReTray.dll` 应用程序集；没有额外的 ReTray 启动器。
+运行依赖集中在 `runtime`，包图像集中在 `Assets`。微软运行库附带的 `createdump.exe`、`RestartAgent.exe` 是其诊断/恢复工具，不是 ReTray 的第二个入口。
+全部 78 份包 PNG、所有 scale/targetsize/深浅主题版本均保留，`runtime/Assets` 不再重复复制这些包图像。界面图形和文字的渲染方式不随文件整理改变。
+此布局不是单文件程序，不能只复制主程序 EXE。
 
 验证时应同时检查生成资源、Windows 提取出的应用/EXE/快捷方式图标、运行窗口图标及实际任务栏显示；文件正确不等于 Shell 当前显示一定正确。

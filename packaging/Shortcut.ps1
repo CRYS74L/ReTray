@@ -27,7 +27,7 @@ function Write-ReTrayDesktopShortcut {
     Copy-Item -LiteralPath $icon -Destination $desktopIcon -Force
     $shortcut=$shell.CreateShortcut($ShortcutPath)
     $shortcut.TargetPath=$launcher
-    $shortcut.Arguments='"'+$PackageFamilyName+'!App" --show'
+    $shortcut.Arguments='--show'
     $shortcut.WorkingDirectory=$InstallLocation
     $shortcut.IconLocation=$desktopIcon+',0'
     $shortcut.Description='ReTray — Redefine Your Tray'

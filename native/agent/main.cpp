@@ -467,6 +467,11 @@ bool SetOwnIcon(bool reloadImage = true) {
 bool SetStartup(bool enabled, bool previousEnabled) {
     startupOutcome.erase("rollbackFailed");
     std::filesystem::path startupExecutable = root / (embeddedRuntime ? L"ReTray.exe" : L"ReTray.Agent.exe");
+    if (embeddedRuntime) {
+        wchar_t executable[32768]{};
+        if (!GetModuleFileNameW(nullptr, executable, std::size(executable))) return false;
+        startupExecutable = executable;
+    }
     std::wstring startupArguments = L"--background";
     UINT32 packageNameLength{};
     bool packaged = GetCurrentPackageFullName(&packageNameLength, nullptr) == ERROR_INSUFFICIENT_BUFFER;
@@ -491,25 +496,8 @@ bool SetStartup(bool enabled, bool previousEnabled) {
                         previous[std::size(previous) - 1] == 0 && command == previous;
         }
     }
-    if (packaged && (enabled || previousEnabled)) {
-        UINT32 familyLength{};
-        GetCurrentPackageFamilyName(&familyLength, nullptr);
-        std::vector<wchar_t> family(familyLength);
-        auto code = GetCurrentPackageFamilyName(&familyLength, family.data());
-        if (code != ERROR_SUCCESS) { SetLastError(code); return false; }
-        wchar_t local[32768]{};
-        GetEnvironmentVariableW(L"LOCALAPPDATA", local, std::size(local));
-        startupExecutable = std::filesystem::path(local) / L"Packages" / family.data() /
-                            L"LocalState" / L"Startup" / L"ReTray.Startup-v3.exe";
-        try { std::filesystem::create_directories(startupExecutable.parent_path()); }
-        catch (...) { SetLastError(ERROR_CANNOT_MAKE); return false; }
-        // v3 activates the unified App identity. It is otherwise a small,
-        // version-independent activator that never reads personal settings.
-        const auto launcher = root.filename() == L"runtime" ? root.parent_path() / L"ReTray.exe" : root / L"ReTray.Startup.exe";
-        if (!CopyFileW(launcher.c_str(), startupExecutable.c_str(), TRUE) &&
-            GetLastError() != ERROR_FILE_EXISTS) return false;
-        startupArguments = L"\"" + std::wstring(family.data()) + L"!App\"";
-    }
+    // The same executable preserves package activation itself; no copied
+    // logon helper or second executable is needed in the installation.
     auto scheduled = SetLogonStartupResult(startupExecutable, enabled, StartupTaskName(), startupArguments);
     if (scheduled != ERROR_SUCCESS) {
         if (key) RegCloseKey(key);
@@ -1082,9 +1070,11 @@ HANDLE AssistantUiProcess(HWND hwnd, DWORD access = PROCESS_QUERY_LIMITED_INFORM
     bool read = QueryFullProcessImageNameW(process, 0, path, &length) != FALSE;
     DWORD currentPid{};
     GetWindowThreadProcessId(hwnd, &currentPid);
-    if (!read || currentPid != pid ||
-        _wcsicmp(path, (root / L"ReTray.exe").c_str()) != 0 ||
-        (embeddedRuntime && pid != GetCurrentProcessId())) {
+    // The embedded interface belongs to this exact process. Runtime assets may
+    // live below the executable; their directory is not the UI's identity.
+    const bool expectedProcess = embeddedRuntime ? pid == GetCurrentProcessId() :
+        _wcsicmp(path, (root / L"ReTray.exe").c_str()) == 0;
+    if (!read || currentPid != pid || !expectedProcess) {
         CloseHandle(process);
         return nullptr;
     }
@@ -2079,6 +2069,12 @@ int RunApplication(HINSTANCE instance, int argc, wchar_t** args, bool embedded) 
     wchar_t executable[32768]{};
     GetModuleFileNameW(nullptr, executable, 32768);
     root = std::filesystem::path(executable).parent_path();
+    if (embedded) {
+        wchar_t module[32768]{};
+        auto runtime = GetModuleHandleW(L"ReTray.Runtime.dll");
+        if (!runtime || !GetModuleFileNameW(runtime, module, std::size(module))) return ERROR_MOD_NOT_FOUND;
+        root = std::filesystem::path(module).parent_path();
+    }
     wchar_t local[32768]{};
     GetEnvironmentVariableW(L"LOCALAPPDATA", local, 32768);
     dataRoot = std::filesystem::path(local) / L"ReTray";

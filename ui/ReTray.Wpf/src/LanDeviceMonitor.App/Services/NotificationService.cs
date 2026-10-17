@@ -85,7 +85,7 @@ public sealed class NotificationService : IDisposable
     internal const string StableAppUserModelId = "{95AFFE3D-014F-4F5F-AD8B-FD52B4E62CE3}";
 
     private const string DisplayName = "ReTray";
-    private const string IconRelativePath = "Assets\\SystemIcon.png";
+    private const string IconRelativePath = "Assets\\WindowIcon.png";
 
     private readonly object _syncRoot = new();
     private readonly IAppNotificationPlatform _platform;

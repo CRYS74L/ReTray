@@ -4,22 +4,17 @@ using System.Runtime.InteropServices;
 
 namespace LanDeviceMonitor.Services;
 
-// Windows uses the package's plate icon unless the window supplies an explicit
-// taskbar identity and relaunch artwork. Keep the package/EXE identity intact.
+// Supply explicit colored window artwork independently of the white desktop
+// shortcut, while preserving the executable's normal package identity.
 public static class TaskbarBranding
 {
     public const string WindowAppId = "CRYS74L.ReTray.Window";
     private static readonly Guid AppModel = new("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");
 
-    public static string CreateRelaunchCommand(string directory, string executable, string activationId)
+    public static string CreateRelaunchCommand(string executable)
     {
-        if (string.IsNullOrEmpty(activationId)) return "\"" + executable + "\"";
-        var root = Path.GetFileName(Path.TrimEndingDirectorySeparator(directory))
-            .Equals("runtime", StringComparison.OrdinalIgnoreCase)
-            ? Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(directory))! : directory;
-        var launcher = Path.Combine(root, "ReTray.exe");
-        if (!File.Exists(launcher)) throw new FileNotFoundException("ReTray package launcher is missing.", launcher);
-        return "\"" + launcher + "\" \"" + activationId + "\" --show";
+        if (!Path.IsPathFullyQualified(executable)) throw new ArgumentException("ReTray executable must have an absolute path.", nameof(executable));
+        return "\"" + executable + "\" --show";
     }
 
     public static void Apply(nint window, string iconPath, string relaunchCommand)

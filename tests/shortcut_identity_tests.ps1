@@ -13,7 +13,7 @@ foreach($iteration in 1..2) {
     $shell=New-Object -ComObject WScript.Shell
     $link=$shell.CreateShortcut($linkPath)
     Require ($link.TargetPath -eq (Join-Path $LayoutPath 'ReTray.exe')) 'Shortcut must target the package activation launcher'
-    Require ($link.Arguments -eq ('"'+$family+'!App" --show')) 'Shortcut must preserve package identity and request a visible window'
+    Require ($link.Arguments -eq '--show') 'Shortcut must call the real application with a visible-window request'
     Require ($link.WorkingDirectory -eq $LayoutPath) 'Open file location must resolve inside the application payload'
     Require ($link.IconLocation -eq ((Join-Path $brand 'DesktopIcon.ico')+',0')) 'Desktop icon must retain its separate white background artwork'
     Require ([ReTray.Packaging.ShortcutIdentity]::Read($linkPath) -eq 'CRYS74L.ReTray.Desktop') 'Desktop artwork must be isolated from the colored taskbar group'

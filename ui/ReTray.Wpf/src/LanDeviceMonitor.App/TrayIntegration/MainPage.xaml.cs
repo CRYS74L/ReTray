@@ -270,7 +270,9 @@ public partial class MainPage : UserControl
     }
     private async void IconNativeAction(object sender, TrayIconActionEventArgs args)
     {
-        if (sender is TrayIconButton { Tag: IconRow row }) await Vm.NativeActionAsync(row, args.Action, args.Keyboard, args.X, args.Y);
+        if (sender is not TrayIconButton { Tag: IconRow row }) return;
+        if (App.Window.TryShowOwnTrayMenu(row, args, (FrameworkElement)sender)) return;
+        await Vm.NativeActionAsync(row, args.Action, args.Keyboard, args.X, args.Y);
     }
     private async void VisibilityClick(object sender, RoutedEventArgs args)
     {

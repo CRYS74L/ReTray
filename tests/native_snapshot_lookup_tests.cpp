@@ -34,8 +34,49 @@ uint64_t Micros() {
     return static_cast<uint64_t>(value.QuadPart / frequency.QuadPart) * 1000000 +
         static_cast<uint64_t>(value.QuadPart % frequency.QuadPart) * 1000000 / frequency.QuadPart;
 }
+void TargetedRecordValidationRejectsDeletedAndRecycledOwners() {
+    WNDCLASSW cls{}; cls.hInstance = GetModuleHandleW(nullptr); cls.lpfnWndProc = DefWindowProcW;
+    cls.lpszClassName = L"ReTray.IsolatedRecordValidation";
+    CHECK(RegisterClassW(&cls));
+    auto window = CreateWindowW(cls.lpszClassName, L"", WS_POPUP, 0, 0, 1, 1, nullptr, nullptr, cls.hInstance, nullptr);
+    CHECK(window);
+    try {
+        std::array<uint8_t, 64> bytes{};
+        uint64_t address = reinterpret_cast<uint64_t>(bytes.data());
+        std::array<uint64_t, 1> records{address};
+        std::array<uint64_t, 2> collection{reinterpret_cast<uint64_t>(records.data()), reinterpret_cast<uint64_t>(records.data() + 1)};
+        uint64_t manager = reinterpret_cast<uint64_t>(collection.data());
+        uint64_t model = reinterpret_cast<uint64_t>(&manager), root = reinterpret_cast<uint64_t>(&model);
+        const auto base = reinterpret_cast<uint64_t>(&root);
+        tray::SymbolAdapter adapter{}; adapter.window = 8; adapter.uid = 16; adapter.guid = 24; adapter.itemVtable = 0x2000;
+        const uint64_t table = base + adapter.itemVtable, hwnd = reinterpret_cast<uint64_t>(window);
+        const uint32_t uid = 17;
+        memcpy(bytes.data(), &table, sizeof(table)); memcpy(bytes.data() + adapter.window, &hwnd, sizeof(hwnd));
+        memcpy(bytes.data() + adapter.uid, &uid, sizeof(uid));
+        FILETIME created{}, exited{}, kernel{}, user{};
+        CHECK(GetProcessTimes(GetCurrentProcess(), &created, &exited, &kernel, &user));
+        tray::NativeIconRecord record; record.recordAddress = address;
+        record.identity.ownerHwnd = hwnd; record.identity.ownerPid = GetCurrentProcessId(); record.identity.uid = uid;
+        record.identity.ownerCreatedAt = (uint64_t(created.dwHighDateTime) << 32) | created.dwLowDateTime;
+        CHECK(tray::ValidateNativeRecord(adapter, base, record) == ERROR_SUCCESS);
+        ++record.identity.ownerCreatedAt;
+        CHECK(tray::ValidateNativeRecord(adapter, base, record) == ERROR_NOT_FOUND);
+        --record.identity.ownerCreatedAt;
+        bytes[adapter.guid] = 1;
+        CHECK(tray::ValidateNativeRecord(adapter, base, record) == ERROR_NOT_FOUND);
+        bytes[adapter.guid] = 0;
+        collection[1] = collection[0];
+        CHECK(tray::ValidateNativeRecord(adapter, base, record) == ERROR_NOT_FOUND);
+        collection[1] += sizeof(uint64_t);
+        DestroyWindow(window); window = nullptr;
+        CHECK(tray::ValidateNativeRecord(adapter, base, record) == ERROR_NOT_FOUND);
+    } catch (...) { if (window) DestroyWindow(window); UnregisterClassW(cls.lpszClassName, cls.hInstance); throw; }
+    UnregisterClassW(cls.lpszClassName, cls.hInstance);
+    std::printf("PASS targeted validation rejects stale generations, GUIDs, manager membership and dead windows\n");
+}
 int wmain(int argc, wchar_t** argv) {
     try {
+        TargetedRecordValidationRejectsDeletedAndRecycledOwners();
         auto pid = GetCurrentProcessId();
         auto expected = reinterpret_cast<uint64_t>(GetModuleHandleW(L"kernel32.dll"));
         auto started = Micros();

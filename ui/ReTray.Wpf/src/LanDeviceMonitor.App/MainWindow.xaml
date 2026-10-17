@@ -8,7 +8,7 @@
         mc:Ignorable="d"
         Title="ReTray"
         FontFamily="{StaticResource AppTextFont}"
-        Width="420" Height="720"
+        Width="400" Height="720"
         MinWidth="300" MinHeight="260"
         Icon="/ReTray;component/Assets/WindowIcon.ico"
         WindowStartupLocation="CenterScreen"

@@ -73,6 +73,7 @@ if($LASTEXITCODE -ne 0){throw 'ReTray icon resource index generation failed'}
 if($LASTEXITCODE -ne 0){throw 'MSIX packaging failed'}
 Copy-Item -LiteralPath (Join-Path $signing 'development.cer') -Destination (Join-Path $distribution 'development-certificate.cer') -Force
 Copy-Item -LiteralPath (Join-Path $productRoot 'packaging\Install.ps1') -Destination $distribution -Force
+Copy-Item -LiteralPath (Join-Path $productRoot 'packaging\Shortcut.ps1') -Destination $distribution -Force
 Copy-Item -LiteralPath (Join-Path $productRoot 'packaging\安装ReTray.cmd') -Destination $distribution -Force
 Copy-Item -LiteralPath (Join-Path $productRoot 'packaging\README.txt') -Destination $distribution -Force
 Copy-Item -LiteralPath (Join-Path $productRoot 'LICENSE') -Destination $distribution -Force

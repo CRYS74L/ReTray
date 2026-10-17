@@ -5,7 +5,7 @@
 ReTray 是一个 Windows 11 托盘管理工具，帮助你隐藏或显示图标、替换图标和提示文字，
 并保留原应用的鼠标交互与动态状态。
 
-<p align="center"><img src="assets/branding/retray-macos-white.svg" width="128" alt="ReTray"></p>
+<p align="center"><img src="assets/branding/retray-readme.svg" width="128" alt="ReTray"></p>
 
 ## 能做什么
 

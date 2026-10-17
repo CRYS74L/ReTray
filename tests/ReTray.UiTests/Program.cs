@@ -23,6 +23,8 @@ internal static class Program
             ("owner identity recovery reenables bound tray toggle", IdentityRecovery),
             ("system theme follows Windows mode independently of app mode", WindowsTheme),
             ("window taskbar branding overrides package artwork with valid relaunch metadata", TaskbarIdentity),
+            ("packaged relaunch uses native activation instead of Explorer", PackageRelaunch),
+            ("taskbar branding rejects windows owned by another process", RejectForeignWindow),
             ("own row uses product identity rather than the agent executable name", OwnProductName)
         })
         {
@@ -69,6 +71,42 @@ internal static class Program
         }
         finally { window.Close(); }
     }
+
+    private static void PackageRelaunch()
+    {
+        string directory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ReTray-launch-" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(directory);
+        try
+        {
+            string launcher = System.IO.Path.Combine(directory, "ReTray.Startup.exe");
+            System.IO.File.WriteAllText(launcher, "fixture");
+            var command = LanDeviceMonitor.Services.TaskbarBranding.CreateRelaunchCommand(directory,
+                @"C:\ReTray\ReTray.exe", "CRYS74L.ReTray_test!App");
+            Require(command == "\"" + launcher + "\" \"CRYS74L.ReTray_test!App\" --show",
+                "Packaged relaunch lost package activation or targets Explorer");
+            Require(LanDeviceMonitor.Services.TaskbarBranding.CreateRelaunchCommand(directory,
+                @"C:\ReTray\ReTray.exe", "") == "\"C:\\ReTray\\ReTray.exe\"", "Portable relaunch changed");
+            System.IO.File.Delete(launcher);
+            try {
+                LanDeviceMonitor.Services.TaskbarBranding.CreateRelaunchCommand(directory,
+                    @"C:\ReTray\ReTray.exe", "CRYS74L.ReTray_test!App");
+                throw new InvalidOperationException("Missing package launcher silently used an unpackaged identity");
+            } catch (System.IO.FileNotFoundException) { }
+        }
+        finally { System.IO.Directory.Delete(directory, true); }
+    }
+
+    private static void RejectForeignWindow()
+    {
+        // The desktop HWND belongs to Explorer; rejection must happen before
+        // opening a property store or modifying the shell's taskbar identity.
+        try {
+            LanDeviceMonitor.Services.TaskbarBranding.Apply(GetDesktopWindow(), "unused", "unused");
+            throw new InvalidOperationException("Foreign window accepted taskbar branding");
+        } catch (ArgumentException) { }
+    }
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern nint GetDesktopWindow();
 
     private static IToggleProvider Provider(SwitchControl control) =>
         (IToggleProvider)UIElementAutomationPeer.CreatePeerForElement(control)!.GetPattern(PatternInterface.Toggle);

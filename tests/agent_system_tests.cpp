@@ -27,6 +27,15 @@ struct SystemTestBridgeClient {
     bool failLogo{};
     std::string displayedInputProfile;
     bool Alive() const { return shared && shared->status == 1; }
+    DWORD LastError() const { return shared ? static_cast<DWORD>(shared->lastError) : ERROR_NOT_READY; }
+    bool CommandBatch(const std::vector<BridgeCommand>& batch, std::vector<DWORD>& errors) {
+        errors.clear();
+        for (const auto& command : batch) {
+            auto success = Command(command);
+            errors.push_back(success ? ERROR_SUCCESS : static_cast<DWORD>(shared->lastError));
+        }
+        return true;
+    }
     void AddNativeControl(int id) { hidden[id] = pendingPolicies.contains(id) && pendingPolicies.at(id); }
     bool Attach(const SymbolAdapter&, const std::filesystem::path&) { return Alive(); }
     void Reset() { for (auto& [id, value] : hidden) value = false; }

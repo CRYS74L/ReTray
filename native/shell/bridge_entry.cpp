@@ -10,6 +10,7 @@
 #include <memory>
 #include <objbase.h>
 #include <unordered_map>
+#include <unordered_set>
 
 using namespace tray;
 namespace {
@@ -29,6 +30,7 @@ struct CallbackGuard {
 };
 uint64_t moduleBase{};
 bool ownOperation{};
+bool commandExecuting{}, detachRequested{};
 UINT commandMessage{};
 UINT reconcileMessage{};
 bool reconcileQueued{};
@@ -651,27 +653,59 @@ void Detach() {
     SetEvent(stopWatch);
     ownOperation = false;
 }
-void ExecuteCommand() {
+bool RequestCancelled(LONG sequence) {
+    return sequence && (state->cancelledSequence == sequence || state->requestSequence != sequence);
+}
+void ExecutePolicyBatch(LONG sequence);
+void ExecuteCommand(const BridgeCommand* batchItem = nullptr, const SnapshotResult* batchSnapshot = nullptr) {
     if (!state)
         return;
-    auto cmd = state->command;
+    if (!batchItem && commandExecuting) return;
+    struct ExecutionGuard {
+        bool outer;
+        explicit ExecutionGuard(bool value) : outer(value) { if (outer) commandExecuting = true; }
+        ~ExecutionGuard() {
+            if (!outer) return;
+            commandExecuting = false;
+            if (detachRequested) {
+                detachRequested = false;
+                PostMessageW(taskbar, commandMessage, 1, 0);
+            }
+        }
+    } executionGuard{batchItem == nullptr};
+    const auto sequence = state->requestSequence;
+    MemoryBarrier();
+    auto cmd = batchItem ? *batchItem : state->command;
+    const auto acknowledge = [&] {
+        if (!batchItem && state->requestSequence == sequence) {
+            InterlockedExchange(&state->acceptedSequence, sequence);
+            InterlockedExchange(&state->replySequence, sequence);
+        }
+    };
     struct Measurement {
-        BridgeState* target; uint64_t started{PerformanceMicros()};
+        BridgeState* target; bool enabled; uint64_t started{PerformanceMicros()};
         ~Measurement() {
+            if (!enabled) return;
             target->lastCommandMicros = PerformanceMicros() - started;
             ++target->commandsTotal; target->commandMicrosTotal += target->lastCommandMicros;
         }
-    } measurement{state};
+    } measurement{state, batchItem == nullptr};
     DWORD error{};
     try {
+        if (!batchItem && RequestCancelled(sequence)) {
+            state->lastError = ERROR_OPERATION_ABORTED; acknowledge(); return;
+        }
+        if (!batchItem && cmd.operation == BridgeOperation::PolicyBatch) {
+            ExecutePolicyBatch(sequence); acknowledge(); return;
+        }
         if (cmd.operation == BridgeOperation::Detach) {
             Detach();
-            InterlockedExchange(&state->replySequence, state->requestSequence);
+            acknowledge();
             return;
         }
         if (cmd.operation == BridgeOperation::Refresh) {
             Publish(cmd.index != 0);
-            InterlockedExchange(&state->replySequence, state->requestSequence);
+            acknowledge();
             return;
         }
         if (cmd.operation == BridgeOperation::SystemRead ||
@@ -682,7 +716,7 @@ void ExecuteCommand() {
             if (ok && cmd.operation == BridgeOperation::SystemPolicy)
                 ok = SetSystemPolicy(cmd.location, cmd.visibility);
             state->lastError = ok ? 0 : ERROR_NOT_SUPPORTED;
-            InterlockedExchange(&state->replySequence, state->requestSequence);
+            acknowledge();
             return;
         }
         if(cmd.operation==BridgeOperation::InputMethodLogo) {
@@ -692,7 +726,7 @@ void ExecuteCommand() {
             // transaction/rollback phases continue through the normal path.
             if (cmd.index == 0 && !cmd.replacementIcon && !HasInputMethodLogos()) {
                 state->lastError = ERROR_SUCCESS;
-                InterlockedExchange(&state->replySequence, state->requestSequence);
+                acknowledge();
                 return;
             }
             const bool cachedTransaction=cmd.index==2 || cmd.index==3;
@@ -700,7 +734,7 @@ void ExecuteCommand() {
                 UpdateInputMethodLogo(Utf8(cmd.inputProfileKey),reinterpret_cast<HICON>(cmd.replacementIcon),cmd.index);
             if(ok && !cachedTransaction)ReadSystemControls(moduleBase,adapter,*state);
             state->lastError=ok?0:ERROR_NOT_SUPPORTED;
-            InterlockedExchange(&state->replySequence,state->requestSequence);return;
+            acknowledge();return;
         }
         if (cmd.operation == BridgeOperation::Taskbar) {
             bool ok = true;
@@ -710,13 +744,13 @@ void ExecuteCommand() {
                 ok = ReadSystemControls(moduleBase, adapter, *state) &&
                      SetSystemControl(7, cmd.visibility) && ok;
             state->lastError = ok ? 0 : ERROR_NOT_SUPPORTED;
-            InterlockedExchange(&state->replySequence, state->requestSequence);
+            acknowledge();
             return;
         }
         if (cmd.operation == BridgeOperation::Behavior && cmd.identity.ownerPid == 0) {
             interactionsLocked = cmd.index == 1;
             state->lastError = 0;
-            InterlockedExchange(&state->replySequence, state->requestSequence);
+            acknowledge();
             return;
         }
         if (cmd.operation == BridgeOperation::Policy &&
@@ -725,19 +759,25 @@ void ExecuteCommand() {
              ((cmd.clickEvent & PolicyVisibility) && (cmd.visibility < -1 || cmd.visibility > 1)) ||
              ((cmd.clickEvent & PolicyBehavior) && (cmd.index < 0 || cmd.index > 1)))) {
             state->lastError = ERROR_INVALID_PARAMETER;
-            InterlockedExchange(&state->replySequence, state->requestSequence);
+            acknowledge();
             return;
         }
-        auto snapshot = ReadBridgeSnapshot();
+        SnapshotResult localSnapshot;
+        if (!batchSnapshot) localSnapshot = ReadBridgeSnapshot();
+        const auto& snapshot = batchSnapshot ? *batchSnapshot : localSnapshot;
         auto match =
             std::find_if(snapshot.records.begin(), snapshot.records.end(),
                          [&](const auto& r) { return SameIcon(r.identity, cmd.identity); });
         if (!snapshot.complete)
             error = ERROR_RETRY;
         else if (match == snapshot.records.end()) {
-            Publish(false);
+            if (!batchItem) Publish(false);
             error = ERROR_NOT_FOUND;
         } else {
+            if (batchItem) {
+                auto valid = ValidateNativeRecord(adapter, moduleBase, *match);
+                if (valid != ERROR_SUCCESS) { state->lastError = valid; return; }
+            }
             auto it = entries.find(IdentityKey(match->identity));
             if (it == entries.end())
                 error = ERROR_NOT_FOUND;
@@ -888,7 +928,7 @@ void ExecuteCommand() {
                         error = ERROR_ACCESS_DENIED;
                         ownOperation = false;
                         state->lastError = error;
-                        InterlockedExchange(&state->replySequence, state->requestSequence);
+                        acknowledge();
                         return;
                     }
                     MousePoint point{cmd.x, cmd.y};
@@ -906,22 +946,70 @@ void ExecuteCommand() {
                 } else
                     error = ERROR_INVALID_FUNCTION;
                 ownOperation = false;
-                Publish(false);
+                if (!batchItem) Publish(false);
             }
         }
     } catch (...) {
         error = ERROR_INVALID_FUNCTION;
         ownOperation = false;
     }
-    state->lastError = error;
-    InterlockedExchange(&state->replySequence, state->requestSequence);
+    if (state->requestSequence == sequence) state->lastError = error;
+    acknowledge();
+}
+void ExecutePolicyBatch(LONG sequence) {
+    const auto count = state->batchCount;
+    state->batchReplyCount = 0;
+    if (!count || count > MaxBridgeIcons) { state->lastError = ERROR_INVALID_PARAMETER; return; }
+    // Copy the bounded request before any native call can pump messages.
+    std::vector<BridgeCommand> commands(state->batch, state->batch + count);
+    // Own local copies before a slow native operation or caller timeout can
+    // release the supplied HICONs. CopyIcon also rejects invalid GDI handles.
+    using OwnedIcon = std::unique_ptr<std::remove_pointer_t<HICON>, decltype(&DestroyIcon)>;
+    std::vector<OwnedIcon> images;
+    for (auto& command : commands) {
+        if (command.operation != BridgeOperation::Policy || !(command.clickEvent & PolicyReplaceImage)) continue;
+        if (RequestCancelled(sequence)) { command.replacementIcon = 0; continue; }
+        images.emplace_back(CopyIcon(reinterpret_cast<HICON>(command.replacementIcon)), DestroyIcon);
+        command.replacementIcon = reinterpret_cast<uint64_t>(images.back().get());
+    }
+    if (state->requestSequence != sequence) return;
+    // The sender may now release its private handle copies. No subsequent
+    // receiver code reads an HICON from the shared request again.
+    InterlockedExchange(&state->acceptedSequence, sequence);
+    std::vector<DWORD> errors(count, ERROR_RETRY);
+    const auto snapshot = ReadBridgeSnapshot();
+    if (snapshot.complete) {
+        std::unordered_set<std::string> seen;
+        for (size_t index = 0; index < commands.size(); ++index) {
+            if (RequestCancelled(sequence)) { errors[index] = ERROR_OPERATION_ABORTED; continue; }
+            const auto& command = commands[index];
+            if ((command.operation != BridgeOperation::Policy && command.operation != BridgeOperation::Restore) ||
+                !seen.insert(IdentityKey(command.identity)).second) {
+                errors[index] = ERROR_INVALID_PARAMETER; continue;
+            }
+            // ExecuteCommand preserves per-field partial success, original
+            // image/baseline bookkeeping and registration renewal semantics.
+            ExecuteCommand(&command, &snapshot);
+            errors[index] = state->lastError;
+        }
+        if (state->requestSequence != sequence) return;
+        Publish(false);
+    }
+    if (state->requestSequence != sequence) return;
+    std::copy(errors.begin(), errors.end(), state->batchErrors);
+    state->batchReplyCount = count;
+    state->lastError = ERROR_SUCCESS; // Delivery succeeded; each item has its own result.
 }
 LRESULT CALLBACK Subclass(HWND hwnd, UINT message, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR) {
     CallbackGuard guard;
     if (message == commandMessage) {
+        if (commandExecuting) {
+            if (wp == 1) detachRequested = true;
+            return 1;
+        }
         if (wp == 1)
             Detach();
-        else
+        else if (state && state->requestSequence != state->replySequence)
             ExecuteCommand();
         return 1;
     }

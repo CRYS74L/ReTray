@@ -2,10 +2,10 @@
 #include "../platform/native_snapshot.h"
 namespace tray {
 constexpr uint32_t BridgeMagic = 0x54494131;
-constexpr uint32_t BridgeSchema = 9;
+constexpr uint32_t BridgeSchema = 10;
 constexpr size_t MaxBridgeIcons = 256, MaxFramePixels = 4096;
-constexpr wchar_t InstallMessage[] = L"ReTray.Bridge.Install.9";
-constexpr wchar_t CommandMessage[] = L"ReTray.Bridge.Command.9";
+constexpr wchar_t InstallMessage[] = L"ReTray.Bridge.Install.10";
+constexpr wchar_t CommandMessage[] = L"ReTray.Bridge.Command.10";
 enum class BridgeOperation : uint32_t {
     Refresh = 1,
     Apply = 2,
@@ -24,7 +24,8 @@ enum class BridgeOperation : uint32_t {
     ClearImage = 15,
     SystemPolicy = 16,
     InputMethodLogo = 17,
-    Policy = 18
+    Policy = 18,
+    PolicyBatch = 19
 };
 // A complete rule reaches the Explorer UI thread in one command. Every flag is
 // explicit so an unreadable image cannot accidentally clear a valid old image.
@@ -80,7 +81,7 @@ struct BridgeState {
     uint32_t magic{}, schema{}, agentPid{}, sessionId{}, byteSize{};
     uint64_t agentCreatedAt{}, epoch{};
     volatile LONG status{}, lastError{}, snapshotSequence{}, requestSequence{}, replySequence{},
-        sessionEnding{};
+        sessionEnding{}, cancelledSequence{}, acceptedSequence{};
     uint32_t count{};
     uint64_t events{}, lastSnapshotTick{}, lastCommandMicros{};
     uint64_t commandsTotal{}, commandMicrosTotal{}, snapshotReads{}, snapshotMicrosTotal{},
@@ -90,6 +91,9 @@ struct BridgeState {
     SystemControl systemControls[32]{};
     CompactAdapter adapter;
     BridgeCommand command;
+    uint32_t batchCount{}, batchReplyCount{};
+    BridgeCommand batch[MaxBridgeIcons]{};
+    uint32_t batchErrors[MaxBridgeIcons]{};
     BridgeIcon icons[MaxBridgeIcons];
 };
 inline uint64_t PerformanceMicros() {
@@ -99,7 +103,7 @@ inline uint64_t PerformanceMicros() {
            static_cast<uint64_t>(value.QuadPart % frequency) * 1000000 / frequency;
 }
 inline std::wstring MappingName(uint32_t session) {
-    return L"Local\\ReTray.Bridge.9." + std::to_wstring(session);
+    return L"Local\\ReTray.Bridge.10." + std::to_wstring(session);
 }
 inline std::wstring EndingEventName(uint32_t pid, uint64_t created) {
     return L"Local\\ReTray.Ending." + std::to_wstring(pid) + L"." + std::to_wstring(created);

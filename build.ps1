@@ -1,4 +1,4 @@
-param([ValidateSet('InputMethodLiveTests','CoreTests','BitmapTests','ProcessIdentityTests','SnapshotLookupTests','Probe','Runtime','Agent','AgentVisibilityTests','AgentSystemTests','Bridge','BridgeRegistrationTests','BridgeTest','BridgeControls','Source','SettingsTests','StartupTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
+param([ValidateSet('InputMethodLiveTests','CoreTests','BitmapTests','ProcessIdentityTests','SnapshotLookupTests','Probe','Runtime','Agent','AgentVisibilityTests','AgentSystemTests','Bridge','BridgeRegistrationTests','BridgeMailboxTests','BridgeTest','BridgeControls','Source','SettingsTests','StartupTests','SystemControls','Stress','All')][string]$Target='CoreTests',[string]$Filter='')
 $ErrorActionPreference='Stop'
 $productRoot=$PSScriptRoot
 $projectVersion=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
@@ -71,6 +71,13 @@ if ($Target -eq 'BridgeControls') {
     & $clang @commonArgs '-municode' (Join-Path $productRoot 'tests\bridge_control_tests.cpp') (Join-Path $productRoot 'native\shell\bridge_client.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\core\types.cpp') '-o' (Join-Path $outputRoot 'BridgeControls.exe') '-luser32' '-lgdi32' '-lshell32' '-lole32' '-ladvapi32'
     if($LASTEXITCODE -ne 0){throw 'Bridge controls build failed'}
     exit 0
+}
+if ($Target -eq 'BridgeMailboxTests') {
+    $exe=Join-Path $outputRoot 'BridgeMailboxTests.exe'
+    & $clang @commonArgs (Join-Path $productRoot 'tests\bridge_mailbox_tests.cpp') (Join-Path $productRoot 'native\platform\native_snapshot.cpp') (Join-Path $productRoot 'native\core\types.cpp') '-o' $exe '-luser32' '-lgdi32' '-lshell32' '-lole32' '-ladvapi32'
+    if($LASTEXITCODE -ne 0){throw 'Bridge mailbox tests build failed'}
+    & $exe
+    exit $LASTEXITCODE
 }
 if ($Target -in @('Bridge','BridgeRegistrationTests','BitmapTests')) {
     $clangC=Join-Path (Split-Path $clang -Parent) 'clang.exe'

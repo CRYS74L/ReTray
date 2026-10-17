@@ -15,6 +15,7 @@
 #include <deque>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <mutex>
 #include <shlobj.h>
 #include <shobjidl.h>
@@ -575,67 +576,67 @@ std::string RuleStamp(const IconRule* rule, int visibility) {
     policy.erase("replacementAsset"); policy.erase("replacementAssetIndex");
     return policy.dump() + ":" + std::to_string(visibility);
 }
-void ApplyRule(const BridgeIcon& row, const IconRule* rule) {
+struct PreparedRule {
+    std::string key, stamp;
+    BridgeCommand command;
+    std::unique_ptr<std::remove_pointer_t<HICON>, decltype(&DestroyIcon)> image{nullptr, DestroyIcon};
+    DWORD preparationError{};
+};
+std::optional<PreparedRule> PrepareRule(const BridgeIcon& row, const IconRule* rule) {
     if (!ShouldRecover(lifecycle))
-        return;
+        return std::nullopt;
     auto key = IdentityKey(row.identity);
     int visibility = EffectiveVisibility(row, rule);
     auto stamp = RuleStamp(rule, visibility);
     if (applied[key] == stamp)
-        return;
+        return std::nullopt;
     if (failedStamp[key] == stamp) {
         auto retry = retryAfter.find(key);
         if (retry == retryAfter.end() || GetTickCount64() < retry->second)
-            return;
+            return std::nullopt;
     }
-    bool success = true;
-    DWORD error{};
-    auto send = [&](BridgeCommand cmd) {
-        cmd.identity = row.identity;
-        bool ok = bridge.Command(cmd);
-        if (!ok) {
-            success = false;
-            error = bridge.shared ? bridge.shared->lastError : ERROR_NOT_READY;
-        }
-        return ok;
-    };
+    PreparedRule prepared; prepared.key = key; prepared.stamp = std::move(stamp);
     if (rule && rule->enabled) {
         BridgeCommand policy;
         policy.operation = BridgeOperation::Policy;
         policy.clickEvent = PolicyTip | PolicyBehavior;
         policy.index = 0;
         wcsncpy_s(policy.tip, std::size(policy.tip), rule->tip.c_str(), _TRUNCATE);
-        HICON image{};
         if (!rule->asset.empty()) {
             int size = row.sourceWidth ? row.sourceWidth : GetSystemMetricsForDpi(
                 SM_CXSMICON, GetDpiForWindow(FindWindowW(L"Shell_TrayWnd", nullptr)));
-            image = LoadAsset(rule->asset, rule->assetIndex, size);
-            if (image) {
+            prepared.image.reset(LoadAsset(rule->asset, rule->assetIndex, size));
+            if (prepared.image) {
                 policy.clickEvent |= PolicyReplaceImage;
-                policy.replacementIcon = reinterpret_cast<uint64_t>(image);
+                policy.replacementIcon = reinterpret_cast<uint64_t>(prepared.image.get());
                 policy.suppliedBaseline = true;
                 policy.baselineFingerprint = rule->baselineFingerprint;
                 policy.baselineWidth = rule->baselineWidth;
                 policy.baselineHeight = rule->baselineHeight;
-            } else { success = false; error = ERROR_FILE_NOT_FOUND; }
+            } else prepared.preparationError = ERROR_FILE_NOT_FOUND;
         } else if (row.custom) policy.clickEvent |= PolicyClearImage;
         if (visibility != -1 || row.managed) {
             policy.clickEvent |= PolicyVisibility;
             policy.visibility = visibility;
         }
-        // One identity-checked Explorer callback applies the complete policy
-        // before publishing, instead of four scans and intermediate repaints.
-        if (send(policy) && image) {
-            auto preview = RasterizeIcon(image, FrameOrigin::Custom);
-            if (preview.outcome.success && !preview.frame.transparent)
-                presentationFrames[key] = std::move(preview.frame);
-        }
-        if (image) DestroyIcon(image);
+        prepared.command = policy;
     } else if (row.managed) {
-        BridgeCommand command;
-        command.operation = BridgeOperation::Restore;
-        send(command);
+        prepared.command.operation = BridgeOperation::Restore;
     }
+    prepared.command.identity = row.identity;
+    return prepared;
+}
+void CompleteRule(PreparedRule& prepared, DWORD nativeError) {
+    const auto& key = prepared.key;
+    const auto& stamp = prepared.stamp;
+    bool success = nativeError == ERROR_SUCCESS && prepared.preparationError == ERROR_SUCCESS;
+    DWORD error = nativeError ? nativeError : prepared.preparationError;
+    if (!nativeError && prepared.image) {
+        auto preview = RasterizeIcon(prepared.image.get(), FrameOrigin::Custom);
+        if (preview.outcome.success && !preview.frame.transparent)
+            presentationFrames[key] = std::move(preview.frame);
+    }
+    prepared.image.reset();
     outcomes[key] = Result(success, success ? "已生效" : "规则已保存，应用失败", error);
     if (success) {
         applied[key] = stamp;
@@ -696,7 +697,7 @@ bool ApplyEnvironment(bool force = false, bool retryImportFailures = false) {
         if (hasHiddenPolicy && GetTickCount64() - lastEnvironmentCheck >= 3000 &&
             !RefreshSystemControls())
             environmentOutcome = Result(false, "当前系统图标对象无法刷新",
-                                         bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT);
+                                         bridge.LastError() ? bridge.LastError() : ERROR_TIMEOUT);
         return environmentOutcome.value("success", true);
     }
     auto previous = shellChanged ? std::unordered_map<int, bool>{} : environmentPolicies;
@@ -717,7 +718,7 @@ bool ApplyEnvironment(bool force = false, bool retryImportFailures = false) {
         command.visibility = hidden ? 1 : 0;
         if (!bridge.Command(command)) {
             ok = false;
-            error = bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT;
+            error = bridge.LastError() ? bridge.LastError() : ERROR_TIMEOUT;
             return false;
         }
         environmentAvailable[id] = NativeSystemControlPresent(id);
@@ -903,21 +904,41 @@ void Refresh() {
         else
             ++it;
     const auto policiesStarted = PerformanceMicros();
+    std::vector<PreparedRule> preparedRules;
+    std::vector<std::string> ambiguousRules;
     for (auto& row : rows) {
         if (row.identity.ownerPid == GetCurrentProcessId())
             continue;
         auto found = ResolveCurrent(rules, Record(row), ruleContext);
         if (found.ambiguous) {
-            ApplyRule(row, nullptr);
+            if (auto prepared = PrepareRule(row, nullptr)) preparedRules.push_back(std::move(*prepared));
             roleBindings.erase(IdentityKey(row.identity));
-            outcomes[IdentityKey(row.identity)] = Result(false, "多个匹配规则冲突", ERROR_DUP_NAME);
+            ambiguousRules.push_back(IdentityKey(row.identity));
             continue;
         }
         if (found.rule && !found.rule->selector.hasGuid)
             roleBindings[IdentityKey(row.identity)] = {PersistentKey(found.rule->selector), found.provisional, row.registration};
         else roleBindings.erase(IdentityKey(row.identity));
-        ApplyRule(row, found.rule);
+        if (auto prepared = PrepareRule(row, found.rule)) preparedRules.push_back(std::move(*prepared));
     }
+    std::vector<BridgeCommand> commands;
+    std::vector<size_t> commandRules;
+    for (size_t index = 0; index < preparedRules.size(); ++index) {
+        if (static_cast<uint32_t>(preparedRules[index].command.operation)) {
+            commands.push_back(preparedRules[index].command); commandRules.push_back(index);
+        } else CompleteRule(preparedRules[index], ERROR_SUCCESS);
+    }
+    std::vector<DWORD> errors;
+    if (!commands.empty()) {
+        if (!bridge.CommandBatch(commands, errors) || errors.size() != commands.size()) {
+            DWORD error = bridge.shared && bridge.LastError() ? bridge.LastError() : ERROR_NOT_READY;
+            errors.assign(commands.size(), error);
+        }
+        for (size_t index = 0; index < errors.size(); ++index)
+            CompleteRule(preparedRules[commandRules[index]], errors[index]);
+    }
+    for (const auto& key : ambiguousRules)
+        outcomes[key] = Result(false, "多个匹配规则冲突", ERROR_DUP_NAME);
     // Commands publish a final, coherent native snapshot. Make the first UI
     // catalog use that state instead of waiting another 500ms worker cycle.
     bool finalComplete{};
@@ -1209,7 +1230,7 @@ Json SetIconVisibility(const Json& data) {
         return Result(false, "原生托盘尚未就绪", ERROR_NOT_READY);
     if (!ReconcileNativeCatalog(true))
         return Result(false, "原生图标目录读取失败，请重试",
-                      bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT);
+                      bridge.LastError() ? bridge.LastError() : ERROR_TIMEOUT);
     bool complete{};
     auto current = bridge.Snapshot(&complete);
     if (!complete)
@@ -1310,7 +1331,7 @@ Json SetIconVisibility(const Json& data) {
         command.identity = item.row.identity;
         command.visibility = visibility;
         if (!bridge.Command(command)) {
-            auto error = bridge.shared ? bridge.shared->lastError : ERROR_NOT_READY;
+            auto error = bridge.shared ? bridge.LastError() : ERROR_NOT_READY;
             if (error != ERROR_NOT_FOUND) {
                 command.visibility = item.priorVisibility;
                 if (!bridge.Command(command))
@@ -1385,7 +1406,7 @@ Json SetSystemVisibility(const Json& data) {
     if (!ShouldRecover(lifecycle) || stopping || !bridge.Alive())
         return reply(false, "原生系统图标尚未就绪", ERROR_NOT_READY);
     auto nativeError = [&]() -> DWORD {
-        return bridge.shared && bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT;
+        return bridge.shared && bridge.LastError() ? bridge.LastError() : ERROR_TIMEOUT;
     };
     BridgeCommand command;
     command.operation = BridgeOperation::SystemRead;
@@ -1554,7 +1575,7 @@ Json Handle(const Json& req) {
     else if (method == "system.read") {
         if (!RefreshSystemControls())
             return Result(false, "系统控件读取不可用",
-                          bridge.shared ? (bridge.shared->lastError ? bridge.shared->lastError : ERROR_TIMEOUT)
+                          bridge.shared ? (bridge.LastError() ? bridge.LastError() : ERROR_TIMEOUT)
                                         : ERROR_NOT_READY);
         result["data"] = Json::array();
         std::array<bool, 10> savedHidden{}, present{};
@@ -1769,7 +1790,7 @@ Json Handle(const Json& req) {
         activityDirty = true;
         applied.erase(key);
         result = Result(bridge.Command(cmd), "原应用回调",
-                        bridge.shared ? bridge.shared->lastError : ERROR_NOT_READY);
+                        bridge.shared ? bridge.LastError() : ERROR_NOT_READY);
     } else if (method == "agent.stop") {
         lifecycle.state = SessionState::UserStopping;
         stopping = true;

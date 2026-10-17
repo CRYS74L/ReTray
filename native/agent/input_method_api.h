@@ -82,7 +82,7 @@ Json SetInputMethodIcon(const Json& policy) {
         InputMethodImage(Wide(policy.at("asset")),policy.at("index")).is_null())
         return Result(false,"无法读取替代图标",ERROR_RESOURCE_NAME_NOT_FOUND);
     if(!SendInputMethodPolicy(policy,1)) {
-        auto error=bridge.shared->lastError?bridge.shared->lastError:ERROR_NOT_SUPPORTED;
+        auto error=bridge.LastError()?bridge.LastError():ERROR_NOT_SUPPORTED;
         if(!SendInputMethodPolicy(policy,3)){inputMethodRollback=policy;inputMethodRetryAt=GetTickCount64()+3000;}
         return Result(false,"输入法标志替换失败，配置未改变",error);
     }

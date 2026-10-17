@@ -100,10 +100,8 @@ public partial class App : System.Windows.Application
             if (!File.Exists(taskbarIcon) || !File.ReadAllBytes(taskbarIcon).AsSpan().SequenceEqual(File.ReadAllBytes(sourceIcon)))
                 File.Copy(sourceIcon, taskbarIcon, overwrite: true);
             var activation = ReTray_App.App.UiActivationId;
-            var relaunch = string.IsNullOrEmpty(activation)
-                ? "\"" + Environment.ProcessPath + "\""
-                : "\"" + Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe") +
-                  "\" \"shell:AppsFolder\\" + activation + "\"";
+            var relaunch = TaskbarBranding.CreateRelaunchCommand(AppContext.BaseDirectory,
+                Environment.ProcessPath ?? throw new IOException("无法确定 ReTray 启动路径。"), activation);
             TaskbarBranding.Apply(new WindowInteropHelper(_mainWindow).Handle, taskbarIcon, relaunch);
             MicaWindowService.Apply(
                 _mainWindow,

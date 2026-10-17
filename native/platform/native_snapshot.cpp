@@ -214,6 +214,27 @@ static uint64_t ModuleBase(uint32_t pid) {
 static uint64_t OwnerInfo(uint32_t pid, std::wstring& executable) {
     return ReadOwnerInfo(pid, executable);
 }
+uint32_t ValidateNativeRecord(const SymbolAdapter& a, uint64_t base, const NativeIconRecord& record) {
+    Reader memory(GetCurrentProcessId());
+    uint64_t root{}, model{}, manager{}, table{}, hwnd{}; uint32_t uid{}; GUID guid{};
+    std::vector<uint64_t> addresses;
+    if (!memory.read(base + a.root, root) || !memory.read(root + a.model, model) ||
+        !memory.read(model + a.manager, manager) || !memory.vector(manager, addresses)) return ERROR_RETRY;
+    if (std::find(addresses.begin(), addresses.end(), record.recordAddress) == addresses.end()) return ERROR_NOT_FOUND;
+    if (!memory.read(record.recordAddress, table) || table != base + a.itemVtable ||
+        !memory.read(record.recordAddress + a.window, hwnd) || hwnd != record.identity.ownerHwnd ||
+        !memory.read(record.recordAddress + a.uid, uid) || uid != record.identity.uid ||
+        !memory.read(record.recordAddress + a.guid, guid) || !IsEqualGUID(guid, record.identity.guid)) return ERROR_NOT_FOUND;
+    DWORD pid{}, after{};
+    auto window = reinterpret_cast<HWND>(hwnd);
+    auto thread = GetWindowThreadProcessId(window, &pid);
+    if (!thread || pid != record.identity.ownerPid) return ERROR_NOT_FOUND;
+    std::wstring executable;
+    auto created = ReadOwnerInfo(pid, executable);
+    if (!created || created != record.identity.ownerCreatedAt ||
+        GetWindowThreadProcessId(window, &after) != thread || after != pid) return ERROR_NOT_FOUND;
+    return ERROR_SUCCESS;
+}
 SnapshotResult ReadSnapshot(const SymbolAdapter& a, uint32_t pid, uint64_t epoch,
                             bool includeCaches) {
     SnapshotResult result;

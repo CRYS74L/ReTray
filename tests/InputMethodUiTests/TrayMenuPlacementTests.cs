@@ -13,13 +13,14 @@ internal static class TrayMenuPlacementTests
         var margins = new Thickness(12, 6, 12, 22);
         foreach (double scale in new[] { 1d, 1.25, 1.5, 2d }) {
             foreach (var popup in new[] { new Size(170, 132), new Size(230, 180) }) {
-                var candidate = TrayMenuPlacement.Candidate(popup, margins);
+                var physicalPopup = new Size(popup.Width * scale, popup.Height * scale);
+                var candidate = TrayMenuPlacement.Candidate(physicalPopup, margins, new DpiScale(scale, scale));
                 Require(candidate.PrimaryAxis == PopupPrimaryAxis.None, "WPF must retain both boundary-nudge axes");
-                // Use the production callback helper, then map its DIPs to the
-                // target display's pixels. Include a taskbar point below rcWork.
+                // Real WPF callback values are physical pixels. Only template
+                // margins need DIP conversion. Include a point below rcWork.
                 foreach (var anchor in new[] { new Point(700, 800), new Point(-1300, 1055) }) {
-                    var origin = new Point(anchor.X + candidate.Point.X * scale,
-                                           anchor.Y + candidate.Point.Y * scale);
+                    var origin = new Point(anchor.X + candidate.Point.X,
+                                           anchor.Y + candidate.Point.Y);
                     var visibleLeft = origin.X + margins.Left * scale;
                     var visibleBottom = origin.Y + (popup.Height - margins.Bottom) * scale;
                     Require(Math.Abs(visibleLeft - anchor.X) < .001 && Math.Abs(visibleBottom - anchor.Y) < .001,

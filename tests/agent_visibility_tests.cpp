@@ -35,6 +35,7 @@ struct AgentTestBridgeClient {
     bool snapshotComplete{true};
     std::unordered_set<std::string> absentNativeIcons;
     bool Alive() const { return shared && shared->status == 1; }
+    DWORD LastError() const { return shared ? static_cast<DWORD>(shared->lastError) : ERROR_NOT_READY; }
     bool Attach(const SymbolAdapter&, const std::filesystem::path&) { return Alive(); }
     void Reset() {}
     bool Command(BridgeCommand command, DWORD = 2000) {
@@ -86,6 +87,14 @@ struct AgentTestBridgeClient {
         if (complete) *complete = snapshotComplete;
         if (!snapshotComplete) return {};
         return {shared->icons, shared->icons + shared->count};
+    }
+    bool CommandBatch(const std::vector<BridgeCommand>& batch, std::vector<DWORD>& errors) {
+        errors.clear();
+        for (const auto& command : batch) {
+            auto success = Command(command);
+            errors.push_back(success ? ERROR_SUCCESS : static_cast<DWORD>(shared->lastError));
+        }
+        return true;
     }
 };
 }

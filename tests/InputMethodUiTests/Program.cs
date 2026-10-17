@@ -152,7 +152,7 @@ internal static class Program
             Console.WriteLine($"Caption {scale * 100}%: rows {rows[0]}–{rows[^1]}, visual center {moment / coverage:F2}, logo center {height / 2d}");
         }
         LanDeviceMonitor.Services.ThemeService.Apply("Light");
-        Require((Color)app.Resources["SwitchOnColor"] == (Color)ColorConverter.ConvertFromString("#CF80FF"),
+        Require((Color)app.Resources["SwitchOnColor"] == (Color)ColorConverter.ConvertFromString("#DF80FF"),
             "Enabled switch lost the soft brand lavender");
     }
     private static IconChoiceRow Row(State state)=>new(state,nameof(state.Original),()=>state.AssetPreview,

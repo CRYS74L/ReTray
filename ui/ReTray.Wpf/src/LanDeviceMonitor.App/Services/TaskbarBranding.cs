@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 
 namespace LanDeviceMonitor.Services;
@@ -10,8 +11,19 @@ public static class TaskbarBranding
     public const string WindowAppId = "CRYS74L.ReTray.Window";
     private static readonly Guid AppModel = new("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3");
 
+    public static string CreateRelaunchCommand(string directory, string executable, string activationId)
+    {
+        if (string.IsNullOrEmpty(activationId)) return "\"" + executable + "\"";
+        var launcher = Path.Combine(directory, "ReTray.Startup.exe");
+        if (!File.Exists(launcher)) throw new FileNotFoundException("ReTray package launcher is missing.", launcher);
+        return "\"" + launcher + "\" \"" + activationId + "\" --show";
+    }
+
     public static void Apply(nint window, string iconPath, string relaunchCommand)
     {
+        GetWindowThreadProcessId(window, out var processId);
+        if (processId != Environment.ProcessId)
+            throw new ArgumentException("Taskbar branding requires a window owned by this process.", nameof(window));
         var iid = typeof(IPropertyStore).GUID;
         Marshal.ThrowExceptionForHR(SHGetPropertyStoreForWindow(window, ref iid, out var store));
         try
@@ -68,6 +80,8 @@ public static class TaskbarBranding
     [DllImport("shell32.dll")]
     private static extern int SHGetPropertyStoreForWindow(nint window, ref Guid iid,
         [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(nint window, out int processId);
     [DllImport("ole32.dll")]
     private static extern int PropVariantClear(ref PropVariant value);
 }

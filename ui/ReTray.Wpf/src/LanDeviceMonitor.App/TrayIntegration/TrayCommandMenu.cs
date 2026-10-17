@@ -12,7 +12,7 @@ namespace ReTray_App.Controls;
 public sealed class TrayCommandMenu
 {
     private ContextMenu? menu;
-    public void Show(Point? clickPosition = null)
+    public void Show(Point? clickPosition = null, FrameworkElement? source = null)
     {
         if (App.IsExiting) return;
         if (menu is { IsOpen: true }) { menu.IsOpen = false; return; }
@@ -20,22 +20,32 @@ public sealed class TrayCommandMenu
             GetCursorPos(out var cursor);
             clickPosition = new Point(cursor.X, cursor.Y);
         }
-        var anchor = new ScreenAnchor(clickPosition.Value);
+        var anchor = source is null ? new ScreenAnchor(clickPosition.Value) : null;
+        var placementTarget = source ?? anchor!.Target;
+        var localAnchor = source is null ? new Point() : source.PointFromScreen(clickPosition.Value);
+        var ownerWindow = source is null ? Application.Current.MainWindow : Window.GetWindow(source);
+        var ownerHandle = ownerWindow is null ? 0 : new WindowInteropHelper(ownerWindow).Handle;
+        bool visibleOwner = ownerHandle != 0 && IsWindowVisible(ownerHandle);
+        // Acquire foreground BEFORE WPF enters menu mode. Activating the popup
+        // HWND afterwards can reactivate a visible WPF owner and steal capture
+        // back from the menu during its first frame.
+        if (visibleOwner) SetForegroundWindow(ownerHandle);
         ContextMenu? ownedMenu = null;
         try {
             var openedMenu = new ContextMenu {
                 Style = (Style)Application.Current.FindResource("TrayDropdownMenuStyle"),
-                Placement = PlacementMode.Custom, PlacementTarget = anchor.Target,
-                PlacementRectangle = new Rect(0, 0, 0, 0), StaysOpen = false
+                Placement = PlacementMode.Custom, PlacementTarget = placementTarget,
+                PlacementRectangle = new Rect(localAnchor, new Size()), StaysOpen = false
             };
             menu = ownedMenu = openedMenu;
             openedMenu.ApplyTemplate();
             var surfaceMargin = Surface(openedMenu)?.Margin ?? SharedSurfaceMargin();
             openedMenu.CustomPopupPlacementCallback = (popupSize, _, _) =>
-                [TrayMenuPlacement.Candidate(popupSize, Surface(openedMenu)?.Margin ?? surfaceMargin)];
+                [TrayMenuPlacement.Candidate(popupSize, Surface(openedMenu)?.Margin ?? surfaceMargin,
+                    VisualTreeHelper.GetDpi(openedMenu))];
             openedMenu.Closed += (_, _) => {
                 openedMenu.PlacementTarget = null;
-                anchor.Dispose();
+                anchor?.Dispose();
                 if (ReferenceEquals(menu, openedMenu)) menu = null;
             };
             // A popup can open while the main window is natively hidden in the tray.
@@ -47,15 +57,19 @@ public sealed class TrayCommandMenu
             System.Windows.Automation.AutomationProperties.SetAutomationId(openedMenu, "ReTrayTrayMenu");
             openedMenu.Opened += (_, _) => openedMenu.Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() => {
                 if (!ReferenceEquals(menu, openedMenu) || !openedMenu.IsOpen) return;
-                if (PresentationSource.FromVisual(openedMenu) is HwndSource source)
-                    SetForegroundWindow(source.Handle);
+                // A menu opened inside the interface already has a foreground
+                // owner and standard WPF menu focus/capture. Activating its
+                // separate popup HWND fights that owner and closes it again.
+                if (source is not null || visibleOwner) return;
+                if (PresentationSource.FromVisual(openedMenu) is HwndSource popupSource)
+                    SetForegroundWindow(popupSource.Handle);
                 (openedMenu.Items[0] as MenuItem)?.Focus();
             }));
             openedMenu.IsOpen = true;
         }
         catch {
             if (ownedMenu is not null) ownedMenu.PlacementTarget = null;
-            anchor.Dispose();
+            anchor?.Dispose();
             if (ReferenceEquals(menu, ownedMenu)) menu = null;
             throw;
         }
@@ -119,6 +133,9 @@ public sealed class TrayCommandMenu
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(nint window);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsWindowVisible(nint window);
     [StructLayout(LayoutKind.Sequential)] private struct NativePoint {
         public int X, Y;
         public NativePoint(int x, int y) { X = x; Y = y; }
@@ -128,6 +145,12 @@ public sealed class TrayCommandMenu
 
 public static class TrayMenuPlacement
 {
-    public static CustomPopupPlacement Candidate(Size popupSize, Thickness surfaceMargin) => new(
-        new Point(-surfaceMargin.Left, -popupSize.Height + surfaceMargin.Bottom), PopupPrimaryAxis.None);
+    public static CustomPopupPlacement Candidate(Size popupSize, Thickness surfaceMargin) =>
+        Candidate(popupSize, surfaceMargin, new DpiScale(1, 1));
+
+    // WPF's placement callback supplies popupSize/Point in device pixels.
+    // The shared template Margin remains in DIPs, so convert only that inset.
+    public static CustomPopupPlacement Candidate(Size popupSize, Thickness surfaceMargin, DpiScale dpi) => new(
+        new Point(-surfaceMargin.Left * dpi.DpiScaleX,
+            -popupSize.Height + surfaceMargin.Bottom * dpi.DpiScaleY), PopupPrimaryAxis.None);
 }

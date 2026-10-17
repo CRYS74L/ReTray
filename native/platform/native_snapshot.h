@@ -15,6 +15,9 @@ SymbolAdapter LoadAdapter(const std::filesystem::path& file);
 uint32_t ExplorerPid();
 SnapshotResult ReadSnapshot(const SymbolAdapter&, uint32_t explorerPid, uint64_t epoch,
                             bool includeCaches = true);
+// Revalidate one target after ReadSnapshot has verified the module/ABI and the
+// complete inventory; this is not a replacement for that initial validation.
+uint32_t ValidateNativeRecord(const SymbolAdapter&, uint64_t moduleBase, const NativeIconRecord&);
 nlohmann::json SnapshotJson(const SnapshotResult&, bool includePixels = false);
 std::string Utf8(const std::wstring&);
 std::wstring Wide(const std::string&);

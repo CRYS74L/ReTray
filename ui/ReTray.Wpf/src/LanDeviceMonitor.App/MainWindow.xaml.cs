@@ -2590,6 +2590,32 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     {
         if (e.LeftButton == MouseButtonState.Pressed) { e.Handled = true; DragMove(); }
     }
+
+    private bool IsCaptionPoint(System.Windows.Point point) =>
+        point.X >= 0 && point.X < WindowRoot.ActualWidth && point.Y >= 0 &&
+        point.Y < WindowRoot.RowDefinitions[0].ActualHeight;
+
+    protected override void OnPreviewMouseRightButtonDown(MouseButtonEventArgs e)
+    {
+        if (IsCaptionPoint(e.GetPosition(WindowRoot))) { e.Handled = true; return; }
+        base.OnPreviewMouseRightButtonDown(e);
+    }
+
+    protected override void OnPreviewMouseRightButtonUp(MouseButtonEventArgs e)
+    {
+        if (IsCaptionPoint(e.GetPosition(WindowRoot))) { e.Handled = true; return; }
+        base.OnPreviewMouseRightButtonUp(e);
+    }
+
+    internal bool TryShowOwnTrayMenu(ReTray_App.Models.IconRow row, ReTray_App.Controls.TrayIconActionEventArgs action, FrameworkElement source)
+    {
+        if (!row.Owned || action.Action is not ("menu" or "rightDouble")) return false;
+        // This is our window's own command menu. Keep its real UI owner and
+        // focus/capture lifetime; Explorer's native callback dispatch remains
+        // reserved for the other applications represented by the list.
+        _trayCommandMenu.Show(new System.Windows.Point(action.X, action.Y), source);
+        return true;
+    }
     private async void Window_Closing(object? sender, CancelEventArgs e)
     {
         if (trayEditor || ReTray_App.App.CanCloseInterface) return;
@@ -2614,6 +2640,24 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         IntPtr longParameter,
         ref bool handled)
     {
+        // WindowChrome forwards non-client right clicks to the default Windows
+        // system menu. The whole caption is deliberately inert to right clicks.
+        if ((message is 0x00A4 or 0x00A5 or 0x00A6) &&
+            (wordParameter.ToInt64() is 2 or 3 or 8 or 9 or 20))
+        {
+            handled = true;
+            return IntPtr.Zero;
+        }
+        if (message == 0x007B && longParameter != (nint)(-1))
+        {
+            long packed = longParameter.ToInt64();
+            var screen = new System.Windows.Point((short)(packed & 0xffff), (short)((packed >> 16) & 0xffff));
+            if (IsCaptionPoint(WindowRoot.PointFromScreen(screen)))
+            {
+                handled = true;
+                return IntPtr.Zero;
+            }
+        }
         if (message == ShowDropdownMenuMessage)
         {
             handled = true;

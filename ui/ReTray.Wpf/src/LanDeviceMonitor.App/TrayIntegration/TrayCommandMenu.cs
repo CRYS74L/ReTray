@@ -114,7 +114,14 @@ public sealed class TrayCommandMenu
     }
     private void Add(string label, string id, Func<Task> action)
     {
-        var item = new MenuItem { Header = label };
+        var item = new MenuItem { Header = label,
+            Style = (Style)Application.Current.FindResource("DropdownCommandStyle") };
+        // Font advance width includes side bearings. Balance the visible ink,
+        // rather than leaving extra right space after the widest command.
+        var ink = new FormattedText(label, System.Globalization.CultureInfo.CurrentUICulture,
+            item.FlowDirection, new Typeface(item.FontFamily, item.FontStyle, item.FontWeight, item.FontStretch),
+            item.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(menu!.PlacementTarget).PixelsPerDip);
+        item.Padding = new Thickness(15 - ink.OverhangLeading, 0, 15 + ink.OverhangTrailing, 0);
         System.Windows.Automation.AutomationProperties.SetAutomationId(item, id);
         item.Click += async (_, args) => {
             args.Handled = true;
@@ -125,10 +132,10 @@ public sealed class TrayCommandMenu
         menu!.Items.Add(item);
     }
     public static string[] Labels(string language) => language switch {
-        "en" => ["Open", "Restart", "Exit"],
-        "zh-Hant" => ["開啟", "重新啟動", "退出"],
-        "ja" => ["開く", "再起動", "終了"],
-        _ => ["打开", "重新启动", "退出"]
+        "en" => ["Open ReTray", "Restart", "Exit"],
+        "zh-Hant" => ["開啟ReTray", "重新啟動", "退出"],
+        "ja" => ["ReTrayを開く", "再起動", "終了"],
+        _ => ["打开ReTray", "重新启动", "退出"]
     };
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

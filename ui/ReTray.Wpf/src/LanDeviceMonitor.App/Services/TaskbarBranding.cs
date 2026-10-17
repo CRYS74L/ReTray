@@ -14,7 +14,10 @@ public static class TaskbarBranding
     public static string CreateRelaunchCommand(string directory, string executable, string activationId)
     {
         if (string.IsNullOrEmpty(activationId)) return "\"" + executable + "\"";
-        var launcher = Path.Combine(directory, "ReTray.Startup.exe");
+        var root = Path.GetFileName(Path.TrimEndingDirectorySeparator(directory))
+            .Equals("runtime", StringComparison.OrdinalIgnoreCase)
+            ? Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(directory))! : directory;
+        var launcher = Path.Combine(root, "ReTray.exe");
         if (!File.Exists(launcher)) throw new FileNotFoundException("ReTray package launcher is missing.", launcher);
         return "\"" + launcher + "\" \"" + activationId + "\" --show";
     }

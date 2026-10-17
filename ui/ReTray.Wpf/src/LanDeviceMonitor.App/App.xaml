@@ -406,7 +406,7 @@
             <Style x:Key="TrayDropdownMenuStyle" TargetType="ContextMenu">
                 <Setter Property="FontFamily" Value="{StaticResource AppTextFont}"/><Setter Property="FontSize" Value="14"/>
                 <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
-                <Setter Property="Padding" Value="0"/><Setter Property="MinWidth" Value="170"/>
+                <Setter Property="Padding" Value="0"/><Setter Property="MinWidth" Value="0"/>
                 <Setter Property="HasDropShadow" Value="False"/><Setter Property="UseLayoutRounding" Value="False"/>
                 <Setter Property="ItemContainerStyle" Value="{StaticResource DropdownCommandStyle}"/>
                 <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="ContextMenu">

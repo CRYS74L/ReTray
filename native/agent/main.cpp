@@ -505,7 +505,8 @@ bool SetStartup(bool enabled, bool previousEnabled) {
         catch (...) { SetLastError(ERROR_CANNOT_MAKE); return false; }
         // v3 activates the unified App identity. It is otherwise a small,
         // version-independent activator that never reads personal settings.
-        if (!CopyFileW((root / L"ReTray.Startup.exe").c_str(), startupExecutable.c_str(), TRUE) &&
+        const auto launcher = root.filename() == L"runtime" ? root.parent_path() / L"ReTray.exe" : root / L"ReTray.Startup.exe";
+        if (!CopyFileW(launcher.c_str(), startupExecutable.c_str(), TRUE) &&
             GetLastError() != ERROR_FILE_EXISTS) return false;
         startupArguments = L"\"" + std::wstring(family.data()) + L"!App\"";
     }

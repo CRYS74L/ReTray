@@ -96,13 +96,17 @@ public partial class App : System.Windows.Application
             var brandDirectory = Path.Combine(Environment.GetFolderPath(
                 Environment.SpecialFolder.LocalApplicationData), "ReTray", "Branding");
             Directory.CreateDirectory(brandDirectory);
-            var taskbarIcon = Path.Combine(brandDirectory, "WindowIcon.ico");
+            var taskbarIcon = Path.Combine(brandDirectory, "WindowIcon-" + typeof(App).Assembly.GetName().Version!.ToString(3) + ".ico");
             if (!File.Exists(taskbarIcon) || !File.ReadAllBytes(taskbarIcon).AsSpan().SequenceEqual(File.ReadAllBytes(sourceIcon)))
                 File.Copy(sourceIcon, taskbarIcon, overwrite: true);
             var activation = ReTray_App.App.UiActivationId;
             var relaunch = TaskbarBranding.CreateRelaunchCommand(AppContext.BaseDirectory,
                 Environment.ProcessPath ?? throw new IOException("无法确定 ReTray 启动路径。"), activation);
             TaskbarBranding.Apply(new WindowInteropHelper(_mainWindow).Handle, taskbarIcon, relaunch);
+            // Shell activation can supply a shortcut icon to the new HWND.
+            // Explicitly refresh WPF's owned HICONs after the first render too.
+            _mainWindow.ContentRendered += (_, _) => _mainWindow.Icon =
+                System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(taskbarIcon));
             MicaWindowService.Apply(
                 _mainWindow,
                 ThemeService.ResolveIsDark(ThemeService.CurrentMode));

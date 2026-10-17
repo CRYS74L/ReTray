@@ -30,7 +30,7 @@ ReTray 是一个 Windows 11 托盘管理工具，帮助你隐藏或显示图标�
 ## 开始使用
 
 **免安装构建：** 将整个 `ReTray-<版本>-win-x64.zip` 解压到固定目录，运行
-`ReTray.exe`。界面与托盘管理运行在同一进程中；请保留同目录的运行库、桥接 DLL、字体和图标，不要只复制单个 EXE。
+根目录唯一的 `ReTray.exe`。界面与托盘管理运行在同一常驻进程中；运行库、桥接 DLL、字体等集中在 `runtime` 文件夹。请保留完整目录，不要只复制 EXE。
 
 **MSIX 构建：** 使用发行包附带的安装脚本。脚本会请求管理员权限，将附带的
 CRYS74L 开发证书导入本机 TrustedPeople，再为当前用户安装软件。仅在你信任此构建时执行。
@@ -56,7 +56,7 @@ CRYS74L 开发证书导入本机 TrustedPeople，再为当前用户安装软件�
 
 ## 数据与升级
 
-配置、图标资源和窗口位置统一保存在 `%LOCALAPPDATA%\ReTray`，安装版和免安装版共用这一位置。
+配置、图标资源和窗口位置保存在当前用户的应用数据中（常规目录为 `%LOCALAPPDATA%\ReTray`）；安装包身份可能影响 Windows 的数据重定向，请使用配置导出功能转移数据。
 更名升级会检查普通目录和旧 MSIX 的虚拟化目录，复制最近保存的旧配置并调整托管图标路径，
 保留旧目录作为备份；已有 ReTray 配置不会被覆盖。
 用户规则、自定义图标与提示文字会保留，旧的默认软件提示文字会更新为 ReTray。
@@ -84,6 +84,7 @@ npm ci --prefix packaging
 主界面构建入口是 `ui/ReTray.Wpf/src/LanDeviceMonitor.App/LanDeviceMonitor.App.csproj`。
 `native/agent` 编译为同进程加载的 `ReTray.Runtime.dll`，负责配置与托盘管理；`native/shell` 负责受支持的 Shell 桥接，`tests` 保存回归检查。`Agent` 构建目标仅为原生隔离验收保留，不进入发行包。
 包和免安装文件输出到 `dist/<版本>`，运行布局输出到 `publish/<版本>-origin/layout`。
+成功打包后自动保留最近两个版本，并额外保护当前注册或运行中的版本；旧发布副本和重复安装包会清理。
 历史设计与问题分析放在 `docs`，README 仅介绍当前产品。
 
 ## 反馈与许可证

@@ -9,7 +9,7 @@ function Write-ReTrayDesktopShortcut {
     )
     $ErrorActionPreference='Stop'
     if($PackageFamilyName -notmatch '^CRYS74L\.ReTray_[A-Za-z0-9]+$') { throw 'Unexpected ReTray package family' }
-    $launcher=Join-Path $InstallLocation 'ReTray.Startup.exe'
+    $launcher=Join-Path $InstallLocation 'ReTray.exe'
     $icon=Join-Path $InstallLocation 'Assets/DesktopIcon.ico'
     foreach($required in @($launcher,$icon)) {
         if(!(Test-Path -LiteralPath $required -PathType Leaf)) { throw "ReTray shortcut payload is missing $required" }
@@ -32,8 +32,8 @@ function Write-ReTrayDesktopShortcut {
     $shortcut.IconLocation=$desktopIcon+',0'
     $shortcut.Description='ReTray — Redefine Your Tray'
     $shortcut.Save()
-    # Explicitly identify the link with the same group as the settings window;
-    # never let shell heuristics brand the executable of an unrelated host.
+    # A desktop-only white icon must not become the representative shortcut
+    # for the colored taskbar group. The launcher opens the Window identity.
     if(-not ('ReTray.Packaging.ShortcutIdentity' -as [type])) {
         Add-Type -TypeDefinition @'
 using System;
@@ -84,5 +84,5 @@ namespace ReTray.Packaging {
 }
 '@
     }
-    [ReTray.Packaging.ShortcutIdentity]::Write($ShortcutPath,'CRYS74L.ReTray.Window')
+    [ReTray.Packaging.ShortcutIdentity]::Write($ShortcutPath,'CRYS74L.ReTray.Desktop')
 }

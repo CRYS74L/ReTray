@@ -48,6 +48,19 @@ internal static class Program
    var menu=(ContextMenu)typeof(TrayCommandMenu).GetField("menu",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(owner)!;
    var surface=(FrameworkElement)typeof(TrayCommandMenu).GetMethod("Surface",BindingFlags.NonPublic|BindingFlags.Static)!.Invoke(null,[menu])!;
    var source=(HwndSource)PresentationSource.FromVisual(menu)!;
+   var text=Descendants<TextBlock>(menu).OrderByDescending(t=>new FormattedText(t.Text,
+       System.Globalization.CultureInfo.CurrentUICulture,t.FlowDirection,
+       new Typeface(t.FontFamily,t.FontStyle,t.FontWeight,t.FontStretch),t.FontSize,Brushes.Black,
+       VisualTreeHelper.GetDpi(t).PixelsPerDip).WidthIncludingTrailingWhitespace).First();
+   if(!menu.Items.Cast<MenuItem>().Any(i=>Equals(i.Header,"打开ReTray")))
+       throw new InvalidOperationException("Open command omitted the product name");
+   var ink=new FormattedText(text.Text,System.Globalization.CultureInfo.CurrentUICulture,text.FlowDirection,
+       new Typeface(text.FontFamily,text.FontStyle,text.FontWeight,text.FontStretch),text.FontSize,Brushes.Black,
+       VisualTreeHelper.GetDpi(text).PixelsPerDip);
+   var origin=text.TranslatePoint(new Point(0,0),surface);
+   double left=origin.X+ink.OverhangLeading,right=surface.ActualWidth-origin.X-ink.Width-ink.OverhangTrailing;
+   Console.WriteLine($"Longest menu text={text.Text}, left={left:F3}, right={right:F3}");
+   if(Math.Abs(left-right)>1)throw new InvalidOperationException("Menu text does not have symmetric visible padding");
    var target=menu.PlacementTarget;
    Console.WriteLine($"menuDpi={VisualTreeHelper.GetDpi(menu).DpiScaleX}, targetDpi={VisualTreeHelper.GetDpi(target).DpiScaleX}, menuHWNDDpi={GetDpiForWindow(source.Handle)}, targetHWNDDpi={GetDpiForWindow(((HwndSource)PresentationSource.FromVisual(target)!).Handle)}");
    var callback=menu.CustomPopupPlacementCallback;
@@ -95,6 +108,9 @@ internal static class Program
   } catch(Exception e){Console.Error.WriteLine(e);return 2;}
  }
  static void Pump(int ms){var frame=new DispatcherFrame();var timer=new DispatcherTimer(DispatcherPriority.Background){Interval=TimeSpan.FromMilliseconds(ms)};timer.Tick+=(_,_)=>{timer.Stop();frame.Continue=false;};timer.Start();Dispatcher.PushFrame(frame);}
+ static IEnumerable<T> Descendants<T>(DependencyObject root) where T:DependencyObject {
+  for(int i=0;i<VisualTreeHelper.GetChildrenCount(root);i++) {var child=VisualTreeHelper.GetChild(root,i);if(child is T match)yield return match;foreach(var next in Descendants<T>(child))yield return next;}
+ }
  [DllImport("user32.dll")] static extern uint GetDpiForWindow(nint h);
  [DllImport("user32.dll")] static extern nint GetForegroundWindow();
  [DllImport("user32.dll")] static extern bool SetForegroundWindow(nint h);

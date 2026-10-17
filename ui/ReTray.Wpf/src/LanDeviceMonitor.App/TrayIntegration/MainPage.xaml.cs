@@ -44,7 +44,7 @@ public partial class MainPage : UserControl
     public MainPage()
     {
         InitializeComponent(); DataContext = Vm;
-        VersionText.Text = $"v{typeof(MainPage).Assembly.GetName().Version!.ToString(3)}";
+        VersionLink.Inlines.Add($"v{typeof(MainPage).Assembly.GetName().Version!.ToString(3)}");
         ThemeChoice.Items.Add("跟随系统"); ThemeChoice.Items.Add("浅色"); ThemeChoice.Items.Add("深色"); ThemeChoice.SelectedIndex = 0;
         foreach(var name in Localization.LanguageNames)LanguageChoice.Items.Add(name); LanguageChoice.SelectedIndex = 0;
         CreateSystemRows(); CreateLoadingRows();
@@ -72,6 +72,16 @@ public partial class MainPage : UserControl
 
         UpdatePresentation();
     }
+    private void VersionLink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs args)
+    {
+        args.Handled = true;
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(args.Uri.AbsoluteUri) { UseShellExecute = true });
+        }
+        catch (Exception exception) { Vm.ReportError(exception); }
+    }
+
     private async void PageLoaded(object sender, RoutedEventArgs args)
     {
         if (!loaded)

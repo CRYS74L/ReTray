@@ -121,7 +121,7 @@ public sealed class TrayCommandMenu
         var ink = new FormattedText(label, System.Globalization.CultureInfo.CurrentUICulture,
             item.FlowDirection, new Typeface(item.FontFamily, item.FontStyle, item.FontWeight, item.FontStretch),
             item.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(menu!.PlacementTarget).PixelsPerDip);
-        item.Padding = new Thickness(10 - ink.OverhangLeading, 0, 10 + ink.OverhangTrailing, 0);
+        item.Padding = new Thickness(11 - ink.OverhangLeading, 0, 11 + ink.OverhangTrailing, 0);
         System.Windows.Automation.AutomationProperties.SetAutomationId(item, id);
         item.Click += async (_, args) => {
             args.Handled = true;

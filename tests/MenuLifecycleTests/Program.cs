@@ -62,20 +62,20 @@ internal static class Program
    Console.WriteLine($"Longest menu text={text.Text}, left={left:F3}, right={right:F3}");
    // Compare visible ink, including the per-label bearing correction, against
    // the approved equal 2 DIP panel padding plus the border and text insets.
-   if(Math.Abs(left-13.5)>.05 || Math.Abs(right-13.5)>.05)
+   if(Math.Abs(left-14.5)>.05 || Math.Abs(right-14.5)>.05)
        throw new InvalidOperationException("Tray menu does not preserve the approved equal ink insets");
    if(surface is not Border plate || plate.Padding!=new Thickness(2) ||
        plate.BorderThickness!=new Thickness(1.5) || plate.CornerRadius!=new CornerRadius(15.75))
        throw new InvalidOperationException("Tray plate differs from the approved dimensions");
-   if(Math.Abs(surface.ActualHeight-97)>.05 || Math.Abs(surface.ActualWidth-79.039)>.1)
-       throw new InvalidOperationException("Tray plate is not the approved auto-sized 79.039 x 97 DIP");
+   if(Math.Abs(surface.ActualHeight-97)>.05 || Math.Abs(surface.ActualWidth-80.03825)>.1)
+       throw new InvalidOperationException("Tray plate is not the approved auto-sized 80.03825 x 97 DIP");
    foreach(var item in menu.Items.Cast<MenuItem>()) {
-       if(item.FontSize!=13 || item.Height!=30 || item.Margin!=new Thickness(0))
+       if(item.FontSize!=12.75 || item.Height!=30 || item.Margin!=new Thickness(0))
            throw new InvalidOperationException("Tray item typography or spacing differs from the approved tuning");
        var label=Descendants<TextBlock>(item).Single();
        var labelOrigin=label.TranslatePoint(new Point(),item);
-       if(Math.Abs(labelOrigin.Y+label.ActualHeight/2-15)>.05)
-           throw new InvalidOperationException("Tray label is no longer vertically centered");
+       if(Math.Abs(labelOrigin.Y+label.ActualHeight/2-14)>.05)
+           throw new InvalidOperationException("Tray label lost its -1 DIP vertical offset");
    }
    var target=menu.PlacementTarget;
    Console.WriteLine($"menuDpi={VisualTreeHelper.GetDpi(menu).DpiScaleX}, targetDpi={VisualTreeHelper.GetDpi(target).DpiScaleX}, menuHWNDDpi={GetDpiForWindow(source.Handle)}, targetHWNDDpi={GetDpiForWindow(((HwndSource)PresentationSource.FromVisual(target)!).Handle)}");

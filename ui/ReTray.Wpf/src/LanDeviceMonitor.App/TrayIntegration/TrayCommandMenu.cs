@@ -8,7 +8,7 @@ using System.Windows.Threading;
 using Localization = ReTray_App.Services.Localization;
 namespace ReTray_App.Controls;
 
-// Uses the same surface, item motion and body typography as ComboBox dropdowns.
+// Own-tray geometry is tuned independently; fonts, palette and motion are shared.
 public sealed class TrayCommandMenu
 {
     private ContextMenu? menu;
@@ -39,7 +39,7 @@ public sealed class TrayCommandMenu
             };
             menu = ownedMenu = openedMenu;
             openedMenu.ApplyTemplate();
-            var surfaceMargin = Surface(openedMenu)?.Margin ?? SharedSurfaceMargin();
+            var surfaceMargin = Surface(openedMenu)?.Margin ?? MenuSurfaceMargin();
             openedMenu.CustomPopupPlacementCallback = (popupSize, _, _) =>
                 [TrayMenuPlacement.Candidate(popupSize, Surface(openedMenu)?.Margin ?? surfaceMargin,
                     VisualTreeHelper.GetDpi(openedMenu))];
@@ -81,10 +81,10 @@ public sealed class TrayCommandMenu
         content?.ApplyTemplate();
         return content?.Template.FindName("DropdownSurface", content) as FrameworkElement;
     }
-    private static Thickness SharedSurfaceMargin()
+    private static Thickness MenuSurfaceMargin()
     {
         var probe = new ContentControl {
-            Template = (ControlTemplate)Application.Current.FindResource("DropdownSurfaceTemplate")
+            Template = (ControlTemplate)Application.Current.FindResource("TrayMenuSurfaceTemplate")
         };
         probe.ApplyTemplate();
         return ((FrameworkElement)probe.Template.FindName("DropdownSurface", probe)).Margin;
@@ -115,13 +115,13 @@ public sealed class TrayCommandMenu
     private void Add(string label, string id, Func<Task> action)
     {
         var item = new MenuItem { Header = label,
-            Style = (Style)Application.Current.FindResource("DropdownCommandStyle") };
+            Style = (Style)Application.Current.FindResource("TrayCommandItemStyle") };
         // Font advance width includes side bearings. Balance the visible ink,
         // rather than leaving extra right space after the widest command.
         var ink = new FormattedText(label, System.Globalization.CultureInfo.CurrentUICulture,
             item.FlowDirection, new Typeface(item.FontFamily, item.FontStyle, item.FontWeight, item.FontStretch),
             item.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(menu!.PlacementTarget).PixelsPerDip);
-        item.Padding = new Thickness(15 - ink.OverhangLeading, 0, 15 + ink.OverhangTrailing, 0);
+        item.Padding = new Thickness(10 - ink.OverhangLeading, 0, 10 + ink.OverhangTrailing, 0);
         System.Windows.Automation.AutomationProperties.SetAutomationId(item, id);
         item.Click += async (_, args) => {
             args.Handled = true;

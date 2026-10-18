@@ -60,7 +60,23 @@ internal static class Program
    var origin=text.TranslatePoint(new Point(0,0),surface);
    double left=origin.X+ink.OverhangLeading,right=surface.ActualWidth-origin.X-ink.Width-ink.OverhangTrailing;
    Console.WriteLine($"Longest menu text={text.Text}, left={left:F3}, right={right:F3}");
-   if(Math.Abs(left-right)>1)throw new InvalidOperationException("Menu text does not have symmetric visible padding");
+   // Compare visible ink, including the per-label bearing correction, against
+   // the approved equal 1 DIP panel padding plus the border and text insets.
+   if(Math.Abs(left-12.5)>.05 || Math.Abs(right-12.5)>.05)
+       throw new InvalidOperationException("Tray menu does not preserve the approved equal ink insets");
+   if(surface is not Border plate || plate.Padding!=new Thickness(1) ||
+       plate.BorderThickness!=new Thickness(1.5) || plate.CornerRadius!=new CornerRadius(15.75))
+       throw new InvalidOperationException("Tray plate differs from the approved dimensions");
+   if(Math.Abs(surface.ActualHeight-89)>.05 || Math.Abs(surface.ActualWidth-79.0405)>.1)
+       throw new InvalidOperationException("Tray plate is not the approved auto-sized 79.0405 x 89 DIP");
+   foreach(var item in menu.Items.Cast<MenuItem>()) {
+       if(item.FontSize!=13.5 || item.Height!=28 || item.Margin!=new Thickness(0))
+           throw new InvalidOperationException("Tray item typography or spacing differs from the approved tuning");
+       var label=Descendants<TextBlock>(item).Single();
+       var labelOrigin=label.TranslatePoint(new Point(),item);
+       if(Math.Abs(labelOrigin.Y+label.ActualHeight/2-14)>.05)
+           throw new InvalidOperationException("Tray label is no longer vertically centered");
+   }
    var target=menu.PlacementTarget;
    Console.WriteLine($"menuDpi={VisualTreeHelper.GetDpi(menu).DpiScaleX}, targetDpi={VisualTreeHelper.GetDpi(target).DpiScaleX}, menuHWNDDpi={GetDpiForWindow(source.Handle)}, targetHWNDDpi={GetDpiForWindow(((HwndSource)PresentationSource.FromVisual(target)!).Handle)}");
    var callback=menu.CustomPopupPlacementCallback;
@@ -73,6 +89,18 @@ internal static class Program
    menu.IsOpen=false;
    for(int i=0;i<20&&!fullyClosed;i++)Pump(20);
    fixture.Activate();SetForegroundWindow(new WindowInteropHelper(fixture).Handle);fixture.Focus();Pump(50);
+   if(GetForegroundWindow()!=new WindowInteropHelper(fixture).Handle) {
+       // A test launched by a background terminal may lack foreground rights.
+       // Temporarily share the foreground input queue for fixture activation;
+       // never change the product's activation behavior to accommodate a test.
+       uint foregroundThread=GetWindowThreadProcessId(GetForegroundWindow(),out uint foregroundPid);
+       uint testThread=GetCurrentThreadId();
+       Console.WriteLine($"Fixture activation denied: foregroundPid={foregroundPid}, testPid={Environment.ProcessId}");
+       bool attached=foregroundThread!=testThread&&AttachThreadInput(testThread,foregroundThread,true);
+       try {fixture.Activate();SetForegroundWindow(new WindowInteropHelper(fixture).Handle);fixture.Focus();}
+       finally {if(attached)AttachThreadInput(testThread,foregroundThread,false);}
+       Pump(50);
+   }
    Console.WriteLine($"FOREGROUND_REQUIRED {new WindowInteropHelper(fixture).Handle}");Console.Out.Flush();
    for(int i=0;i<100&&GetForegroundWindow()!=new WindowInteropHelper(fixture).Handle;i++)Pump(50);
    Console.WriteLine($"local source foreground={GetForegroundWindow()}, expected={new WindowInteropHelper(fixture).Handle}");
@@ -98,10 +126,17 @@ internal static class Program
    localMenu.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice,Environment.TickCount,MouseButton.Left){RoutedEvent=Mouse.PreviewMouseDownOutsideCapturedElementEvent});
    Pump(50);if(localMenu.IsOpen)throw new InvalidOperationException("Outside click did not dismiss the menu");
    Console.WriteLine("Caption right clicks suppressed; own menu Escape/outside dismissal passed");
-   Pump(250);fixture.Hide();Pump(50);
-   var hiddenOwner=new TrayCommandMenu();hiddenOwner.Show(anchor);Pump(1000);
+   // Match the product's native hide lifecycle: WPF's visual stays visible
+   // while only its HWND is hidden. Window.Hide tears that visual down.
+   Pump(250);
+   ShowWindow(new WindowInteropHelper(fixture).Handle,0);Pump(50);
+   var hiddenOwner=new TrayCommandMenu();
+   // Native tray requests are marshalled onto the WPF dispatcher rather than
+   // opened synchronously inside the previous menu's close/focus transition.
+   fixture.Dispatcher.BeginInvoke(new Action(()=>hiddenOwner.Show(anchor)));
+   Pump(1000);
    var hiddenMenu=(ContextMenu)typeof(TrayCommandMenu).GetField("menu",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(hiddenOwner)!;
-   if(!hiddenMenu.IsOpen)throw new InvalidOperationException("System tray menu failed to stay open with a hidden main window");
+   if(hiddenMenu is null || !hiddenMenu.IsOpen)throw new InvalidOperationException("System tray menu failed to stay open with a hidden main window");
    hiddenMenu.IsOpen=false;Pump(250);
    Console.WriteLine("Hidden-owner tray menu remained open for 1000ms");
    return Math.Abs(corner.X-anchor.X)<=1&&Math.Abs(corner.Y-anchor.Y)<=1?0:1;
@@ -114,6 +149,10 @@ internal static class Program
  [DllImport("user32.dll")] static extern uint GetDpiForWindow(nint h);
  [DllImport("user32.dll")] static extern nint GetForegroundWindow();
  [DllImport("user32.dll")] static extern bool SetForegroundWindow(nint h);
+ [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(nint h,out uint pid);
+ [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+ [DllImport("user32.dll")] static extern bool AttachThreadInput(uint source,uint target,bool attach);
+ [DllImport("user32.dll")] static extern bool ShowWindow(nint window,int command);
  sealed class TestWindow:IDisposable {
   public LanDeviceMonitor.MainWindow Window{get;}
   public TestWindow(){Window=(LanDeviceMonitor.MainWindow)Activator.CreateInstance(typeof(LanDeviceMonitor.MainWindow),BindingFlags.NonPublic|BindingFlags.Instance,null,[new LanDeviceMonitor.Services.NotificationService(),true],null)!;Window.ShowActivated=true;Window.ShowInTaskbar=false;Window.Opacity=.01;}

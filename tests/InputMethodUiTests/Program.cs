@@ -32,7 +32,7 @@ internal static class Program
             ("list dividers keep constant coverage through fractional scrolling",DividerScrollStability),
             ("caption uses body TextBlock rendering and genuine Regular face",BrandCaptionAndVector),
             ("capital R aligns with the icon center", CaptionReferenceTests.Run),
-            ("tray commands and selectors share dropdown appearance", SharedDropdownAppearance),
+            ("tray tuning is isolated while selectors retain their appearance", SharedDropdownAppearance),
             ("tray menu anchors its visible lower left corner at the click", TrayPlacement),
             ("shutdown before runtime startup prevents a late native thread", RuntimeStartupCancellation)})
             try{test();Console.WriteLine("PASS "+name);}catch(Exception e){failed++;Console.Error.WriteLine("FAIL "+name+": "+e);}
@@ -70,13 +70,15 @@ internal static class Program
             "Selector popup stopped using the shared dropdown frame");
         var menu = new ContextMenu { Style = (Style)app.Resources["TrayDropdownMenuStyle"] };
         menu.ApplyTemplate();
-        Require(VisualTreeHelper.GetChild(menu, 0) is ContentControl traySurface && ReferenceEquals(traySurface.Template, shared),
-            "Tray menu frame differs from the selector frame");
+        Require(VisualTreeHelper.GetChild(menu, 0) is ContentControl traySurface &&
+            ReferenceEquals(traySurface.Template, app.Resources["TrayMenuSurfaceTemplate"]) &&
+            !ReferenceEquals(traySurface.Template, shared),
+            "Tray-specific tuning must not change the selector frame");
         var itemBase = (Style)app.Resources["DropdownItemBaseStyle"];
         Require(ReferenceEquals(combo.ItemContainerStyle.BasedOn, itemBase) &&
             ReferenceEquals(menu.ItemContainerStyle.BasedOn, itemBase), "Menu entries no longer share dropdown typography and motion");
-        Require(menu.FontFamily.Source == combo.FontFamily.Source && menu.FontSize == combo.FontSize &&
-            menu.FontWeight == combo.FontWeight, "Tray typography differs from selector typography");
+        Require(menu.FontFamily.Source == combo.FontFamily.Source && menu.FontSize == 13.5 && combo.FontSize == 14 &&
+            menu.FontWeight == combo.FontWeight, "Tray tuning changed the selector typography");
         var source = System.Xml.Linq.XDocument.Load(Path.Combine(AppContext.BaseDirectory, "WindowTemplates.xaml"));
         Require(!source.Descendants().Any(e => (string?)e.Attribute("MouseRightButtonUp") == "TrayTitleMenu"),
             "Title bar still exposes the tray menu");

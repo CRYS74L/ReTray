@@ -44,7 +44,7 @@ public partial class MainPage : UserControl
     public MainPage()
     {
         InitializeComponent(); DataContext = Vm;
-        VersionLink.Inlines.Add($"v{typeof(MainPage).Assembly.GetName().Version!.ToString(3)}");
+        VersionLink.Inlines.Add(LanDeviceMonitor.MainWindow.GetDisplayVersion());
         VersionToolTip.PlacementTarget = VersionText;
         VersionToolTip.CustomPopupPlacementCallback = PlaceVersionToolTip;
         ThemeChoice.Items.Add("跟随系统"); ThemeChoice.Items.Add("浅色"); ThemeChoice.Items.Add("深色"); ThemeChoice.SelectedIndex = 0;

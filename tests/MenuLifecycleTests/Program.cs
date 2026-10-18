@@ -11,6 +11,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using ReTray_App.Controls;
 using System.Windows.Input;
+using System.Windows.Documents;
 using System.Text.Json.Nodes;
 internal static class Program
 {
@@ -33,6 +34,24 @@ internal static class Program
    app.Resources=(ResourceDictionary)XamlReader.Parse(resources.ToString());
    LanDeviceMonitor.Services.ThemeService.Apply("Dark");
    using var fixtureOwner=new TestWindow();var fixture=fixtureOwner.Window;fixture.Show();Pump(80);
+   var expectedVersion=args.SkipWhile(a=>a!="--expected-version").Skip(1).FirstOrDefault() ??
+       typeof(ReTray_App.MainPage).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion;
+   var versionPage=new ReTray_App.MainPage();
+   var versionLink=(Hyperlink)versionPage.FindName("VersionLink");
+   var displayedVersion=new TextRange(versionLink.ContentStart,versionLink.ContentEnd).Text;
+   if(displayedVersion!="v"+expectedVersion)
+       throw new InvalidOperationException($"Settings version was truncated: expected v{expectedVersion}, actual {displayedVersion}");
+   Console.WriteLine($"Settings version={displayedVersion}");
+   ((LanDeviceMonitor.Controls.SegmentedControl)versionPage.FindName("Navigation")).SelectedIndex=2;
+   foreach(double pageWidth in new[]{364d,288d}) {
+       versionPage.Measure(new Size(pageWidth,640));versionPage.Arrange(new Rect(0,0,pageWidth,640));versionPage.UpdateLayout();
+       var versionText=(TextBlock)versionPage.FindName("VersionText");
+       var versionInk=new FormattedText(displayedVersion,System.Globalization.CultureInfo.CurrentUICulture,
+           versionText.FlowDirection,new Typeface(versionText.FontFamily,versionText.FontStyle,versionText.FontWeight,versionText.FontStretch),
+           versionText.FontSize,Brushes.Black,VisualTreeHelper.GetDpi(versionText).PixelsPerDip);
+       if(versionText.ActualWidth+.1<versionInk.WidthIncludingTrailingWhitespace)
+           throw new InvalidOperationException($"Settings version is clipped at page width {pageWidth}");
+   }
    var hook=typeof(LanDeviceMonitor.MainWindow).GetMethod("MainWindowWindowProcedure",BindingFlags.NonPublic|BindingFlags.Instance)!;
    foreach(int message in new[]{0xA4,0xA5,0xA6}) {
     object[] parameters=[new WindowInteropHelper(fixture).Handle,message,(nint)2,(nint)0,false];
@@ -61,21 +80,21 @@ internal static class Program
    double left=origin.X+ink.OverhangLeading,right=surface.ActualWidth-origin.X-ink.Width-ink.OverhangTrailing;
    Console.WriteLine($"Longest menu text={text.Text}, left={left:F3}, right={right:F3}");
    // Compare visible ink, including the per-label bearing correction, against
-   // the approved equal 2 DIP panel padding plus the border and text insets.
-   if(Math.Abs(left-14.5)>.05 || Math.Abs(right-14.5)>.05)
+   // the approved equal 3 DIP panel padding plus the border and text insets.
+   if(Math.Abs(left-15.5)>.05 || Math.Abs(right-15.5)>.05)
        throw new InvalidOperationException("Tray menu does not preserve the approved equal ink insets");
-   if(surface is not Border plate || plate.Padding!=new Thickness(2) ||
-       plate.BorderThickness!=new Thickness(1.5) || plate.CornerRadius!=new CornerRadius(15.75))
+   if(surface is not Border plate || plate.Padding!=new Thickness(3) ||
+       plate.BorderThickness!=new Thickness(1.5) || plate.CornerRadius!=new CornerRadius(19))
        throw new InvalidOperationException("Tray plate differs from the approved dimensions");
-   if(Math.Abs(surface.ActualHeight-97)>.05 || Math.Abs(surface.ActualWidth-80.03825)>.1)
-       throw new InvalidOperationException("Tray plate is not the approved auto-sized 80.03825 x 97 DIP");
+   if(Math.Abs(surface.ActualHeight-96)>.05 || Math.Abs(surface.ActualWidth-82.03825)>.1)
+       throw new InvalidOperationException("Tray plate is not the approved auto-sized 82.03825 x 96 DIP");
    foreach(var item in menu.Items.Cast<MenuItem>()) {
-       if(item.FontSize!=12.75 || item.Height!=30 || item.Margin!=new Thickness(0))
+       if(item.FontSize!=12.75 || item.Height!=29 || item.Margin!=new Thickness(0))
            throw new InvalidOperationException("Tray item typography or spacing differs from the approved tuning");
        var label=Descendants<TextBlock>(item).Single();
        var labelOrigin=label.TranslatePoint(new Point(),item);
-       if(Math.Abs(labelOrigin.Y+label.ActualHeight/2-14)>.05)
-           throw new InvalidOperationException("Tray label lost its -1 DIP vertical offset");
+       if(Math.Abs(labelOrigin.Y+label.ActualHeight/2-14.5)>.05)
+           throw new InvalidOperationException("Tray label is no longer vertically centered");
    }
    var target=menu.PlacementTarget;
    Console.WriteLine($"menuDpi={VisualTreeHelper.GetDpi(menu).DpiScaleX}, targetDpi={VisualTreeHelper.GetDpi(target).DpiScaleX}, menuHWNDDpi={GetDpiForWindow(source.Handle)}, targetHWNDDpi={GetDpiForWindow(((HwndSource)PresentationSource.FromVisual(target)!).Handle)}");

@@ -13,7 +13,7 @@ $candidates=@()
 foreach($parent in @($publish,$dist)) {
     if(!(Test-Path -LiteralPath $parent)){continue}
     foreach($directory in Get-ChildItem -LiteralPath $parent -Directory) {
-        if($directory.Name -notmatch '^(\d+\.\d+\.\d+)(?:-origin[A-Za-z0-9.-]*)?$'){continue}
+        if($directory.Name -notmatch '^(\d+\.\d+\.\d+)(?:-(?:dev|alpha|beta|rc)\.\d+)?(?:-origin[A-Za-z0-9.-]*)?$'){continue}
         if($directory.Attributes -band [IO.FileAttributes]::ReparsePoint){continue}
         $version=[Version]$Matches[1]
         $complete=if($parent -eq $publish) {

@@ -19,6 +19,9 @@
     <TrayProductDirectory>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\..\..'))</TrayProductDirectory>
     <TraySharedSourceDirectory>$(TrayProductDirectory)\ui\ReTray.App</TraySharedSourceDirectory>
     <Version>$([System.IO.File]::ReadAllText('$(TrayProductDirectory)\VERSION').Trim())</Version>
+    <NumericVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(Version)', '[-+].*$', ''))</NumericVersion>
+    <AssemblyVersion>$(NumericVersion).0</AssemblyVersion>
+    <FileVersion>$(NumericVersion).0</FileVersion>
     <InformationalVersion>$(Version)</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <DefineConstants>$(DefineConstants);TRAY_WPF</DefineConstants>

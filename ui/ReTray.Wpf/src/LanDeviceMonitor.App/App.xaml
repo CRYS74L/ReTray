@@ -407,32 +407,30 @@
                  dropdowns continue to use DropdownSurfaceTemplate unchanged. -->
             <ControlTemplate x:Key="TrayMenuSurfaceTemplate" TargetType="ContentControl">
                 <Grid>
-                    <Border Margin="12,6,12,22" Background="{DynamicResource StudioSurfaceBrush}" CornerRadius="15.75" IsHitTestVisible="False">
+                    <Border Margin="12,6,12,22" Background="{DynamicResource StudioSurfaceBrush}" CornerRadius="19" IsHitTestVisible="False">
                         <Border.Effect><DropShadowEffect BlurRadius="22" ShadowDepth="6" Direction="270" Opacity="0.07" Color="Black"/></Border.Effect>
                     </Border>
                     <!-- A normal Border preserves the requested fractional 1.5
                          DIP outline instead of rounding it to a device pixel. -->
                     <Border x:Name="DropdownSurface" Margin="12,6,12,22"
                             Background="{DynamicResource StudioSurfaceBrush}" BorderBrush="{DynamicResource InputBorderBrush}"
-                            BorderThickness="1.5" CornerRadius="15.75" Padding="2">
+                            BorderThickness="1.5" CornerRadius="19" Padding="3">
                         <ContentPresenter/>
                     </Border>
                 </Grid>
             </ControlTemplate>
             <Style x:Key="TrayCommandItemStyle" TargetType="MenuItem" BasedOn="{StaticResource DropdownItemBaseStyle}">
-                <Setter Property="Height" Value="30"/><Setter Property="FontSize" Value="12.75"/><Setter Property="Padding" Value="11,0"/>
+                <Setter Property="Height" Value="29"/><Setter Property="FontSize" Value="12.75"/><Setter Property="Padding" Value="11,0"/>
                 <Setter Property="Margin" Value="0"/>
                 <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuItem">
                     <Grid x:Name="StudioRoot">
-                        <!-- Radius 40 clamps to a capsule at a 30 DIP row height;
+                        <!-- Radius 40 clamps to a capsule at a 29 DIP row height;
                              StudioControlMotion maintains that capsule on resize. -->
                         <controls:RoundedCardBorder x:Name="StudioSurface" CornerRadius="40"/>
                         <Grid Margin="{TemplateBinding Padding}">
                             <TextBlock Text="{TemplateBinding Header}" Style="{StaticResource BodyTextStyle}"
                                        FontFamily="{TemplateBinding FontFamily}" FontSize="{TemplateBinding FontSize}"
-                                       FontWeight="{TemplateBinding FontWeight}" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center">
-                                <TextBlock.RenderTransform><TranslateTransform Y="-1"/></TextBlock.RenderTransform>
-                            </TextBlock>
+                                       FontWeight="{TemplateBinding FontWeight}" Foreground="{TemplateBinding Foreground}" VerticalAlignment="Center"/>
                         </Grid>
                     </Grid>
                 </ControlTemplate></Setter.Value></Setter>

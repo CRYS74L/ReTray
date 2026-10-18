@@ -2,6 +2,8 @@ param([ValidateSet('InputMethodLiveTests','CoreTests','BitmapTests','ProcessIden
 $ErrorActionPreference='Stop'
 $productRoot=$PSScriptRoot
 $projectVersion=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
+if($projectVersion -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$'){throw 'VERSION must contain a semantic version'}
+$numericVersion=$projectVersion -replace '[-+].*$',''
 $workspaceBase=Split-Path -Parent (Split-Path -Parent $productRoot)
 $clang=Join-Path $workspaceBase '【Common】\LLVM-MinGW\llvm-mingw-20260922-ucrt-x86_64\bin\clang++.exe'
 if (!(Test-Path -LiteralPath $clang)) { $clang=(Get-Command clang++.exe -ErrorAction Stop).Source }
@@ -15,7 +17,7 @@ $commonArgs+=@('-include',(Join-Path $outputRoot 'product_version.h'))
 if ($Target -in @('Agent','Runtime','Probe')) {
     & (Join-Path $productRoot 'packaging/build-assets.ps1')
     $brandHeader=@(
-        ('#define RETRAY_FILE_VERSION '+($projectVersion.Replace('.',','))+',0'),
+        ('#define RETRAY_FILE_VERSION '+($numericVersion.Replace('.',','))+',0'),
         ('#define RETRAY_VERSION_TEXT "'+$projectVersion+'\0"'),
         ('#define RETRAY_ICON_PATH "'+((Join-Path $productRoot 'ui/ReTray.App/Assets/AppIcon.ico').Replace('\','/'))+'"')
     )

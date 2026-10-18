@@ -4,7 +4,10 @@
     <Company>CRYS74L</Company>
     <PackageLicenseExpression>GPL-3.0-only</PackageLicenseExpression>
     <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</Version>
-    <AssemblyVersion>$(Version).0</AssemblyVersion>
-    <FileVersion>$(Version).0</FileVersion>
+    <NumericVersion>$([System.Text.RegularExpressions.Regex]::Replace('$(Version)', '[-+].*$', ''))</NumericVersion>
+    <AssemblyVersion>$(NumericVersion).0</AssemblyVersion>
+    <FileVersion>$(NumericVersion).0</FileVersion>
+    <InformationalVersion>$(Version)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 </Project>

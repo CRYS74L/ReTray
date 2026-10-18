@@ -4,6 +4,7 @@ $productRoot=Split-Path $PSScriptRoot -Parent
 $publishRoot=[System.IO.Path]::GetFullPath((Join-Path $productRoot 'publish'))
 $distRoot=[System.IO.Path]::GetFullPath((Join-Path $productRoot 'dist'))
 $version=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
+$numericVersion=$version -replace '[-+].*$',''
 $activePaths=@(Get-Process -Name 'ReTray','ReTray.App','ReTray.Agent' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Path)
 # A loose MSIX registration points at its build directory even while the app is
 # stopped. Never remove that directory just because no process is using it.
@@ -21,7 +22,7 @@ try {
     return
 }
 $copies=@(Get-ChildItem -LiteralPath $publishRoot -Directory | Where-Object {$_.Name -match '^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$'})
-$previous=$copies | Where-Object {[version]($_.Name.Split('-')[0]) -lt [version]$version} |
+$previous=$copies | Where-Object {[version]($_.Name.Split('-')[0]) -lt [version]$numericVersion} |
     Sort-Object @{Expression={[version]($_.Name.Split('-')[0])};Descending=$true}, @{Expression={$_.LastWriteTime};Descending=$true} |
     Select-Object -First 1
 $previousVersion=if($previous){$previous.Name.Split('-')[0]}else{''}
@@ -47,6 +48,6 @@ foreach($copy in $copies) {
     Remove-GeneratedCopy $copy.FullName $publishRoot
 }
 foreach($copy in @(Get-ChildItem -LiteralPath $distRoot -Directory | Where-Object {$_.Name -match '^\d+\.\d+\.\d+$'})) {
-    if($copy.Name -in @($version,$previousVersion)){continue}
+    if($copy.Name -in @($numericVersion,$previousVersion)){continue}
     Remove-GeneratedCopy $copy.FullName $distRoot
 }

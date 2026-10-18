@@ -133,11 +133,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         var informationalVersion = typeof(App).Assembly
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
             ?.InformationalVersion;
-        var cleanVersion = informationalVersion?
-            .Split('+', 2, StringSplitOptions.TrimEntries)[0];
-        return string.IsNullOrWhiteSpace(cleanVersion)
+        return string.IsNullOrWhiteSpace(informationalVersion)
             ? "未知"
-            : $"v{cleanVersion}";
+            : $"v{informationalVersion}";
     }
 
     internal static int GetDeviceFilterTransitionDurationMilliseconds() => 480;

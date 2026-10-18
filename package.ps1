@@ -2,7 +2,7 @@ param([switch]$SkipNative,[string]$BuildSuffix='-portable')
 $ErrorActionPreference='Stop'
 $productRoot=$PSScriptRoot
 $version=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
-if($version -notmatch '^\d+\.\d+\.\d+$'){throw 'VERSION must contain a three-part numeric version'}
+if($version -notmatch '^\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$'){throw 'VERSION must contain a semantic version'}
 if($BuildSuffix -notmatch '^[A-Za-z0-9.-]*$'){throw 'Invalid build suffix'}
 $common=Join-Path (Split-Path (Split-Path $productRoot -Parent) -Parent) '【Common】'
 $dotnet=Join-Path $common 'DotNet\sdk-10\dotnet.exe'

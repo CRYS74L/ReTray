@@ -146,12 +146,32 @@ internal static class Program
    for(int i=0;i<20&&!escapedClosed;i++)Pump(20);
    localMethod.Invoke(fixture,[own,action,fixture]);Pump(100);
    localMenu=(ContextMenu)typeof(TrayCommandMenu).GetField("menu",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(localOwner)!;
+   bool outsideFullyClosed=false;localMenu.Closed+=(_,_)=>outsideFullyClosed=true;
    localMenu.RaiseEvent(new MouseButtonEventArgs(Mouse.PrimaryDevice,Environment.TickCount,MouseButton.Left){RoutedEvent=Mouse.PreviewMouseDownOutsideCapturedElementEvent});
    Pump(50);if(localMenu.IsOpen)throw new InvalidOperationException("Outside click did not dismiss the menu");
+   for(int i=0;i<100&&!outsideFullyClosed;i++)Pump(20);
+   if(!outsideFullyClosed)throw new InvalidOperationException("Outside-click menu did not complete its close/focus transition");
    Console.WriteLine("Caption right clicks suppressed; own menu Escape/outside dismissal passed");
    // Match the product's native hide lifecycle: WPF's visual stays visible
    // while only its HWND is hidden. Window.Hide tears that visual down.
-   Pump(250);ShowWindow(new WindowInteropHelper(fixture).Handle,0);Pump(50);
+   Pump(250);var fixtureHwnd=new WindowInteropHelper(fixture).Handle;
+   ShowWindow(fixtureHwnd,0);
+   // Hiding a background-launched window can leave it thread-active. A real
+   // tray-resident owner is already inactive. Use a real, offscreen native
+   // activation target to complete that transition; SetActiveWindow(NULL)
+   // does not reliably deactivate a background input queue on Windows.
+   var handoffParameters=new HwndSourceParameters("ReTray.Tests.FocusHandoff") {
+       WindowStyle=unchecked((int)0x80000000),ExtendedWindowStyle=0x80,
+       Width=1,Height=1,PositionX=-32000,PositionY=-32000
+   };
+   using(var handoff=new HwndSource(handoffParameters)) {
+       handoff.RootVisual=new Border();ShowWindow(handoff.Handle,4);
+       SetActiveWindow(handoff.Handle);Pump(50);
+   }
+   Pump(50);
+   Console.WriteLine($"Hidden-owner fixture: ownerActive={fixture.IsActive}, threadActive={GetActiveWindow()}");
+   if(fixture.IsActive || IsWindowVisible(fixtureHwnd))
+       throw new InvalidOperationException("The hidden-owner fixture has not completed native deactivation");
    var hiddenOwner=new TrayCommandMenu();
    // Native tray requests are marshalled onto the WPF dispatcher rather than
    // opened synchronously inside the previous menu's close/focus transition.
@@ -175,6 +195,9 @@ internal static class Program
  [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
  [DllImport("user32.dll")] static extern bool AttachThreadInput(uint source,uint target,bool attach);
  [DllImport("user32.dll")] static extern bool ShowWindow(nint window,int command);
+ [DllImport("user32.dll")] static extern nint GetActiveWindow();
+ [DllImport("user32.dll")] static extern nint SetActiveWindow(nint window);
+ [DllImport("user32.dll")] static extern bool IsWindowVisible(nint window);
  sealed class TestWindow:IDisposable {
   public LanDeviceMonitor.MainWindow Window{get;}
   public TestWindow(){Window=(LanDeviceMonitor.MainWindow)Activator.CreateInstance(typeof(LanDeviceMonitor.MainWindow),BindingFlags.NonPublic|BindingFlags.Instance,null,[new LanDeviceMonitor.Services.NotificationService(),true],null)!;Window.ShowActivated=true;Window.ShowInTaskbar=false;Window.Opacity=.01;}

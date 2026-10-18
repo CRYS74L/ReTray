@@ -414,17 +414,17 @@
                          DIP outline instead of rounding it to a device pixel. -->
                     <Border x:Name="DropdownSurface" Margin="12,6,12,22"
                             Background="{DynamicResource StudioSurfaceBrush}" BorderBrush="{DynamicResource InputBorderBrush}"
-                            BorderThickness="1.5" CornerRadius="15.75" Padding="1">
+                            BorderThickness="1.5" CornerRadius="15.75" Padding="2">
                         <ContentPresenter/>
                     </Border>
                 </Grid>
             </ControlTemplate>
             <Style x:Key="TrayCommandItemStyle" TargetType="MenuItem" BasedOn="{StaticResource DropdownItemBaseStyle}">
-                <Setter Property="Height" Value="28"/><Setter Property="FontSize" Value="13.5"/><Setter Property="Padding" Value="10,0"/>
+                <Setter Property="Height" Value="30"/><Setter Property="FontSize" Value="13"/><Setter Property="Padding" Value="10,0"/>
                 <Setter Property="Margin" Value="0"/>
                 <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="MenuItem">
                     <Grid x:Name="StudioRoot">
-                        <!-- Radius 40 clamps to a capsule at a 28 DIP row height;
+                        <!-- Radius 40 clamps to a capsule at a 30 DIP row height;
                              StudioControlMotion maintains that capsule on resize. -->
                         <controls:RoundedCardBorder x:Name="StudioSurface" CornerRadius="40"/>
                         <Grid Margin="{TemplateBinding Padding}">
@@ -436,7 +436,7 @@
                 </ControlTemplate></Setter.Value></Setter>
             </Style>
             <Style x:Key="TrayDropdownMenuStyle" TargetType="ContextMenu">
-                <Setter Property="FontFamily" Value="{StaticResource AppTextFont}"/><Setter Property="FontSize" Value="13.5"/>
+                <Setter Property="FontFamily" Value="{StaticResource AppTextFont}"/><Setter Property="FontSize" Value="13"/>
                 <Setter Property="Background" Value="Transparent"/><Setter Property="BorderThickness" Value="0"/>
                 <Setter Property="Padding" Value="0"/><Setter Property="MinWidth" Value="0"/>
                 <Setter Property="HasDropShadow" Value="False"/><Setter Property="UseLayoutRounding" Value="False"/>

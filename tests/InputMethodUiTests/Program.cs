@@ -77,7 +77,7 @@ internal static class Program
         var itemBase = (Style)app.Resources["DropdownItemBaseStyle"];
         Require(ReferenceEquals(combo.ItemContainerStyle.BasedOn, itemBase) &&
             ReferenceEquals(menu.ItemContainerStyle.BasedOn, itemBase), "Menu entries no longer share dropdown typography and motion");
-        Require(menu.FontFamily.Source == combo.FontFamily.Source && menu.FontSize == 13.5 && combo.FontSize == 14 &&
+        Require(menu.FontFamily.Source == combo.FontFamily.Source && menu.FontSize == 13 && combo.FontSize == 14 &&
             menu.FontWeight == combo.FontWeight, "Tray tuning changed the selector typography");
         var source = System.Xml.Linq.XDocument.Load(Path.Combine(AppContext.BaseDirectory, "WindowTemplates.xaml"));
         Require(!source.Descendants().Any(e => (string?)e.Attribute("MouseRightButtonUp") == "TrayTitleMenu"),

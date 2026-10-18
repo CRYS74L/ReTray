@@ -14,7 +14,7 @@ using System.Windows.Input;
 using System.Text.Json.Nodes;
 internal static class Program
 {
- [STAThread] static int Main() {
+ [STAThread] static int Main(string[] args) {
   try {
    var app=new Application{ShutdownMode=ShutdownMode.OnExplicitShutdown};
    var xml=XDocument.Load(Path.Combine(AppContext.BaseDirectory,"ApplicationResources.xaml"));
@@ -61,20 +61,20 @@ internal static class Program
    double left=origin.X+ink.OverhangLeading,right=surface.ActualWidth-origin.X-ink.Width-ink.OverhangTrailing;
    Console.WriteLine($"Longest menu text={text.Text}, left={left:F3}, right={right:F3}");
    // Compare visible ink, including the per-label bearing correction, against
-   // the approved equal 1 DIP panel padding plus the border and text insets.
-   if(Math.Abs(left-12.5)>.05 || Math.Abs(right-12.5)>.05)
+   // the approved equal 2 DIP panel padding plus the border and text insets.
+   if(Math.Abs(left-13.5)>.05 || Math.Abs(right-13.5)>.05)
        throw new InvalidOperationException("Tray menu does not preserve the approved equal ink insets");
-   if(surface is not Border plate || plate.Padding!=new Thickness(1) ||
+   if(surface is not Border plate || plate.Padding!=new Thickness(2) ||
        plate.BorderThickness!=new Thickness(1.5) || plate.CornerRadius!=new CornerRadius(15.75))
        throw new InvalidOperationException("Tray plate differs from the approved dimensions");
-   if(Math.Abs(surface.ActualHeight-89)>.05 || Math.Abs(surface.ActualWidth-79.0405)>.1)
-       throw new InvalidOperationException("Tray plate is not the approved auto-sized 79.0405 x 89 DIP");
+   if(Math.Abs(surface.ActualHeight-97)>.05 || Math.Abs(surface.ActualWidth-79.039)>.1)
+       throw new InvalidOperationException("Tray plate is not the approved auto-sized 79.039 x 97 DIP");
    foreach(var item in menu.Items.Cast<MenuItem>()) {
-       if(item.FontSize!=13.5 || item.Height!=28 || item.Margin!=new Thickness(0))
+       if(item.FontSize!=13 || item.Height!=30 || item.Margin!=new Thickness(0))
            throw new InvalidOperationException("Tray item typography or spacing differs from the approved tuning");
        var label=Descendants<TextBlock>(item).Single();
        var labelOrigin=label.TranslatePoint(new Point(),item);
-       if(Math.Abs(labelOrigin.Y+label.ActualHeight/2-14)>.05)
+       if(Math.Abs(labelOrigin.Y+label.ActualHeight/2-15)>.05)
            throw new InvalidOperationException("Tray label is no longer vertically centered");
    }
    var target=menu.PlacementTarget;
@@ -88,6 +88,10 @@ internal static class Program
    bool fullyClosed=false;menu.Closed+=(_,_)=>fullyClosed=true;
    menu.IsOpen=false;
    for(int i=0;i<20&&!fullyClosed;i++)Pump(20);
+   if(args.Contains("--appearance-only")) {
+       Console.WriteLine("Appearance, typography, ink insets and click-anchor checks passed; lifecycle scenarios were not selected");
+       return Math.Abs(corner.X-anchor.X)<=1&&Math.Abs(corner.Y-anchor.Y)<=1?0:1;
+   }
    fixture.Activate();SetForegroundWindow(new WindowInteropHelper(fixture).Handle);fixture.Focus();Pump(50);
    if(GetForegroundWindow()!=new WindowInteropHelper(fixture).Handle) {
        // A test launched by a background terminal may lack foreground rights.
@@ -128,8 +132,7 @@ internal static class Program
    Console.WriteLine("Caption right clicks suppressed; own menu Escape/outside dismissal passed");
    // Match the product's native hide lifecycle: WPF's visual stays visible
    // while only its HWND is hidden. Window.Hide tears that visual down.
-   Pump(250);
-   ShowWindow(new WindowInteropHelper(fixture).Handle,0);Pump(50);
+   Pump(250);ShowWindow(new WindowInteropHelper(fixture).Handle,0);Pump(50);
    var hiddenOwner=new TrayCommandMenu();
    // Native tray requests are marshalled onto the WPF dispatcher rather than
    // opened synchronously inside the previous menu's close/focus transition.

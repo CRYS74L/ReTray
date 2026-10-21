@@ -453,6 +453,88 @@ int main(int argc, char** argv) {
         other.asset = L"C:\\Assets\\two.ico"; rules[PersistentKey(other.selector)] = other;
         REQUIRE(ResolveRule(rules, r, {r}).ambiguous);
     });
+    test("Rule.PackagePathDerivedGuidSurvivesUpgradeAndMove", [] {
+        NativeIconRecord r;
+        r.executable = L"C:\\Program Files\\WindowsApps\\Example.App_1.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
+        r.identity.hasGuid = true;
+        CLSIDFromString(L"{2F31B3F1-DEAC-9960-2888-D840F013C50C}", &r.identity.guid);
+        IconRule saved; saved.selector = SelectorFor(r); saved.visibility = 1;
+        saved.asset = L"C:\\Assets\\saved.ico";
+        auto key = PersistentKey(saved.selector);
+        std::unordered_map<std::string, IconRule> rules{{key, saved}};
+        for (const auto& [path, guid] : {
+            std::pair{L"C:\\Program Files\\WindowsApps\\Example.App_2.0.0.0_x64__8wekyb3d8bbwe\\App.exe",
+                      L"{CCC6E893-8F93-4866-8E30-2EF39FE1ACAD}"},
+            std::pair{L"D:\\WindowsApps\\Example.App_3.0.0.0_arm64__8wekyb3d8bbwe\\App.exe",
+                      L"{997B8602-91D2-DB65-FDCD-F8D454531E73}"}}) {
+            r.executable = path; CLSIDFromString(guid, &r.identity.guid);
+            REQUIRE(Matches(saved.selector, r));
+            REQUIRE(ResolveRule(rules, r).rule);
+            auto result = ResolveRule(rules, r, {r});
+            REQUIRE(result.rule && result.reassociated && !result.provisional && !result.ambiguous);
+            REQUIRE(result.rule->visibility == 1 && result.rule->asset == saved.asset);
+            REQUIRE(PersistentKey(result.rule->selector) == key);
+        }
+        // Newly saved original spelling works too; legacy normalized keys stay stable.
+        auto original = saved;
+        original.selector.executable = L"C:\\Program Files\\WindowsApps\\Example.App_1.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
+        REQUIRE(Matches(original.selector, r));
+        REQUIRE(PersistentKey(original.selector) == key);
+    });
+    test("Rule.PackagePathGuidDuplicatesRequireIdenticalPolicies", [] {
+        NativeIconRecord r;
+        r.executable = L"C:\\Program Files\\WindowsApps\\Example.App_1.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
+        r.identity.hasGuid = true;
+        CLSIDFromString(L"{2F31B3F1-DEAC-9960-2888-D840F013C50C}", &r.identity.guid);
+        IconRule first; first.selector = SelectorFor(r); first.visibility = 1;
+        r.executable = L"C:\\Program Files\\WindowsApps\\Example.App_2.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
+        CLSIDFromString(L"{CCC6E893-8F93-4866-8E30-2EF39FE1ACAD}", &r.identity.guid);
+        auto second = first; second.selector = SelectorFor(r);
+        std::unordered_map<std::string, IconRule> rules{
+            {PersistentKey(first.selector), first}, {PersistentKey(second.selector), second}};
+        auto selected = ResolveRule(rules, r, {r});
+        REQUIRE(selected.rule && !selected.ambiguous && !ResolveRule(rules, r).ambiguous);
+        auto key = PersistentKey(selected.rule->selector);
+        // Selection does not depend on unordered_map iteration order.
+        rules.rehash(71);
+        REQUIRE(PersistentKey(ResolveRule(rules, r, {r}).rule->selector) == key);
+        for (int field = 0; field < 4; ++field) {
+            auto changed = second;
+            if (field == 0) changed.visibility = 0;
+            if (field == 1) changed.asset = L"C:\\Assets\\other.ico";
+            if (field == 2) changed.tip = L"Different tip";
+            if (field == 3) changed.hotkey = 123;
+            rules[PersistentKey(second.selector)] = changed;
+            REQUIRE(ResolveRule(rules, r, {r}).ambiguous);
+            REQUIRE(ResolveRule(rules, r).ambiguous);
+        }
+        second.visibility = 1; second.enabled = false;
+        rules[PersistentKey(second.selector)] = second;
+        REQUIRE(ResolveRule(rules, r, {r}).ambiguous);
+    });
+    test("Rule.PackagePathGuidNeverBroadensUnrelatedGuidRoles", [] {
+        NativeIconRecord r;
+        r.executable = L"C:\\Program Files\\WindowsApps\\Example.App_1.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
+        r.identity.hasGuid = true;
+        CLSIDFromString(L"{2F31B3F1-DEAC-9960-2888-D840F013C50C}", &r.identity.guid);
+        auto saved = SelectorFor(r);
+        r.executable = L"C:\\Program Files\\WindowsApps\\Example.App_2.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
+        // Named secondary H.NotifyIcon GUID, arbitrary GUID, and mismatched casing hash.
+        for (auto guid : {L"{8725F072-41B7-A078-C398-9C9241E95139}",
+                          L"{00000001-0000-0000-0000-000000000000}",
+                          L"{03C1522B-E4FE-FB41-0878-84645AE4718D}"}) {
+            CLSIDFromString(guid, &r.identity.guid);
+            REQUIRE(!Matches(saved, r));
+            IconRule rule; rule.selector = saved;
+            REQUIRE(!ResolveRule({{PersistentKey(saved), rule}}, r, {r}).rule);
+        }
+        CLSIDFromString(L"{CCC6E893-8F93-4866-8E30-2EF39FE1ACAD}", &r.identity.guid);
+        saved.guid.Data1++;
+        REQUIRE(!Matches(saved, r));
+        // Ordinary versioned folders never acquire package matching.
+        saved.executable = L"C:\\Apps\\Example.App_1.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
+        REQUIRE(!Matches(saved, r));
+    });
     test("Rule.MatchesRestartWithoutTooltipOrHandles", [] {
         NativeIconRecord r;
         r.executable = L"C:\\Example.exe";

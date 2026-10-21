@@ -225,8 +225,21 @@ std::string LegacyListBase(const RuleSelector& selector, const NativeIconRecord&
 }
 std::string DisplayBase(const NativeIconRecord& record) {
     auto found = ResolveCurrent(rules, record, ruleContext);
-    return found.rule && !found.rule->selector.hasGuid
-        ? LegacyListBase(found.rule->selector, record) : PersistentKey(SelectorFor(record));
+    if (!found.rule) return PersistentKey(SelectorFor(record));
+    return found.rule->selector.hasGuid ? PersistentKey(found.rule->selector)
+                                        : LegacyListBase(found.rule->selector, record);
+}
+std::unordered_set<std::string> RedundantPackageRules(const std::string& key) {
+    std::unordered_set<std::string> redundant;
+    auto selected = rules.find(key);
+    if (selected == rules.end()) return redundant;
+    for (const auto& record : ruleContext) {
+        if (!Matches(selected->second.selector, record)) continue;
+        for (const auto& [otherKey, other] : rules)
+            if (otherKey != key && EquivalentPackagePathPolicies(selected->second, other, record))
+                redundant.insert(otherKey);
+    }
+    return redundant;
 }
 RuleSelector ConfirmSelector(const RuleSelector& previous, const NativeIconRecord& record,
                              const std::vector<NativeIconRecord>& context) {
@@ -1282,7 +1295,9 @@ Json SetIconVisibility(const Json& data) {
     rule.inactiveSeconds = rule.unusedDays = 0;
     rule.enabled = true;
     auto stable = PersistentKey(rule.selector);
+    auto redundant = RedundantPackageRules(stable);
     auto updatedRules = rules;
+    for (const auto& duplicate : redundant) updatedRules.erase(duplicate);
     updatedRules[stable] = rule;
     struct Affected {
         BridgeIcon row;
@@ -1304,6 +1319,9 @@ Json SetIconVisibility(const Json& data) {
                             unchangedPolicy && (wasApplied || (!prior.rule && !row.managed))});
     }
     auto& list = settings["rules"];
+    for (auto it = list.begin(); it != list.end();)
+        if (redundant.contains(PersistentKey(ParseRule(*it).selector))) it = list.erase(it);
+        else ++it;
     auto existing = std::find_if(list.begin(), list.end(), [&](const auto& entry) {
         return PersistentKey(ParseRule(entry).selector) == stable;
     });
@@ -1612,9 +1630,11 @@ Json Handle(const Json& req) {
         for (const auto& entry : list) {
             auto rule = ParseRule(entry);
             auto key = PersistentKey(rule.selector);
+            auto redundant = RedundantPackageRules(key);
             auto& existing = settings["rules"];
             for (auto it = existing.begin(); it != existing.end();) {
-                if (PersistentKey(ParseRule(*it).selector) == key)
+                auto storedKey = PersistentKey(ParseRule(*it).selector);
+                if (storedKey == key || redundant.contains(storedKey))
                     it = existing.erase(it);
                 else
                     ++it;
@@ -1669,6 +1689,11 @@ Json Handle(const Json& req) {
             prior["selector"] = d.at("previousSelector");
             priorKey = PersistentKey(ParseRule(prior).selector);
         }
+        auto redundant = RedundantPackageRules(key);
+        if (!priorKey.empty()) {
+            auto previousDuplicates = RedundantPackageRules(priorKey);
+            redundant.insert(previousDuplicates.begin(), previousDuplicates.end());
+        }
         std::vector<std::string> previouslyLinked;
         for (const auto& row : rows) {
             auto prior = ResolveCurrent(rules, Record(row), ruleContext);
@@ -1679,6 +1704,7 @@ Json Handle(const Json& req) {
         }
         for (auto it = list.begin(); it != list.end();)
             if (PersistentKey(ParseRule(*it).selector) == key ||
+                redundant.contains(PersistentKey(ParseRule(*it).selector)) ||
                 (!preservePrevious && !priorKey.empty() && PersistentKey(ParseRule(*it).selector) == priorKey))
                 it = list.erase(it);
             else

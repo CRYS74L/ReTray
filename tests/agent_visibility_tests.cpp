@@ -326,6 +326,53 @@ void StoreUpgradeReappliesExistingPolicyWithoutRewritingSettings() {
         CHECK(visiblePolicy);
     }
 }
+void StorePathGuidUpgradeAndEditsPreservePolicy() {
+    for (int operation = 0; operation < 4; ++operation) {
+        ResetFixture();
+        auto& row = bridge.shared->icons[0];
+        row.identity.hasGuid = true;
+        wcscpy_s(row.executable, L"C:\\Program Files\\WindowsApps\\Example.App_1.0.0.0_x64__8wekyb3d8bbwe\\App.exe");
+        CLSIDFromString(L"{2F31B3F1-DEAC-9960-2888-D840F013C50C}", &row.identity.guid);
+        auto rule = ParseRule(settings["rules"][0]);
+        rule.selector = SelectorFor(Record(row)); rule.visibility = 1;
+        settings["rules"][0] = RuleJson(rule);
+        auto firstKey = PersistentKey(rule.selector);
+        wcscpy_s(row.executable, L"C:\\Program Files\\WindowsApps\\Example.App_2.0.0.0_x64__8wekyb3d8bbwe\\App.exe");
+        CLSIDFromString(L"{CCC6E893-8F93-4866-8E30-2EF39FE1ACAD}", &row.identity.guid);
+        auto duplicate = rule; duplicate.selector = SelectorFor(Record(row));
+        settings["rules"].push_back(RuleJson(duplicate));
+        auto original = settings["rules"];
+        CHECK(SaveSettings(settingsPath, settings)); LoadRules();
+        wcscpy_s(row.executable, L"D:\\WindowsApps\\Example.App_3.0.0.0_arm64__8wekyb3d8bbwe\\App.exe");
+        CLSIDFromString(L"{997B8602-91D2-DB65-FDCD-F8D454531E73}", &row.identity.guid);
+        row.identity.ownerCreatedAt++; row.registration++;
+        row.custom = row.managed = false;
+        bridge.shared->snapshotSequence += 2; Refresh(); Refresh();
+        CHECK(row.custom && row.managed && row.placement == 2);
+        CHECK(settings["rules"] == original);
+        CHECK(DisplayBase(Record(row)) == firstKey);
+        const auto catalog = CatalogJson();
+        for (const auto& item : catalog["icons"])
+            if (item["pid"] == row.identity.ownerPid) {
+                CHECK(item["visibility"] == 1 && item["identityReassociated"] == true);
+                CHECK(item["identityAmbiguous"] == false);
+            }
+        Json result;
+        auto edit = RuleJson(rule); edit["visibility"] = 0;
+        if (operation == 0) result = Call("icon.visibility", {{"key", TargetKey()}, {"visibility", 0}});
+        if (operation == 1) result = Call("rule.apply", {{"key", TargetKey()}, {"rule", edit}});
+        if (operation == 2) result = Call("rules.apply", {{"rules", Json::array({edit})}});
+        if (operation == 3) result = Call("rule.remove", {{"rule", RuleJson(rule)}});
+        CHECK(result.value("success", false) && result.value("saved", false));
+        Refresh(); Refresh();
+        CHECK(settings["rules"].size() == (operation == 3 ? 1 : 2));
+        auto resolved = ResolveCurrent(rules, Record(row), ruleContext);
+        CHECK(!resolved.ambiguous);
+        if (operation == 3) CHECK(!resolved.rule && !row.managed);
+        else CHECK(resolved.rule && resolved.rule->visibility == 0 && row.placement == 1);
+        CHECK(std::find(settings["rules"].begin(), settings["rules"].end(), original[1]) != settings["rules"].end());
+    }
+}
 void ImmediateVisibility() {
     ResetFixture(); auto original = settings["rules"][0];
     auto response = Call("icon.visibility", {{"key", TargetKey()}, {"visibility", 1}});
@@ -1204,6 +1251,7 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"configuration import defers own policy and retries only needed changes", ImportOwnPolicyIsDeferredAndRetriesOnlyWhenNeeded},
                             std::pair{"configuration import and explicit request wait limits are bounded", ImportAndExplicitRequestTimeoutsRemainBounded},
                             std::pair{"Store upgrades reapply existing policy without rewriting settings", StoreUpgradeReappliesExistingPolicyWithoutRewritingSettings},
+                            std::pair{"Store path GUID upgrades retain policy and edits consolidate duplicates", StorePathGuidUpgradeAndEditsPreservePolicy},
                             std::pair{"immediate visibility and no replay", ImmediateVisibility},
                             std::pair{"unrelated saves do not replay", UnrelatedSavesKeepRulesApplied},
                             std::pair{"explicit rule reapply retries selected icon", ExplicitRuleReapplyRetriesOnlySelectedIcon},

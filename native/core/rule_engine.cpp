@@ -3,6 +3,9 @@
 #include <cwctype>
 #include <objbase.h>
 #include <appmodel.h>
+#include <bcrypt.h>
+#include <cstring>
+#include <tuple>
 #include <unordered_set>
 namespace tray {
 static std::wstring Normalize(std::wstring text) {
@@ -55,6 +58,60 @@ static bool SameExecutable(const std::wstring& a, const std::wstring& b) {
     if (first == second) return true;
     auto identity = PackageExecutableIdentity(first);
     return !identity.empty() && identity == PackageExecutableIdentity(second);
+}
+static bool IsPathGuid(const GUID& guid, const std::wstring& path) {
+    // H.NotifyIcon 2.1.4: new Guid(SHA256(UTF8(ProcessPath + "_"))[0..16]).
+    auto input = path + L"_";
+    int size = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input.data(),
+        static_cast<int>(input.size()), nullptr, 0, nullptr, nullptr);
+    if (!size) return false;
+    std::vector<BYTE> bytes(size);
+    if (!WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, input.data(),
+        static_cast<int>(input.size()), reinterpret_cast<char*>(bytes.data()), size, nullptr, nullptr)) return false;
+    BYTE hash[32]{};
+    return BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0, bytes.data(), size,
+                      hash, sizeof(hash)) >= 0 && !std::memcmp(hash, &guid, sizeof(guid));
+}
+static bool PackagePathGuid(const RuleSelector& s, const NativeIconRecord& r) {
+    if (!s.hasGuid || !r.identity.hasGuid) return false;
+    auto saved = Normalize(s.executable), current = Normalize(r.executable);
+    auto identity = PackageExecutableIdentity(saved);
+    if (identity.empty() || identity != PackageExecutableIdentity(current) ||
+        !IsPathGuid(r.identity.guid, r.executable)) return false;
+    if (IsPathGuid(s.guid, s.executable)) return true;
+    // Old selectors were saved in lowercase. Recover their spelling from the
+    // running image; only the validated package version/architecture and root
+    // may differ. Never relax an arbitrary GUID or infer a role from its tooltip.
+    auto packageStart = [](const std::wstring& path) {
+        return path.substr(2).starts_with(L"\\program files\\windowsapps\\") ? size_t(29) : size_t(15);
+    };
+    auto oldBegin = packageStart(saved), newBegin = packageStart(current);
+    auto oldEnd = saved.find(L'\\', oldBegin), newEnd = current.find(L'\\', newBegin);
+    auto oldName = saved.substr(oldBegin, oldEnd - oldBegin);
+    auto newName = r.executable.substr(newBegin, newEnd - newBegin);
+    auto oldFirst = oldName.find(L'_'), oldLast = oldName.rfind(L'_');
+    auto newFirst = newName.find(L'_'), newLast = newName.rfind(L'_');
+    auto restored = std::wstring(1, static_cast<wchar_t>(towupper(saved[0]))) +
+        (oldBegin == newBegin ? r.executable.substr(1, newBegin - 1)
+                             : oldBegin == 29 ? L":\\Program Files\\WindowsApps\\" : L":\\WindowsApps\\");
+    restored += newName.substr(0, newFirst) + oldName.substr(oldFirst, oldLast - oldFirst) +
+                newName.substr(newLast) + r.executable.substr(newEnd);
+    return Normalize(restored) == saved && IsPathGuid(s.guid, restored);
+}
+static bool SameGuid(const RuleSelector& s, const NativeIconRecord& r) {
+    return IsEqualGUID(s.guid, r.identity.guid) || PackagePathGuid(s, r);
+}
+bool EquivalentPackagePathPolicies(const IconRule& a, const IconRule& b, const NativeIconRecord& r) {
+    if (!PackagePathGuid(a.selector, r) || !PackagePathGuid(b.selector, r)) return false;
+    auto policy = [](const IconRule& v) {
+        return std::tie(v.selector.windowClass, v.selector.windowClassIsIdentity, v.selector.tipMode,
+            v.selector.tipPattern, v.selector.ownerPid, v.selector.ownerCreatedAt,
+            v.visibility, v.location, v.order, v.asset, v.replacementAsset, v.tip, v.assetIndex,
+            v.replacementAssetIndex, v.enabled, v.menuVisible, v.alwaysShow, v.inactiveSeconds,
+            v.unusedDays, v.hotkey, v.hotkeyAction, v.newState, v.swapButtons,
+            v.baselineFingerprint, v.baselineWidth, v.baselineHeight);
+    };
+    return policy(a) == policy(b);
 }
 RuleSelector SelectorFor(const NativeIconRecord& r) {
     RuleSelector s;
@@ -117,7 +174,7 @@ bool Matches(const RuleSelector& s, const NativeIconRecord& r) {
     if (s.executable.empty() || !SameExecutable(s.executable, r.executable) ||
         (!s.windowClass.empty() && s.windowClass != r.windowClass) ||
         s.hasGuid != r.identity.hasGuid ||
-        !(s.hasGuid ? IsEqualGUID(s.guid, r.identity.guid)
+        !(s.hasGuid ? SameGuid(s, r)
                     : s.matchUid ? s.uid == r.identity.uid : !s.windowClass.empty()))
         return false;
     if (s.ownerPid &&
@@ -201,8 +258,10 @@ RuleResolution ResolveRule(const std::unordered_map<std::string, IconRule>& rule
         if (rank > best) {
             best = rank;
             result = {&rule, false};
-        } else if (rank == best)
-            result.ambiguous = true;
+        } else if (rank == best) {
+            if (!EquivalentPackagePathPolicies(*result.rule, rule, record)) result.ambiguous = true;
+            else if (key < PersistentKey(result.rule->selector)) result.rule = &rule;
+        }
     }
     if (result.ambiguous)
         result.rule = nullptr;
@@ -226,7 +285,7 @@ static bool SemanticScope(const RuleSelector& s, const NativeIconRecord& r) {
 }
 static bool ExactIdentity(const RuleSelector& s, const NativeIconRecord& r) {
     if (!SemanticScope(s, r)) return false;
-    if (s.hasGuid) return IsEqualGUID(s.guid, r.identity.guid);
+    if (s.hasGuid) return SameGuid(s, r);
     return s.matchUid ? s.uid == r.identity.uid
                       : s.legacy.hasObservedUid && s.legacy.observedUid == r.identity.uid;
 }
@@ -300,10 +359,18 @@ RuleResolution ResolveRule(const std::unordered_map<std::string, IconRule>& rule
         }
         int rank = Specificity(rule.selector);
         if (rank > exactRank) { exactRank = rank; exact = {&rule, false, false, false}; }
-        else if (rank == exactRank) exactAmbiguousRank = std::max(exactAmbiguousRank, rank);
+        else if (rank == exactRank) {
+            if (!EquivalentPackagePathPolicies(*exact.rule, rule, record))
+                exactAmbiguousRank = std::max(exactAmbiguousRank, rank);
+            else if (key < PersistentKey(exact.rule->selector)) exact.rule = &rule;
+        }
     }
     if (exactAmbiguousRank >= 0 && exactAmbiguousRank >= exactRank) return {nullptr, true};
-    if (exact.rule) return exact;
+    if (exact.rule) {
+        exact.reassociated = exact.rule->selector.hasGuid &&
+            !IsEqualGUID(exact.rule->selector.guid, record.identity.guid);
+        return exact;
+    }
     if (!PublicRole(record)) return {};
     RuleResolution result;
     int bestRank = -1, ambiguousRank = -1;

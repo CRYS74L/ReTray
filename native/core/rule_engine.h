@@ -55,6 +55,7 @@ RuleSelector SelectorFor(const NativeIconRecord&, const std::vector<NativeIconRe
 LegacyRole DescribeLegacyRole(const NativeIconRecord&, const std::vector<NativeIconRecord>&);
 std::string PersistentKey(const RuleSelector&);
 bool Matches(const RuleSelector&, const NativeIconRecord&);
+bool EquivalentPackagePathPolicies(const IconRule&, const IconRule&, const NativeIconRecord&);
 CatalogDelta MergeSnapshot(IconCatalog&, const SnapshotResult&, uint64_t now);
 bool IsInactive(const IconRule&, const ActivityState&, uint64_t now);
 void RecordAccess(ActivityState&, uint64_t now);

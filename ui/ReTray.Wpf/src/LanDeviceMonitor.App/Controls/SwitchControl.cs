@@ -10,6 +10,20 @@ namespace LanDeviceMonitor.Controls;
 
 public class SwitchControl : System.Windows.Controls.CheckBox
 {
+    public static readonly DependencyProperty IsBusyProperty = DependencyProperty.Register(
+        nameof(IsBusy), typeof(bool), typeof(SwitchControl),
+        new PropertyMetadata(false, (sender, _) => sender.CoerceValue(IsEnabledProperty)));
+
+    // Saving blocks another activation while preserving the switch's appearance.
+    // An unavailable switch still uses the normal disabled presentation.
+    public bool IsBusy
+    {
+        get => (bool)GetValue(IsBusyProperty);
+        set => SetValue(IsBusyProperty, value);
+    }
+
+    protected override bool IsEnabledCore => base.IsEnabledCore && !IsBusy;
+
     private readonly TranslateTransform _translation = new();
     protected override AutomationPeer OnCreateAutomationPeer() => new SwitchAutomationPeer(this);
 

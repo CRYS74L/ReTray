@@ -20,7 +20,13 @@
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="{DynamicResource SwitchOnBrush}"/></Trigger>
-                        <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
+                        <MultiTrigger>
+                            <MultiTrigger.Conditions>
+                                <Condition Property="IsEnabled" Value="False"/>
+                                <Condition Property="IsBusy" Value="False"/>
+                            </MultiTrigger.Conditions>
+                            <Setter Property="Opacity" Value="0.45"/>
+                        </MultiTrigger>
                         <DataTrigger Binding="{Binding Source={x:Static SystemParameters.HighContrast}}" Value="True">
                             <Setter TargetName="Track" Property="BorderThickness" Value="1"/>
                             <Setter TargetName="Track" Property="BorderBrush" Value="{DynamicResource {x:Static SystemColors.WindowTextBrushKey}}"/>

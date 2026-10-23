@@ -5,6 +5,7 @@ using LanDeviceMonitor.Services;
 using LanDeviceMonitor.ViewModels;
 using System.Diagnostics;
 using System.Reflection;
+if(args.Contains("--switch-save-appearance-regression")) return SwitchSaveAppearanceRegression.Run();
 if(args.Contains("--version-link-motion-regression")) return VersionLinkMotionRegression.Run();
 if(args.Contains("--device-name-spacing-regression")) return DeviceNameSpacingRegression.Run();
 if(args.Contains("--mesh-membership-regression")) return await MeshMembershipRegression.RunAsync();

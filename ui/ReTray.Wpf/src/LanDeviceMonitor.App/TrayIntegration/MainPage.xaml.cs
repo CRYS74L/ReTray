@@ -597,16 +597,16 @@ public partial class MainPage : UserControl
     }
     private async void SystemVisibilityClick(object sender, RoutedEventArgs args)
     {
-        if (sender is not ToggleButton { Tag: int id, IsEnabled: true } toggle) return;
+        if (sender is not SwitchControl { Tag: int id, IsEnabled: true } toggle) return;
         var visible = toggle.IsChecked == true;
-        systemSaving[id] = true; toggle.IsEnabled = false; await systemSaveGate.WaitAsync();
+        systemSaving[id] = true; toggle.IsBusy = true; await systemSaveGate.WaitAsync();
         try
         {
             Check(await Vm.Pipe.RequestAsync("system.set", new() { ["id"] = id, ["visible"] = visible }));
             Vm.Error = "";
         }
         catch (Exception exception) { toggle.IsChecked = !visible; Vm.ReportError(exception); }
-        finally { systemSaveGate.Release(); systemSaving[id] = false; toggle.IsEnabled = systemAvailable[id]; }
+        finally { systemSaveGate.Release(); systemSaving[id] = false; toggle.IsEnabled = systemAvailable[id]; toggle.IsBusy = false; }
         await LoadSystemAsync(true);
     }
     private static void Check(JsonObject reply) { if (reply["success"]?.GetValue<bool>() != true) throw new IOException(reply["detail"]?.GetValue<string>() ?? "操作失败"); }

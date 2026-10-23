@@ -179,7 +179,7 @@
         </Grid.ColumnDefinitions>
         <tray:TrayIconButton Width="28" Height="28" MinWidth="0" MinHeight="0" ImageSource="{Binding Image}" Tag="{Binding}" NativeAction="IconNativeAction" VerticalAlignment="Center" AutomationProperties.AutomationId="TrayNativeAction" AutomationProperties.Name="{Binding Name}" />
         <TextBlock Grid.Column="1" Margin="8,0,8,0" Text="{Binding Name}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-        <controls:SwitchControl Grid.Column="3" Style="{StaticResource TrayRowToggle}" Margin="0,0,4,0" IsChecked="{Binding Visible,Mode=OneWay}" IsEnabled="{Binding CanToggle}" Tag="{Binding}" Click="VisibilityClick" AutomationProperties.AutomationId="TrayVisibility" AutomationProperties.Name="{Binding Name}" />
+        <controls:SwitchControl Grid.Column="3" Style="{StaticResource TrayRowToggle}" Margin="0,0,4,0" IsChecked="{Binding Visible,Mode=OneWay}" IsEnabled="{Binding CanToggle}" IsBusy="{Binding IsBusy}" Tag="{Binding}" Click="VisibilityClick" AutomationProperties.AutomationId="TrayVisibility" AutomationProperties.Name="{Binding Name}" />
         <Button Grid.Column="2" Style="{StaticResource TrayMoreButtonStyle}" Margin="0,0,8,0" Tag="{Binding}" Click="IconSettingsClick" VerticalAlignment="Center" AutomationProperties.AutomationId="IconSettings" AutomationProperties.Name="图标设置">
           <TextBlock Text="" FontFamily="{StaticResource AppIconFont}" FontSize="12" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" controls:GlyphInkAlignment.Enabled="True" />
         </Button>

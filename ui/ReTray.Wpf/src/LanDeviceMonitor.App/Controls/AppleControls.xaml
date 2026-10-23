@@ -6,6 +6,7 @@
         <Setter Property="Width" Value="51"/>
         <Setter Property="Height" Value="36"/>
         <Setter Property="Cursor" Value="Hand"/>
+        <Setter Property="ClickMode" Value="Press"/>
         <Setter Property="VerticalAlignment" Value="Center"/>
         <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
         <Setter Property="Template">
@@ -19,7 +20,6 @@
                     </Grid>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="{DynamicResource SwitchOnBrush}"/></Trigger>
-                        <Trigger Property="IsPressed" Value="True"><Setter TargetName="PART_Knob" Property="Opacity" Value="0.85"/></Trigger>
                         <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45"/></Trigger>
                         <DataTrigger Binding="{Binding Source={x:Static SystemParameters.HighContrast}}" Value="True">
                             <Setter TargetName="Track" Property="BorderThickness" Value="1"/>

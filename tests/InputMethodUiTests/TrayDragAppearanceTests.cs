@@ -79,7 +79,10 @@ internal static class TrayDragAppearanceTests
             var iconBounds = icon.TransformToAncestor(page).TransformBounds(new Rect(icon.RenderSize));
             var leftGap = iconBounds.Left - bounds.Left;
             var contentTopGap = iconBounds.Top - bounds.Top;
-            Require(Math.Abs(leftGap - contentTopGap - 1) < .01,
+            // The icon button snaps its layout to device pixels. An inherited
+            // root DPI can round its origin by one pixel independently per axis.
+            var iconPixelTolerance = 1 / VisualTreeHelper.GetDpi(icon).DpiScaleX + .01;
+            Require(Math.Abs(leftGap - contentTopGap - 1) <= iconPixelTolerance,
                 $"Content clearance differs at left and top: {leftGap}/{contentTopGap}");
             Require(Math.Abs(rightGap - 6.53) < .01,
                 "The right clearance did not grow by one DIP");
@@ -95,7 +98,7 @@ internal static class TrayDragAppearanceTests
             var iconOrigin = iconImage.TranslatePoint(new Point(), page);
             var visibleLeftGap = iconOrigin.X + opaquePixels.Min(i => i % iconRender.PixelWidth) / scale - bounds.Left;
             var visibleTopGap = iconOrigin.Y + opaquePixels.Min(i => i / iconRender.PixelWidth) / scale - bounds.Top;
-            Require(Math.Abs(visibleLeftGap - visibleTopGap - 1) < .01,
+            Require(Math.Abs(visibleLeftGap - visibleTopGap - 1) <= iconPixelTolerance,
                 $"Visible icon clearance differs at left and top: {visibleLeftGap}/{visibleTopGap}");
             Require(bounds.Left >= 0 && bounds.Right <= page.ActualWidth && bounds.Right < barBounds.Left,
                 "The capsule overlaps the scrollbar or leaves the interface");

@@ -48,9 +48,7 @@ public partial class MainPage : UserControl
                 catch (Exception error) { Vm.ReportError(error); }
                 finally { Vm.IsDragging = false; await Vm.RefreshAsync(); }
             }, DragShadowLayer);
-        VersionLink.Inlines.Add(LanDeviceMonitor.MainWindow.GetDisplayVersion());
-        VersionToolTip.PlacementTarget = VersionText;
-        VersionToolTip.CustomPopupPlacementCallback = PlaceVersionToolTip;
+        VersionRun.Text = LanDeviceMonitor.MainWindow.GetDisplayVersion();
         ThemeChoice.Items.Add("跟随系统"); ThemeChoice.Items.Add("浅色"); ThemeChoice.Items.Add("深色"); ThemeChoice.SelectedIndex = 0;
         foreach(var name in Localization.LanguageNames)LanguageChoice.Items.Add(name); LanguageChoice.SelectedIndex = 0;
         CreateSystemRows(); CreateLoadingRows();
@@ -78,9 +76,6 @@ public partial class MainPage : UserControl
 
         UpdatePresentation();
     }
-    private static CustomPopupPlacement[] PlaceVersionToolTip(Size popupSize, Size targetSize, Point offset) =>
-        [new CustomPopupPlacement(new Point((targetSize.Width - popupSize.Width) / 2, -popupSize.Height - 8), PopupPrimaryAxis.Horizontal)];
-
     private void VersionLink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs args)
     {
         args.Handled = true;
@@ -88,7 +83,7 @@ public partial class MainPage : UserControl
         {
             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(args.Uri.AbsoluteUri) { UseShellExecute = true });
         }
-        catch (Exception exception) { Vm.ReportError(exception); }
+        catch (Exception exception) when (exception is Win32Exception or InvalidOperationException) { Vm.ReportError(exception); }
     }
 
     private async void PageLoaded(object sender, RoutedEventArgs args)

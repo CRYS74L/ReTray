@@ -27,6 +27,8 @@ public static partial class Localization
     }
     private const string Translations = """
 ReTray|ReTray|ReTray
+在 GitHub 查看项目|在 GitHub 查看專案|GitHub でプロジェクトを見る
+在 GitHub 查看 ReTray|在 GitHub 查看 ReTray|GitHub で ReTray を見る
 托盘图标|托盤圖示|トレイ
 已隐藏|已隱藏|非表示にしました
 已显示|已顯示|表示しました

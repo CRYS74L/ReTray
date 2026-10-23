@@ -38,10 +38,21 @@ internal static class Program
        typeof(ReTray_App.MainPage).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion;
    var versionPage=new ReTray_App.MainPage();
    var versionLink=(Hyperlink)versionPage.FindName("VersionLink");
-   var displayedVersion=new TextRange(versionLink.ContentStart,versionLink.ContentEnd).Text;
+   var displayedVersion=((Run)versionPage.FindName("VersionRun")).Text;
    if(displayedVersion!="v"+expectedVersion)
        throw new InvalidOperationException($"Settings version was truncated: expected v{expectedVersion}, actual {displayedVersion}");
    Console.WriteLine($"Settings version={displayedVersion}");
+   var versionFooter=(StackPanel)versionPage.FindName("VersionFooter");
+   var repositoryIcon=(System.Windows.Shapes.Path)versionPage.FindName("RepositoryIcon");
+   if(versionFooter.Orientation!=Orientation.Horizontal || versionFooter.HorizontalAlignment!=HorizontalAlignment.Center ||
+       versionFooter.Margin!=new Thickness(0,24,0,0) || versionFooter.Children.Count!=3 ||
+       ((TextBlock)versionFooter.Children[0]).Text!="ReTray" || ((TextBlock)versionFooter.Children[1]).Text!="·")
+       throw new InvalidOperationException("Version footer no longer follows the reference name/separator/link layout");
+   if(versionLink.NavigateUri.AbsoluteUri!="https://github.com/CRYS74L/ReTray" ||
+       versionLink.ToolTip?.ToString()!="在 GitHub 查看项目" || versionLink.TextDecorations?.Count>0 ||
+       repositoryIcon.Width!=14 || repositoryIcon.Height!=14 || repositoryIcon.Margin!=new Thickness(0,0,7,0) ||
+       versionLink.Inlines.FirstInline is not InlineUIContainer {BaselineAlignment:BaselineAlignment.Center})
+       throw new InvalidOperationException("Version link icon, tooltip or decorations differ from the reference");
    ((LanDeviceMonitor.Controls.SegmentedControl)versionPage.FindName("Navigation")).SelectedIndex=2;
    foreach(double pageWidth in new[]{364d,288d}) {
        versionPage.Measure(new Size(pageWidth,640));versionPage.Arrange(new Rect(0,0,pageWidth,640));versionPage.UpdateLayout();
@@ -51,7 +62,32 @@ internal static class Program
            versionText.FontSize,Brushes.Black,VisualTreeHelper.GetDpi(versionText).PixelsPerDip);
        if(versionText.ActualWidth+.1<versionInk.WidthIncludingTrailingWhitespace)
            throw new InvalidOperationException($"Settings version is clipped at page width {pageWidth}");
+       var footerOrigin=versionFooter.TranslatePoint(new Point(),versionPage);
+       if(Math.Abs(footerOrigin.X+versionFooter.ActualWidth/2-versionPage.ActualWidth/2)>7.1 ||
+           versionFooter.ActualWidth>pageWidth-14 || repositoryIcon.ActualWidth!=14)
+           throw new InvalidOperationException("Version footer is clipped or not centered in its settings viewport");
    }
+   foreach(var theme in new[]{"Light","Dark"}) {
+       LanDeviceMonitor.Services.ThemeService.Apply(theme);
+       // An unloaded page does not receive resource invalidation from a window.
+       var themedPage=new ReTray_App.MainPage();
+       ((LanDeviceMonitor.Controls.SegmentedControl)themedPage.FindName("Navigation")).SelectedIndex=2;
+       themedPage.Measure(new Size(364,640));themedPage.Arrange(new Rect(0,0,364,640));themedPage.UpdateLayout();
+       var themedLink=(Hyperlink)themedPage.FindName("VersionLink");
+       var themedIcon=(System.Windows.Shapes.Path)themedPage.FindName("RepositoryIcon");
+       if(((SolidColorBrush)themedLink.Foreground).Color!=((SolidColorBrush)app.Resources["MutedTextBrush"]).Color ||
+           ((SolidColorBrush)themedIcon.Fill).Color!=((SolidColorBrush)themedLink.Foreground).Color)
+           throw new InvalidOperationException($"Version colors differ in {theme}: text={themedLink.Foreground}, icon={themedIcon.Fill}");
+   }
+   foreach(var language in new[]{"zh","zh-Hant","ja","en","zh"}) {
+       ReTray_App.Services.Localization.CurrentLanguage=language;
+       ReTray_App.Services.Localization.Apply(versionFooter);
+       if(((Run)versionPage.FindName("VersionRun")).Text!=displayedVersion ||
+           versionLink.Inlines.FirstInline is not InlineUIContainer ||
+           versionLink.ToolTip?.ToString()!=ReTray_App.Services.Localization.Text("在 GitHub 查看项目"))
+           throw new InvalidOperationException("Localizing the footer destroyed its link or tooltip");
+   }
+   Console.WriteLine("Version footer reference layout, icon, link, theme colors and localization passed");
    var hook=typeof(LanDeviceMonitor.MainWindow).GetMethod("MainWindowWindowProcedure",BindingFlags.NonPublic|BindingFlags.Instance)!;
    foreach(int message in new[]{0xA4,0xA5,0xA6}) {
     object[] parameters=[new WindowInteropHelper(fixture).Handle,message,(nint)2,(nint)0,false];

@@ -69,7 +69,7 @@ internal static class TrayDragAppearanceTests
             var rightGap = bounds.Right - trackBounds.Right;
             var bottomGap = bounds.Bottom - trackBounds.Bottom;
             var topGap = trackBounds.Top - bounds.Top;
-            Require(Math.Abs(rightGap - bottomGap) < .01 && Math.Abs(topGap - bottomGap) < .01,
+            Require(Math.Abs(rightGap - bottomGap - 1) < .01 && Math.Abs(topGap - bottomGap) < .01,
                 $"Switch spacing is asymmetric: right={rightGap}, bottom={bottomGap}, top={topGap}");
             var content = (ContentPresenter)row.Template.FindName("RowContent", row);
             for (DependencyObject? ancestor = content; ancestor != null; ancestor = VisualTreeHelper.GetParent(ancestor))
@@ -79,10 +79,10 @@ internal static class TrayDragAppearanceTests
             var iconBounds = icon.TransformToAncestor(page).TransformBounds(new Rect(icon.RenderSize));
             var leftGap = iconBounds.Left - bounds.Left;
             var contentTopGap = iconBounds.Top - bounds.Top;
-            Require(Math.Abs(leftGap - contentTopGap) < .01,
+            Require(Math.Abs(leftGap - contentTopGap - 1) < .01,
                 $"Content clearance differs at left and top: {leftGap}/{contentTopGap}");
-            Require(Math.Abs(rightGap - 5.53) < .01,
-                "The approved right clearance changed");
+            Require(Math.Abs(rightGap - 6.53) < .01,
+                "The right clearance did not grow by one DIP");
             var iconImage = Find<ReTray_App.Controls.TrayIconImage>(icon).Single();
             var iconRender = new RenderTargetBitmap((int)Math.Ceiling(iconImage.ActualWidth * scale), (int)Math.Ceiling(iconImage.ActualHeight * scale),
                 96 * scale, 96 * scale, PixelFormats.Pbgra32);
@@ -95,7 +95,7 @@ internal static class TrayDragAppearanceTests
             var iconOrigin = iconImage.TranslatePoint(new Point(), page);
             var visibleLeftGap = iconOrigin.X + opaquePixels.Min(i => i % iconRender.PixelWidth) / scale - bounds.Left;
             var visibleTopGap = iconOrigin.Y + opaquePixels.Min(i => i / iconRender.PixelWidth) / scale - bounds.Top;
-            Require(Math.Abs(visibleLeftGap - visibleTopGap) < .01,
+            Require(Math.Abs(visibleLeftGap - visibleTopGap - 1) < .01,
                 $"Visible icon clearance differs at left and top: {visibleLeftGap}/{visibleTopGap}");
             Require(bounds.Left >= 0 && bounds.Right <= page.ActualWidth && bounds.Right < barBounds.Left,
                 "The capsule overlaps the scrollbar or leaves the interface");

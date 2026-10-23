@@ -45,9 +45,16 @@ internal static class Program
    var versionFooter=(StackPanel)versionPage.FindName("VersionFooter");
    var repositoryIcon=(System.Windows.Shapes.Path)versionPage.FindName("RepositoryIcon");
    if(versionFooter.Orientation!=Orientation.Horizontal || versionFooter.HorizontalAlignment!=HorizontalAlignment.Center ||
-       versionFooter.Margin!=new Thickness(0,24,0,0) || versionFooter.Children.Count!=3 ||
+       versionFooter.Margin!=new Thickness(0,24,0,16) || versionFooter.Children.Count!=3 ||
        ((TextBlock)versionFooter.Children[0]).Text!="ReTray" || ((TextBlock)versionFooter.Children[1]).Text!="·")
        throw new InvalidOperationException("Version footer no longer follows the reference name/separator/link layout");
+   var versionSeparator=(TextBlock)versionPage.FindName("VersionSeparator");
+   if(versionSeparator.Margin!=new Thickness(4,0,4,0) || versionSeparator.FontSize!=10 ||
+       versionSeparator.FontWeight!=FontWeights.Light || versionSeparator.VerticalAlignment!=VerticalAlignment.Center)
+       throw new InvalidOperationException("Version separator lost its lighter compact appearance");
+   var hoverTrigger=versionLink.Style.Triggers.OfType<Trigger>().Single(t=>t.Property==ContentElement.IsMouseOverProperty);
+   if(hoverTrigger.Setters.OfType<Setter>().Single(s=>s.Property==TextElement.ForegroundProperty).Value is not DynamicResourceExtension {ResourceKey:"SwitchOnBrush"})
+       throw new InvalidOperationException("Version hover no longer uses the same theme brush as enabled switches");
    if(versionLink.NavigateUri.AbsoluteUri!="https://github.com/CRYS74L/ReTray" ||
        versionLink.ToolTip?.ToString()!="在 GitHub 查看项目" || versionLink.TextDecorations?.Count>0 ||
        repositoryIcon.Width!=14 || repositoryIcon.Height!=14 || repositoryIcon.Margin!=new Thickness(0,0,7,0) ||

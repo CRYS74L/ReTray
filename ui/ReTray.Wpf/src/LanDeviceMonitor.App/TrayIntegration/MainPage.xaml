@@ -301,9 +301,9 @@
                   <TextBlock.Style><Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Style.Triggers><DataTrigger Binding="{Binding ConfigurationStatus}" Value=""><Setter Property="Visibility" Value="Collapsed" /></DataTrigger></Style.Triggers></Style></TextBlock.Style>
                 </TextBlock>
               </StackPanel>
-              <StackPanel x:Name="VersionFooter" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,0">
+              <StackPanel x:Name="VersionFooter" Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,24,0,16">
                 <TextBlock Text="ReTray" Foreground="{DynamicResource MutedTextBrush}" FontSize="12" />
-                <TextBlock x:Name="VersionSeparator" Text="·" Margin="7,0" Foreground="{DynamicResource MutedTextBrush}" FontSize="12" />
+                <TextBlock x:Name="VersionSeparator" Text="·" Margin="4,0" Foreground="{DynamicResource MutedTextBrush}" FontSize="10" FontWeight="Light" VerticalAlignment="Center" />
                 <TextBlock x:Name="VersionText" Foreground="{DynamicResource MutedTextBrush}" FontSize="12">
                   <Hyperlink x:Name="VersionLink" NavigateUri="https://github.com/CRYS74L/ReTray" RequestNavigate="VersionLink_RequestNavigate"
                              ToolTip="在 GitHub 查看项目" AutomationProperties.Name="在 GitHub 查看 ReTray" AutomationProperties.AutomationId="SoftwareVersion">
@@ -312,7 +312,7 @@
                         <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
                         <Setter Property="TextDecorations" Value="{x:Null}" />
                         <Style.Triggers>
-                          <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{DynamicResource AccentBrush}" /></Trigger>
+                          <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{DynamicResource SwitchOnBrush}" /></Trigger>
                         </Style.Triggers>
                       </Style>
                     </Hyperlink.Style>

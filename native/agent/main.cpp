@@ -2005,7 +2005,6 @@ void TrayMenu(const POINT* anchor = nullptr) {
     constexpr const char* languages[]{"zh", "en", "zh-Hant", "ja"};
     tray_menu_typography::SetLanguage(languages[menuLanguageIndex.load()]);
     AppendMenuW(menu, MF_OWNERDRAW, 1, tray_menu_typography::Data(1));
-    AppendMenuW(menu, MF_OWNERDRAW, 2, tray_menu_typography::Data(2));
     AppendMenuW(menu, MF_OWNERDRAW, 3, tray_menu_typography::Data(3));
     SetForegroundWindow(window);
     UINT selected{};
@@ -2019,11 +2018,7 @@ void TrayMenu(const POINT* anchor = nullptr) {
     if (previousDpi) SetThreadDpiAwarenessContext(previousDpi);
     if (selected == 1)
         PostJob("internal.openUi");
-    else if (selected == 2) {
-        if (RestartAssistant() != ERROR_SUCCESS)
-            MessageBoxW(window, L"无法启动重启进程。当前ReTray与配置仍保留，请稍后重试。",
-                        L"ReTray", MB_OK | MB_ICONERROR);
-    } else if (selected == 3) {
+    else if (selected == 3) {
         auto ui = uiWindow.load();
         if (!IsAssistantUi(ui) || !PostMessageW(ui, ExitInterfaceMessage, 0, 0))
             PostMessageW(window, WM_CLOSE, 0, 0);

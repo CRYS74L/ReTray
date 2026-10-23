@@ -52,8 +52,7 @@ public sealed class TrayCommandMenu
             // It owns keyboard focus and outside-click dismissal independently.
             var labels = Labels(Localization.CurrentLanguage);
             Add(labels[0], "TrayMenuOpen", () => { App.OpenInterface(); return Task.CompletedTask; });
-            Add(labels[1], "TrayMenuRestart", App.RestartAsync);
-            Add(labels[2], "TrayMenuExit", App.QuitAsync);
+            Add(labels[1], "TrayMenuExit", App.QuitAsync);
             System.Windows.Automation.AutomationProperties.SetAutomationId(openedMenu, "ReTrayTrayMenu");
             openedMenu.Opened += (_, _) => openedMenu.Dispatcher.BeginInvoke(DispatcherPriority.Input, new Action(() => {
                 if (!ReferenceEquals(menu, openedMenu) || !openedMenu.IsOpen) return;
@@ -132,10 +131,10 @@ public sealed class TrayCommandMenu
         menu!.Items.Add(item);
     }
     public static string[] Labels(string language) => language switch {
-        "en" => ["Open", "Restart", "Exit"],
-        "zh-Hant" => ["開啟", "重新啟動", "退出"],
-        "ja" => ["開く", "再起動", "終了"],
-        _ => ["打开", "重新启动", "退出"]
+        "en" => ["Open", "Exit"],
+        "zh-Hant" => ["開啟", "退出"],
+        "ja" => ["開く", "終了"],
+        _ => ["打开", "退出"]
     };
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

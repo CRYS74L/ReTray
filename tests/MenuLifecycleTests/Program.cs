@@ -67,12 +67,14 @@ internal static class Program
    var menu=(ContextMenu)typeof(TrayCommandMenu).GetField("menu",BindingFlags.NonPublic|BindingFlags.Instance)!.GetValue(owner)!;
    var surface=(FrameworkElement)typeof(TrayCommandMenu).GetMethod("Surface",BindingFlags.NonPublic|BindingFlags.Static)!.Invoke(null,[menu])!;
    var source=(HwndSource)PresentationSource.FromVisual(menu)!;
-   var text=Descendants<TextBlock>(menu).OrderByDescending(t=>new FormattedText(t.Text,
-       System.Globalization.CultureInfo.CurrentUICulture,t.FlowDirection,
-       new Typeface(t.FontFamily,t.FontStyle,t.FontWeight,t.FontStretch),t.FontSize,Brushes.Black,
-       VisualTreeHelper.GetDpi(t).PixelsPerDip).WidthIncludingTrailingWhitespace).First();
-   if(!menu.Items.Cast<MenuItem>().Any(i=>Equals(i.Header,"打开")))
-       throw new InvalidOperationException("Open command was not restored");
+   var text=Descendants<TextBlock>(menu).OrderByDescending(t=> {
+       var measured=new FormattedText(t.Text,System.Globalization.CultureInfo.CurrentUICulture,t.FlowDirection,
+           new Typeface(t.FontFamily,t.FontStyle,t.FontWeight,t.FontStretch),t.FontSize,Brushes.Black,
+           VisualTreeHelper.GetDpi(t).PixelsPerDip);
+       return measured.Width+measured.OverhangTrailing-measured.OverhangLeading;
+   }).First();
+   if(!menu.Items.Cast<MenuItem>().Select(i=>i.Header?.ToString()).SequenceEqual(new[]{"打开","退出"}))
+       throw new InvalidOperationException("Own tray menu must contain only Open and Exit");
    var ink=new FormattedText(text.Text,System.Globalization.CultureInfo.CurrentUICulture,text.FlowDirection,
        new Typeface(text.FontFamily,text.FontStyle,text.FontWeight,text.FontStretch),text.FontSize,Brushes.Black,
        VisualTreeHelper.GetDpi(text).PixelsPerDip);
@@ -86,8 +88,8 @@ internal static class Program
    if(surface is not Border plate || plate.Padding!=new Thickness(3) ||
        plate.BorderThickness!=new Thickness(1.5) || plate.CornerRadius!=new CornerRadius(19))
        throw new InvalidOperationException("Tray plate differs from the approved dimensions");
-   if(Math.Abs(surface.ActualHeight-96)>.05 || Math.Abs(surface.ActualWidth-82.03825)>.1)
-       throw new InvalidOperationException("Tray plate is not the approved auto-sized 82.03825 x 96 DIP");
+   if(Math.Abs(surface.ActualHeight-67)>.05)
+       throw new InvalidOperationException("Tray plate did not auto-size to two 29-DIP commands plus its 9-DIP frame");
    foreach(var item in menu.Items.Cast<MenuItem>()) {
        if(item.FontSize!=12.75 || item.Height!=29 || item.Margin!=new Thickness(0))
            throw new InvalidOperationException("Tray item typography or spacing differs from the approved tuning");

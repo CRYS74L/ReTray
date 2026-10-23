@@ -18,7 +18,6 @@ public static partial class Localization
     private static readonly Dictionary<string,string> map = new()
     {
         ["ReTray"]="ReTray",
-        ["在 GitHub 查看项目"]="View project on GitHub",
         ["在 GitHub 查看 ReTray"]="View ReTray on GitHub",
         ["图标资源"]="Icon files",
         ["导入结果尚未确认"]="Import result has not been confirmed",

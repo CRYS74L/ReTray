@@ -37,6 +37,7 @@ public partial class MainPage : UserControl
     private InputMethodIconEditorModel? inputMethodEditor;
     private readonly BlurEffect floatingBlur = new() { Radius = 0, RenderingBias = RenderingBias.Performance };
     private readonly TrayRowReorder rowReorder;
+    private double? versionInkCenter;
 
     public MainPage()
     {
@@ -48,7 +49,9 @@ public partial class MainPage : UserControl
                 catch (Exception error) { Vm.ReportError(error); }
                 finally { Vm.IsDragging = false; await Vm.RefreshAsync(); }
             }, DragShadowLayer);
-        VersionRun.Text = LanDeviceMonitor.MainWindow.GetDisplayVersion();
+        VersionText.Text = LanDeviceMonitor.MainWindow.GetDisplayVersion();
+        VersionText.LayoutUpdated += (_, _) => AlignVersionIcon();
+        VersionText.Loaded += (_, _) => AlignVersionIcon();
         ThemeChoice.Items.Add("跟随系统"); ThemeChoice.Items.Add("浅色"); ThemeChoice.Items.Add("深色"); ThemeChoice.SelectedIndex = 0;
         foreach(var name in Localization.LanguageNames)LanguageChoice.Items.Add(name); LanguageChoice.SelectedIndex = 0;
         CreateSystemRows(); CreateLoadingRows();
@@ -76,12 +79,35 @@ public partial class MainPage : UserControl
 
         UpdatePresentation();
     }
-    private void VersionLink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs args)
+    private void AlignVersionIcon()
+    {
+        if (VersionText.ActualHeight <= 0 || !double.IsFinite(VersionText.BaselineOffset) || string.IsNullOrEmpty(VersionText.Text)) return;
+        if (versionInkCenter == null)
+        {
+            var typeface = new Typeface(VersionText.FontFamily, VersionText.FontStyle, VersionText.FontWeight, VersionText.FontStretch);
+            if (!typeface.TryGetGlyphTypeface(out var glyph)) throw new InvalidOperationException("无法读取版本文字的字体。");
+            var ink = Rect.Empty;
+            foreach (var character in VersionText.Text)
+                if (glyph.CharacterToGlyphMap.TryGetValue(character, out var index))
+                    ink.Union(glyph.GetGlyphOutline(index, VersionText.FontSize, VersionText.FontSize).Bounds);
+            if (ink.IsEmpty) return;
+            versionInkCenter = ink.Top + ink.Height / 2;
+        }
+        // Use the TextBlock's real baseline and font outlines; only move the
+        // vector icon, leaving native text rendering and the hit area intact.
+        var iconCenter = RepositoryIcon.TranslatePoint(new Point(RepositoryIcon.ActualWidth / 2, RepositoryIcon.ActualHeight / 2), VersionText).Y;
+        var delta = VersionText.BaselineOffset + versionInkCenter.Value - iconCenter;
+        if (Math.Abs(delta) < .0001) return;
+        var previous = RepositoryIcon.RenderTransform as TranslateTransform;
+        RepositoryIcon.RenderTransform = new TranslateTransform(0, (previous?.Y ?? 0) + delta);
+    }
+
+    private void VersionLink_Click(object sender, RoutedEventArgs args)
     {
         args.Handled = true;
         try
         {
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(args.Uri.AbsoluteUri) { UseShellExecute = true });
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo((string)VersionLink.Tag) { UseShellExecute = true });
         }
         catch (Exception exception) when (exception is Win32Exception or InvalidOperationException) { Vm.ReportError(exception); }
     }

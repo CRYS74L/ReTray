@@ -308,7 +308,6 @@
                         AutomationProperties.Name="在 GitHub 查看 ReTray" AutomationProperties.AutomationId="SoftwareVersion">
                     <Button.Style>
                       <Style TargetType="Button">
-                        <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
                         <Setter Property="Background" Value="Transparent" />
                         <Setter Property="BorderThickness" Value="0" />
                         <Setter Property="Padding" Value="2,3" />
@@ -323,9 +322,6 @@
                             </ControlTemplate>
                           </Setter.Value>
                         </Setter>
-                        <Style.Triggers>
-                          <Trigger Property="IsMouseOver" Value="True"><Setter Property="Foreground" Value="{DynamicResource SwitchOnBrush}" /></Trigger>
-                        </Style.Triggers>
                       </Style>
                     </Button.Style>
                     <StackPanel Orientation="Horizontal">

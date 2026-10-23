@@ -133,7 +133,9 @@ internal static class WebAccessTests
                 Check(pixels[0]==255&&pixels[1]==255&&pixels[2]==255,"opaque white backing for system-applied rounded mask");
             }
         }
-        Check((await http.GetByteArrayAsync(url+"/icons/network-v195-180.png")).SequenceEqual(await http.GetByteArrayAsync(url+"/icons/network-v197-180.png")),"old saved icon URLs receive corrected artwork");
+        var oldNetworkIcon = await http.GetByteArrayAsync(url+"/icons/network-v195-180.png");
+        var currentNetworkIcon = await http.GetByteArrayAsync(url+"/icons/network-v197-180.png");
+        Check(oldNetworkIcon.SequenceEqual(currentNetworkIcon),"old saved icon URLs receive corrected artwork");
         foreach(var size in new[]{16,32,48,64,192,512})
         {
             using var stream=new MemoryStream(await http.GetByteArrayAsync(url+$"/icons/browser-v197-{size}.png"));
@@ -154,8 +156,11 @@ internal static class WebAccessTests
         var touchHref=System.Text.RegularExpressions.Regex.Match(html,@"<link\b(?=[^>]*\brel=""apple-touch-icon"")[^>]*\bhref=""([^""]+)""").Groups[1].Value;
         Check(faviconHref.StartsWith('/')&&touchHref.StartsWith('/')&&faviconHref!=touchHref,
             "HTML declares distinct browser favicon and Apple touch icon URLs");
-        Check((await http.GetByteArrayAsync(url+faviconHref)).SequenceEqual(await http.GetByteArrayAsync(url+"/icons/browser-v197-32.png")) &&
-            (await http.GetByteArrayAsync(url+touchHref)).SequenceEqual(await http.GetByteArrayAsync(url+"/icons/network-v197-180.png")),
+        var advertisedFavicon = await http.GetByteArrayAsync(url+faviconHref);
+        var browserFavicon = await http.GetByteArrayAsync(url+"/icons/browser-v197-32.png");
+        var advertisedTouchIcon = await http.GetByteArrayAsync(url+touchHref);
+        var networkTouchIcon = await http.GetByteArrayAsync(url+"/icons/network-v197-180.png");
+        Check(advertisedFavicon.SequenceEqual(browserFavicon) && advertisedTouchIcon.SequenceEqual(networkTouchIcon),
             "advertised browser favicon and Apple touch icon serve the distinct accepted artwork");
         await server.StopAsync();
         bool stopped=false;try{await http.GetAsync(url+"/");}catch(HttpRequestException){stopped=true;}

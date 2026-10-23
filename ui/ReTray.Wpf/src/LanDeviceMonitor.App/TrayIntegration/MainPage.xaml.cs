@@ -38,6 +38,8 @@ public partial class MainPage : UserControl
     private readonly BlurEffect floatingBlur = new() { Radius = 0, RenderingBias = RenderingBias.Performance };
     private readonly TrayRowReorder rowReorder;
     private double? versionInkCenter;
+    private readonly SolidColorBrush versionLinkForeground = new();
+    private int versionLinkAnimationGeneration;
 
     public MainPage()
     {
@@ -52,6 +54,20 @@ public partial class MainPage : UserControl
         VersionText.Text = LanDeviceMonitor.MainWindow.GetDisplayVersion();
         VersionText.LayoutUpdated += (_, _) => AlignVersionIcon();
         VersionText.Loaded += (_, _) => AlignVersionIcon();
+        VersionLink.Foreground = versionLinkForeground;
+        VersionLink.MouseEnter += (_, _) => UpdateVersionLinkColor(true);
+        VersionLink.MouseLeave += (_, _) => UpdateVersionLinkColor(true);
+        VersionLink.Loaded += (_, _) =>
+        {
+            LanDeviceMonitor.Services.ThemeService.PaletteChanged += VersionLinkPaletteChanged;
+            UpdateVersionLinkColor(false);
+        };
+        VersionLink.Unloaded += (_, _) =>
+        {
+            LanDeviceMonitor.Services.ThemeService.PaletteChanged -= VersionLinkPaletteChanged;
+            versionLinkAnimationGeneration++;
+            versionLinkForeground.BeginAnimation(SolidColorBrush.ColorProperty, null);
+        };
         ThemeChoice.Items.Add("跟随系统"); ThemeChoice.Items.Add("浅色"); ThemeChoice.Items.Add("深色"); ThemeChoice.SelectedIndex = 0;
         foreach(var name in Localization.LanguageNames)LanguageChoice.Items.Add(name); LanguageChoice.SelectedIndex = 0;
         CreateSystemRows(); CreateLoadingRows();
@@ -100,6 +116,37 @@ public partial class MainPage : UserControl
         if (Math.Abs(delta) < .0001) return;
         var previous = RepositoryIcon.RenderTransform as TranslateTransform;
         RepositoryIcon.RenderTransform = new TranslateTransform(0, (previous?.Y ?? 0) + delta);
+    }
+
+    private void VersionLinkPaletteChanged() => UpdateVersionLinkColor(false);
+
+    private void UpdateVersionLinkColor(bool animate)
+    {
+        var target = ((SolidColorBrush)VersionLink.FindResource(VersionLink.IsMouseOver ? "SwitchOnBrush" : "MutedTextBrush")).Color;
+        // Keep the brush local to this link. A reversal starts at the displayed
+        // color without animating the shared theme resources or rasterizing text.
+        var current = versionLinkForeground.Color;
+        var generation = ++versionLinkAnimationGeneration;
+        versionLinkForeground.BeginAnimation(SolidColorBrush.ColorProperty, null);
+        if (!animate || !SystemParameters.ClientAreaAnimation || current == target)
+        {
+            versionLinkForeground.Color = target;
+            return;
+        }
+        versionLinkForeground.Color = current;
+        var animation = new ColorAnimation
+        {
+            From = current, To = target,
+            Duration = TimeSpan.FromMilliseconds(VersionLink.IsMouseOver ? 180 : 220),
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+        };
+        animation.Completed += (_, _) =>
+        {
+            if (generation != versionLinkAnimationGeneration) return;
+            versionLinkForeground.Color = target;
+            versionLinkForeground.BeginAnimation(SolidColorBrush.ColorProperty, null);
+        };
+        versionLinkForeground.BeginAnimation(SolidColorBrush.ColorProperty, animation, HandoffBehavior.SnapshotAndReplace);
     }
 
     private void VersionLink_Click(object sender, RoutedEventArgs args)

@@ -14,7 +14,7 @@
             <SolidColorBrush x:Key="SegmentInactiveTextBrush" Color="{DynamicResource SegmentInactiveTextColor}"/>
             <Color x:Key="SegmentTrackColor">#08000000</Color>
             <Color x:Key="SegmentSelectionColor">#EEFFFFFF</Color>
-            <Color x:Key="SwitchOnColor">#DF80FF</Color><SolidColorBrush x:Key="SwitchOnBrush" Color="{DynamicResource SwitchOnColor}"/>
+            <Color x:Key="SwitchOnColor">#A56EF7</Color><SolidColorBrush x:Key="SwitchOnBrush" Color="{DynamicResource SwitchOnColor}"/>
             <Color x:Key="SwitchOffColor">#B3D1D1D6</Color>
             <SolidColorBrush x:Key="SegmentTrackBrush" Color="{DynamicResource SegmentTrackColor}"/>
             <SolidColorBrush x:Key="SegmentSelectionBrush" Color="{DynamicResource SegmentSelectionColor}"/>
@@ -56,7 +56,7 @@
 <Color x:Key="StudioSurfaceColor">#FFFFFF</Color><SolidColorBrush x:Key="StudioSurfaceBrush" Color="{DynamicResource StudioSurfaceColor}"/>
 <Color x:Key="StudioHoverColor">#F0F0F2</Color><SolidColorBrush x:Key="StudioHoverBrush" Color="{DynamicResource StudioHoverColor}"/>
 <Color x:Key="StudioTextColor">#242426</Color><SolidColorBrush x:Key="StudioTextBrush" Color="{DynamicResource StudioTextColor}"/>
-<Color x:Key="StudioSelectedTextColor">#DF80FF</Color><SolidColorBrush x:Key="StudioSelectedTextBrush" Color="{DynamicResource StudioSelectedTextColor}"/>
+<Color x:Key="StudioSelectedTextColor">#A56EF7</Color><SolidColorBrush x:Key="StudioSelectedTextBrush" Color="{DynamicResource StudioSelectedTextColor}"/>
 <Color x:Key="StudioHoverBorderColor">#C2C2C6</Color><SolidColorBrush x:Key="StudioHoverBorderBrush" Color="{DynamicResource StudioHoverBorderColor}"/>
 <Color x:Key="StudioKeyboardColor">#EEEEF0</Color><SolidColorBrush x:Key="StudioKeyboardBrush" Color="{DynamicResource StudioKeyboardColor}"/>
             <Color x:Key="InputBorderColor">#E5E5E8</Color><SolidColorBrush x:Key="InputBorderBrush" Color="{DynamicResource InputBorderColor}"/>

@@ -269,6 +269,42 @@ bool Persist() {
         return true;
     } catch (...) { return false; }
 }
+Json MergeIconOrder(const Json& requested) {
+    std::unordered_set<std::string> submitted;
+    for (const auto& key : requested)
+        submitted.insert(key.get<std::string>());
+
+    // A drag only reports rows currently visible to the UI. Keep any prior
+    // positions whose applications are temporarily absent, attached to the
+    // preceding visible row so their relative place survives a partial save.
+    std::vector<std::string> leading;
+    std::unordered_map<std::string, std::vector<std::string>> retainedAfter;
+    std::string anchor;
+    bool hasAnchor{};
+    for (const auto& entry : settings["iconOrder"]) {
+        auto key = entry.get<std::string>();
+        if (submitted.contains(key)) {
+            anchor = std::move(key);
+            hasAnchor = true;
+        } else if (hasAnchor) {
+            retainedAfter[anchor].push_back(std::move(key));
+        } else {
+            leading.push_back(std::move(key));
+        }
+    }
+
+    Json merged = Json::array();
+    for (const auto& key : leading)
+        merged.push_back(key);
+    for (const auto& entry : requested) {
+        auto key = entry.get<std::string>();
+        merged.push_back(key);
+        if (auto found = retainedAfter.find(key); found != retainedAfter.end())
+            for (const auto& retained : found->second)
+                merged.push_back(retained);
+    }
+    return merged;
+}
 void LoadRules() {
     rules.clear();
     for (auto& j : settings["rules"]) {
@@ -1513,7 +1549,10 @@ Json Handle(const Json& req) {
                 !unique.insert(key.get<std::string>()).second)
                 return Result(false, "图标顺序无效", ERROR_INVALID_DATA);
         auto saved = settings;
-        settings["iconOrder"] = keys;
+        auto merged = MergeIconOrder(keys);
+        if (merged.size() > MaxBridgeIcons)
+            return Result(false, "图标顺序无效", ERROR_INVALID_DATA);
+        settings["iconOrder"] = std::move(merged);
         settings["autoSort"] = false;
         if (!Persist()) {
             settings = saved;

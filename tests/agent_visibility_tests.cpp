@@ -1033,6 +1033,36 @@ void GenericUidChangeRestoresHiddenPolicy() {
     CHECK(bridge.shared->icons[1].placement == 1);
     CHECK(LoadSettings(settingsPath, recovered)["rules"] == settings["rules"]);
 }
+void PartialReorderRetainsTemporarilyAbsentIcons() {
+    ResetFixture();
+    const auto catalog = CatalogJson()["icons"];
+    const auto targetOrder = catalog[0]["stableKey"].get<std::string>();
+    const auto peerOrder = catalog[1]["stableKey"].get<std::string>();
+    const auto peer = bridge.shared->icons[1];
+    settings["iconOrder"] = {"before", "missing", "after"};
+    CHECK(MergeIconOrder(Json::array({"after", "before"})) ==
+          Json::array({"after", "before", "missing"}));
+    settings["iconOrder"] = {targetOrder, peerOrder};
+    CHECK(SaveSettings(settingsPath, settings));
+
+    bridge.absentNativeIcons.insert(IdentityKey(peer.identity));
+    Refresh();
+    auto reply = Call("icons.reorder", {{"keys", Json::array({targetOrder})}});
+    CHECK(reply.value("success", false) && reply.value("saved", false));
+    CHECK(settings["iconOrder"] == Json::array({targetOrder, peerOrder}));
+    bool recovered{};
+    CHECK(LoadSettings(settingsPath, recovered)["iconOrder"] == settings["iconOrder"]);
+
+    bridge.absentNativeIcons.clear();
+    bridge.shared->icons[bridge.shared->count++] = peer;
+    bridge.shared->snapshotSequence += 2;
+    Refresh();
+    const auto restored = CatalogJson()["icons"];
+    auto returned = std::find_if(restored.begin(), restored.end(), [&](const auto& icon) {
+        return icon["stableKey"] == peerOrder;
+    });
+    CHECK(returned != restored.end());
+}
 void IdentityLearningDoesNotReplayVisualPolicy() {
     ResetFixture(); auto key = TargetKey(); auto before = configRevision;
     auto& row = bridge.shared->icons[0];
@@ -1218,6 +1248,7 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"Run registry preflight failure leaves task unchanged", StartupRunPreflightFailureCannotChangeTask},
                             std::pair{"Run retirement failure restores startup task", StartupRunDeleteFailureRestoresTask},
                             std::pair{"generic recreated UID inherits saved hiding without touching peer", GenericUidChangeRestoresHiddenPolicy},
+                             std::pair{"partial reorder retains temporarily absent icons", PartialReorderRetainsTemporarilyAbsentIcons},
                             std::pair{"identity metadata learning does not replay visual policy", IdentityLearningDoesNotReplayVisualPolicy},
                             std::pair{"own original preview is independent of replacement pixels", OwnOriginalPreviewDoesNotFollowReplacementPixels},
                             std::pair{"provisional identity cannot train and delayed UID restores secondary", ProvisionalAssociationCannotTrainIdentityAndDelayedUidRestores},

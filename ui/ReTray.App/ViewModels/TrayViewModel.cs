@@ -68,6 +68,7 @@ public partial class TrayViewModel : ObservableObject
         ReportError(exception, true);
     }
     private List<string> iconOrder = new();
+    private long orderSettingsRevision = -1;
     private IconRow? selected;
     public IconRow? Selected { get => selected; set { if (SetProperty(ref selected, value)) { OnPropertyChanged(nameof(HasSelection)); if(value != null) ReadEditor(value); } } }
     public bool HasSelection => Selected != null;
@@ -164,13 +165,25 @@ public partial class TrayViewModel : ObservableObject
         foreach (var row in wanted) if (!Icons.Contains(row)) Icons.Add(row);
         for(int i=0;i<wanted.Count;i++)if(Icons[i]!=wanted[i])Icons.Move(Icons.IndexOf(wanted[i]),i);
     }
+    private void SynchronizeOrderSettings(JsonObject settings, long revision)
+    {
+        Settings = settings;
+        iconOrder = settings["iconOrder"]?.AsArray().Select(x => x!.GetValue<string>()).ToList() ?? new();
+        orderSettingsRevision = revision;
+        var autoSort = settings["autoSort"]?.GetValue<bool>() ?? false;
+        if (AutoSort == autoSort) return;
+        var wasReading = readingEditor;
+        readingEditor = true;
+        try { AutoSort = autoSort; }
+        finally { readingEditor = wasReading; }
+    }
     public async Task InitializeAsync(JsonObject? importedSettings = null)
     {
         if (initializing || ApplicationStopping) return;
         initializing = true;
         try
         {
-            initialized=false;var result = importedSettings==null?await Call("settings.read", timeout: StartupRequestTimeout()):new JsonObject{["data"]=importedSettings.DeepClone()}; Settings = (JsonObject)result["data"]!.DeepClone();iconOrder=Settings["iconOrder"]?.AsArray().Select(x=>x!.GetValue<string>()).ToList()??new();
+            initialized=false;var result = importedSettings==null?await Call("settings.read", timeout: StartupRequestTimeout()):new JsonObject{["data"]=importedSettings.DeepClone()}; SynchronizeOrderSettings((JsonObject)result["data"]!.DeepClone(),result["revision"]?.GetValue<long>()??-1);
             Startup = Settings["startup"]?.GetValue<bool>() ?? false; OwnVisible = Settings["ownIcon"]!["visible"]!.GetValue<bool>(); OwnAsset = Settings["ownIcon"]!["asset"]!.GetValue<string>();
             OwnTip=Settings["ownIcon"]?["tip"]?.GetValue<string>()??"ReTray";OwnInList=Settings["ownIcon"]?["showInList"]?.GetValue<bool>()??true;
             Hotkeys=(JsonObject?)Settings["hotkeys"]?.DeepClone()??new();Hotkeys.Remove("restoreIcons");
@@ -178,7 +191,6 @@ public partial class TrayViewModel : ObservableObject
             MenuReverse=menu?["reverse"]?.GetValue<bool>()??false;MenuNewFirst=menu?["newFirst"]?.GetValue<bool>()??true;
             MenuHoverDelay=menu?["hoverDelayMs"]?.GetValue<int>()??0;MenuUnusedDays=menu?["filterUnusedDays"]?.GetValue<int>()??0;
             MenuActionIndex=menu?["action"]?.GetValue<string>() switch { "click"=>0,"double"=>2,"rightDouble"=>3,_=>1 };
-            AutoSort=Settings["autoSort"]?.GetValue<bool>()??false;
             ReviewInterval=Settings["reviewIntervalSeconds"]?.GetValue<int>()??0;
             ThemeIndex = Settings["theme"]!.GetValue<string>() switch { "light" => 1, "dark" => 2, _ => 0 }; ThemeChanged?.Invoke(ThemeIndex);
             LanguageIndex=Localization.LanguageIndex(Settings["language"]?.GetValue<string>());
@@ -208,6 +220,11 @@ public partial class TrayViewModel : ObservableObject
             var result = await Call("catalog.read", timeout: StartupRequestTimeout());
             if(IsDragging||observedDrag!=dragGeneration)return;
             var data = result["data"]!["icons"]!.AsArray(); var active = new HashSet<string>();var snapshotRevision=result["revision"]!.GetValue<long>();
+            if (snapshotRevision != orderSettingsRevision) {
+                var latest = await Call("settings.read", timeout: StartupRequestTimeout());
+                if(IsDragging||observedDrag!=dragGeneration)return;
+                SynchronizeOrderSettings((JsonObject)latest["data"]!.DeepClone(),latest["revision"]?.GetValue<long>()??snapshotRevision);
+            }
             foreach (var item in data) { var j = item!.AsObject(); var key = j["key"]!.GetValue<string>(); active.Add(key);JsonObject? retained=null;if(visibilityAcknowledgments.TryGetValue(key,out var acknowledgment)){if(snapshotRevision<acknowledgment.Revision)retained=acknowledgment.Data;else visibilityAcknowledgments.Remove(key);}if(all.TryGetValue(key,out var row))row.Update(j,retained);else all[key]=new IconRow(j,retained); }
             foreach (var key in all.Keys.Where(k => !active.Contains(k)).ToList()) { all.Remove(key);visibilityAcknowledgments.Remove(key); }
             SynchronizeList();
@@ -271,7 +288,7 @@ public partial class TrayViewModel : ObservableObject
 
 
 
-    public async Task PersistOrderAsync(){var ordered=Icons.Select(row=>row.StableKey).ToList();if(ordered.SequenceEqual(iconOrder))return;try{var keys=new JsonArray();foreach(var key in ordered)keys.Add(key);await Call("icons.reorder",new(){["keys"]=keys});iconOrder=ordered;AutoSort=false;}catch(Exception ex){ReportError(ex);SynchronizeList();}}
+    public async Task PersistOrderAsync(){var ordered=Icons.Select(row=>row.StableKey).ToList();if(ordered.SequenceEqual(iconOrder))return;try{var keys=new JsonArray();foreach(var key in ordered)keys.Add(key);await Call("icons.reorder",new(){["keys"]=keys});iconOrder=ordered;var wasReading=readingEditor;readingEditor=true;try{AutoSort=false;}finally{readingEditor=wasReading;}}catch(Exception ex){ReportError(ex);SynchronizeList();}}
     public static string DescribeHotkey(int code)
     {
         if(code==0)return "未设置";

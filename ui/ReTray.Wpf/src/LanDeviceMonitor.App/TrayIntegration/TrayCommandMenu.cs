@@ -115,8 +115,7 @@ public sealed class TrayCommandMenu
     {
         var item = new MenuItem { Header = label,
             Style = (Style)Application.Current.FindResource("TrayCommandItemStyle") };
-        // Font advance width includes side bearings. Balance the visible ink,
-        // rather than leaving extra right space after the widest command.
+        // Font advance width includes side bearings. Balance the visible ink.
         var ink = new FormattedText(label, System.Globalization.CultureInfo.CurrentUICulture,
             item.FlowDirection, new Typeface(item.FontFamily, item.FontStyle, item.FontWeight, item.FontStretch),
             item.FontSize, Brushes.Black, VisualTreeHelper.GetDpi(menu!.PlacementTarget).PixelsPerDip);
@@ -131,10 +130,10 @@ public sealed class TrayCommandMenu
         menu!.Items.Add(item);
     }
     public static string[] Labels(string language) => language switch {
-        "en" => ["Open", "Exit"],
-        "zh-Hant" => ["開啟", "退出"],
-        "ja" => ["開く", "終了"],
-        _ => ["打开", "退出"]
+        "en" => ["Open main window", "Exit application"],
+        "zh-Hant" => ["開啟主介面", "退出應用"],
+        "ja" => ["メイン画面を開く", "アプリを終了"],
+        _ => ["打开主界面", "退出应用"]
     };
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

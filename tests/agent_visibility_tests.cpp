@@ -541,7 +541,7 @@ void OwnMenuUsesNativeDpiAndUpperRightAnchor() {
     TrayMenu();
     auto restored = GetThreadDpiAwarenessContext();
     SetThreadDpiAwarenessContext(previous);
-    CHECK(menuLabels == std::vector<std::wstring>({L"打开", L"退出"}));
+    CHECK(menuLabels == std::vector<std::wstring>({L"打开主界面", L"退出应用"}));
     CHECK((menuFlags & TPM_BOTTOMALIGN) != 0);
     CHECK((menuFlags & (TPM_RIGHTALIGN | TPM_CENTERALIGN)) == 0);
     CHECK(AreDpiAwarenessContextsEqual(menuDpi, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2));

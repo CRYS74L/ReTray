@@ -20,20 +20,20 @@ inline Typeface typeface;
 inline std::string language="zh";
 inline void SetLanguage(const std::string& value){language=value;}
 inline const wchar_t* Label(UINT id) {
-    if(language=="en")switch(id){case 1:return L"Open";case 2:return L"Restart";case 3:return L"Exit";default:return L"";}
-    if(language=="zh-Hant")switch(id){case 1:return L"開啟";case 2:return L"重新啟動";case 3:return L"退出";default:return L"";}
-    if(language=="ja")switch(id){case 1:return L"開く";case 2:return L"再起動";case 3:return L"終了";default:return L"";}
+    if(language=="en")switch(id){case 1:return L"Open main window";case 2:return L"Restart";case 3:return L"Exit application";default:return L"";}
+    if(language=="zh-Hant")switch(id){case 1:return L"開啟主介面";case 2:return L"重新啟動";case 3:return L"退出應用";default:return L"";}
+    if(language=="ja")switch(id){case 1:return L"メイン画面を開く";case 2:return L"再起動";case 3:return L"アプリを終了";default:return L"";}
     switch (id) {
-        case 1: return L"打开";
+        case 1: return L"打开主界面";
         case 2: return L"重新启动";
-        case 3: return L"退出";
+        case 3: return L"退出应用";
         default: return L"";
     }
 }
 inline MSAAMENUINFO menuNames[] = {
-    {MSAA_MENU_SIG, 2, const_cast<wchar_t*>(L"打开")},
+    {MSAA_MENU_SIG, 5, const_cast<wchar_t*>(L"打开主界面")},
     {MSAA_MENU_SIG, 4, const_cast<wchar_t*>(L"重新启动")},
-    {MSAA_MENU_SIG, 2, const_cast<wchar_t*>(L"退出")}};
+    {MSAA_MENU_SIG, 4, const_cast<wchar_t*>(L"退出应用")}};
 inline const wchar_t* Data(UINT id) {
     auto& name=menuNames[id-1];name.pszWText=const_cast<wchar_t*>(Label(id));name.cchWText=static_cast<DWORD>(wcslen(name.pszWText));
     return reinterpret_cast<const wchar_t*>(&name);

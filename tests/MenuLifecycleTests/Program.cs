@@ -73,18 +73,17 @@ internal static class Program
            VisualTreeHelper.GetDpi(t).PixelsPerDip);
        return measured.Width+measured.OverhangTrailing-measured.OverhangLeading;
    }).First();
-   if(!menu.Items.Cast<MenuItem>().Select(i=>i.Header?.ToString()).SequenceEqual(new[]{"打开","退出"}))
-       throw new InvalidOperationException("Own tray menu must contain only Open and Exit");
+   if(!menu.Items.Cast<MenuItem>().Select(i=>i.Header?.ToString()).SequenceEqual(new[]{"打开主界面","退出应用"}))
+       throw new InvalidOperationException("Own tray menu must contain Open main window and Exit application");
    var ink=new FormattedText(text.Text,System.Globalization.CultureInfo.CurrentUICulture,text.FlowDirection,
        new Typeface(text.FontFamily,text.FontStyle,text.FontWeight,text.FontStretch),text.FontSize,Brushes.Black,
        VisualTreeHelper.GetDpi(text).PixelsPerDip);
    var origin=text.TranslatePoint(new Point(0,0),surface);
    double left=origin.X+ink.OverhangLeading,right=surface.ActualWidth-origin.X-ink.Width-ink.OverhangTrailing;
    Console.WriteLine($"Longest menu text={text.Text}, left={left:F3}, right={right:F3}");
-   // Compare visible ink, including the per-label bearing correction, against
-   // the approved equal 3 DIP panel padding plus the border and text insets.
+   // Measure visible ink, including font bearing correction and the frame.
    if(Math.Abs(left-15.5)>.05 || Math.Abs(right-15.5)>.05)
-       throw new InvalidOperationException("Tray menu does not preserve the approved equal ink insets");
+       throw new InvalidOperationException("Tray menu does not preserve its equal ink insets");
    if(surface is not Border plate || plate.Padding!=new Thickness(3) ||
        plate.BorderThickness!=new Thickness(1.5) || plate.CornerRadius!=new CornerRadius(19))
        throw new InvalidOperationException("Tray plate differs from the approved dimensions");

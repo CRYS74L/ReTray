@@ -3,8 +3,8 @@ public static class TrayRowMetrics
 {
     // Match the visible switch track, including the action button's outline.
     public const double ActionDiameter = 31 * .74;
-    // The track is centered in a 34-DIP row and already has a 4-DIP
-    // trailing margin. Add the same inset at both ends only while lifted.
+    // Match the 28-DIP icon's left clearance to its top clearance.
+    // Keep the switch track's existing right clearance unchanged.
     public static System.Windows.Thickness DragContentInset { get; } =
-        new((34 - ActionDiameter) / 2 - 4, 0, (34 - ActionDiameter) / 2 - 4, 0);
+        new((34 - 28) / 2, 0, (34 - ActionDiameter) / 2 - 4, 0);
 }

@@ -18,7 +18,7 @@ internal static class TrayDragAppearanceTests
             source.Root.Attributes().Where(a => a.IsNamespaceDeclaration).Select(a => new XAttribute(a.Name,
                 a.Value.StartsWith("clr-namespace:") && !a.Value.Contains(";assembly=") ? a.Value + ";assembly=ReTray" : a.Value)),
             source.Descendants().Where(e => e.Name.LocalName == "Style" &&
-                new[] { "DeviceListScrollViewerStyle", "DeviceListBoxStyle", "FooterCircleButtonStyle" }.Contains((string?)e.Attribute(x + "Key"))));
+                new[] { "DeviceListScrollViewerStyle", "DeviceListBoxStyle", "SidebarKeyboardFocusStyle", "SidebarIconButtonStyle", "FooterCircleButtonStyle" }.Contains((string?)e.Attribute(x + "Key"))));
         dictionary.Elements().Single(e => (string?)e.Attribute(x + "Key") == "DeviceListBoxStyle")
             .Elements().Where(e => (string?)e.Attribute("Property") is "ItemContainerStyle" or "ItemTemplate").ToList().ForEach(e => e.Remove());
         foreach (var element in dictionary.Descendants())
@@ -32,6 +32,10 @@ internal static class TrayDragAppearanceTests
             }
         }
         app.Resources.MergedDictionaries.Add((ResourceDictionary)System.Windows.Markup.XamlReader.Parse(dictionary.ToString()));
+        var iconPixels = new byte[32 * 32 * 4];
+        for (int i = 0; i < iconPixels.Length; i += 4)
+        { iconPixels[i] = 37; iconPixels[i + 1] = 117; iconPixels[i + 2] = 193; iconPixels[i + 3] = 255; }
+        var image = BitmapSource.Create(32, 32, 96, 96, PixelFormats.Pbgra32, null, iconPixels, 32 * 4); image.Freeze();
         foreach (var theme in new[] { "Light", "Dark" })
         foreach (var scale in new[] { 1d, 1.25, 1.5, 2d })
         foreach (var width in new[] { 280d, 364d, 500d })
@@ -42,7 +46,7 @@ internal static class TrayDragAppearanceTests
             var list = (ListBox)page.FindName("IconList");
             // Exercise the shipped row, divider, container and scroll templates
             // using synthetic names without loading the native tray runtime.
-            list.ItemsSource = Enumerable.Range(1, 30).Select(i => new { Name = $"Application {i:00}", Visible = true, CanToggle = true }).ToArray();
+            list.ItemsSource = Enumerable.Range(1, 30).Select(i => new { Name = $"Application {i:00}", Image = image, Visible = true, CanToggle = true }).ToArray();
             list.Visibility = Visibility.Visible;
             ((FrameworkElement)page.FindName("LoadingList")).Visibility = Visibility.Collapsed;
             VisualTreeHelper.SetRootDpi(page, new DpiScale(scale, scale));
@@ -71,8 +75,28 @@ internal static class TrayDragAppearanceTests
             for (DependencyObject? ancestor = content; ancestor != null; ancestor = VisualTreeHelper.GetParent(ancestor))
                 Require(ancestor is not UIElement visual || visual.Effect == null,
                     "Row content inherits a bitmap effect and loses native text rendering");
-            Require(content.Margin.Left == content.Margin.Right && content.Margin.Left > 0,
-                "The content inset was not applied symmetrically");
+            var icon = Find<ReTray_App.Controls.TrayIconButton>(row).Single();
+            var iconBounds = icon.TransformToAncestor(page).TransformBounds(new Rect(icon.RenderSize));
+            var leftGap = iconBounds.Left - bounds.Left;
+            var contentTopGap = iconBounds.Top - bounds.Top;
+            Require(Math.Abs(leftGap - contentTopGap) < .01,
+                $"Content clearance differs at left and top: {leftGap}/{contentTopGap}");
+            Require(Math.Abs(rightGap - 5.53) < .01,
+                "The approved right clearance changed");
+            var iconImage = Find<ReTray_App.Controls.TrayIconImage>(icon).Single();
+            var iconRender = new RenderTargetBitmap((int)Math.Ceiling(iconImage.ActualWidth * scale), (int)Math.Ceiling(iconImage.ActualHeight * scale),
+                96 * scale, 96 * scale, PixelFormats.Pbgra32);
+            iconRender.Render(iconImage);
+            var renderedIconPixels = new byte[iconRender.PixelWidth * iconRender.PixelHeight * 4];
+            iconRender.CopyPixels(renderedIconPixels, iconRender.PixelWidth * 4, 0);
+            var opaquePixels = Enumerable.Range(0, iconRender.PixelWidth * iconRender.PixelHeight)
+                .Where(i => renderedIconPixels[i * 4 + 3] > 127).ToArray();
+            Require(opaquePixels.Length > 0, "The real icon renderer did not draw the synthetic icon");
+            var iconOrigin = iconImage.TranslatePoint(new Point(), page);
+            var visibleLeftGap = iconOrigin.X + opaquePixels.Min(i => i % iconRender.PixelWidth) / scale - bounds.Left;
+            var visibleTopGap = iconOrigin.Y + opaquePixels.Min(i => i / iconRender.PixelWidth) / scale - bounds.Top;
+            Require(Math.Abs(visibleLeftGap - visibleTopGap) < .01,
+                $"Visible icon clearance differs at left and top: {visibleLeftGap}/{visibleTopGap}");
             Require(bounds.Left >= 0 && bounds.Right <= page.ActualWidth && bounds.Right < barBounds.Left,
                 "The capsule overlaps the scrollbar or leaves the interface");
             Require(barBounds.Left - bounds.Right >= 1, "The capsule touches the scrollbar");
@@ -135,7 +159,7 @@ internal static class TrayDragAppearanceTests
             Require(maxDifference <= 1, "Adding the separate shadow altered foreground edge coverage beyond 8-bit compositing precision");
             TrayRowAppearance.SetIsLifted(row, false); Layout();
             Require(line.Visibility == Visibility.Visible && surface.Visibility == Visibility.Collapsed, "Drop did not restore the separator and surface");
-            Console.WriteLine($"PASS drag capsule {theme}, {scale * 100}% DPI, width {width}: radius={surface.CornerRadius.TopLeft}, scrollbar gap={barBounds.Left - bounds.Right:F2}, switch gap={rightGap:F2}/{bottomGap:F2}");
+            Console.WriteLine($"PASS drag capsule {theme}, {scale * 100}% DPI, width {width}: visible left/top={visibleLeftGap:F2}/{visibleTopGap:F2}, right={rightGap:F2}, scrollbar gap={barBounds.Left - bounds.Right:F2}");
         }
     }
 

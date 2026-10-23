@@ -12,9 +12,15 @@
           <ControlTemplate TargetType="ListBoxItem">
             <Grid x:Name="ItemMotionRoot" MinHeight="{TemplateBinding MinHeight}">
               <Border Background="Transparent" />
-              <Border x:Name="DragSurface" Background="{DynamicResource StudioSurfaceBrush}" CornerRadius="6" Visibility="Collapsed" IsHitTestVisible="False" />
-              <ContentPresenter Margin="{TemplateBinding Padding}" UseLayoutRounding="False" />
+              <Border x:Name="DragSurface" Background="{DynamicResource StudioSurfaceBrush}" CornerRadius="{Binding ActualHeight,RelativeSource={RelativeSource Self},Converter={StaticResource CapsuleRadius}}" Visibility="Collapsed" IsHitTestVisible="False" />
+              <ContentPresenter x:Name="RowContent" Margin="{TemplateBinding Padding}" UseLayoutRounding="False" />
             </Grid>
+            <ControlTemplate.Triggers>
+              <Trigger Property="local:TrayRowAppearance.IsLifted" Value="True">
+                <Setter TargetName="DragSurface" Property="Visibility" Value="Visible" />
+                <Setter TargetName="RowContent" Property="Margin" Value="{x:Static local:TrayRowMetrics.DragContentInset}" />
+              </Trigger>
+            </ControlTemplate.Triggers>
           </ControlTemplate>
         </Setter.Value>
       </Setter>
@@ -177,7 +183,17 @@
         <Button Grid.Column="2" Style="{StaticResource TrayMoreButtonStyle}" Margin="0,0,8,0" Tag="{Binding}" Click="IconSettingsClick" VerticalAlignment="Center" AutomationProperties.AutomationId="IconSettings" AutomationProperties.Name="图标设置">
           <TextBlock Text="" FontFamily="{StaticResource AppIconFont}" FontSize="12" Foreground="{Binding Foreground,RelativeSource={RelativeSource AncestorType=Button}}" controls:GlyphInkAlignment.Enabled="True" />
         </Button>
-        <local:PixelAlignedDivider Grid.Column="1" Grid.ColumnSpan="3" Height="0.5" Margin="8,0,0,0" Background="{DynamicResource ListDividerBrush}" VerticalAlignment="Bottom" IsHitTestVisible="False" />
+        <local:PixelAlignedDivider Grid.Column="1" Grid.ColumnSpan="3" Height="0.5" Margin="8,0,0,0" Background="{DynamicResource ListDividerBrush}" VerticalAlignment="Bottom" IsHitTestVisible="False">
+          <local:PixelAlignedDivider.Style>
+            <Style TargetType="local:PixelAlignedDivider">
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding Path=(local:TrayRowAppearance.IsLifted),RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                  <Setter Property="Visibility" Value="Hidden" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </local:PixelAlignedDivider.Style>
+        </local:PixelAlignedDivider>
       </Grid>
     </DataTemplate>
   </UserControl.Resources>

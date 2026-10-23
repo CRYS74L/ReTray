@@ -94,6 +94,7 @@ internal static class Program
         {
             var original = f.Items.ToArray(); var start = f.Center(1);
             Require(f.Reorder.Begin(1, start), "Could not capture a real WPF list");
+            Require(TrayRowAppearance.GetIsLifted(f.Row(1)), "Drag did not enable the lifted row appearance");
             f.Reorder.Update(new Point(start.X + 170, start.Y + 34 * 3));
             Require(f.Items.SequenceEqual(original), "Preview mutated persisted order before release");
             Require(Math.Abs(((TranslateTransform)f.Row(1).RenderTransform).X) < .01, "Horizontal motion was not locked");
@@ -111,6 +112,7 @@ internal static class Program
                 Require(position > 0 && position < 34, "Neighbour skipped its intermediate animation frames");
             }
             Wait(dropping);
+            Require(!TrayRowAppearance.GetIsLifted(f.Row(0)), "Drop retained the lifted row appearance");
             Require(f.Items[0] == original[1] && f.Saves == 1, "Drop did not commit exactly once");
             Require(!f.List.IsMouseCaptured && f.Row(0).RenderTransform.Value.IsIdentity, "Drop leaked mouse capture or transforms");
             Console.WriteLine("PASS vertical tracking, animated neighbours, reversing, single commit and cleanup");
@@ -122,6 +124,7 @@ internal static class Program
                 { RoutedEvent = Keyboard.PreviewKeyDownEvent }); Pump(30);
             Require(f.Items.SequenceEqual(original) && f.Saves == 1 && f.LastChanged == false, "Escape changed saved order");
             Require(!f.List.IsMouseCaptured, "Escape kept mouse capture");
+            Require(!TrayRowAppearance.GetIsLifted(f.Row(0)), "Escape retained the lifted row appearance");
 
             Require(f.Reorder.Begin(0, f.Center(0)), "Could not begin outside-drop check");
             f.Reorder.Update(new Point(120, 170)); Wait(f.Reorder.CompleteAsync(false));

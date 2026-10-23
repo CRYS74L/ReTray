@@ -11,6 +11,12 @@ internal static class Program
 {
     [STAThread] static int Main(string[] args)
     {
+        if (args.Contains("--tray-drag-only"))
+        {
+            var app = new LanDeviceMonitor.App(); app.InitializeComponent();
+            try { TrayDragAppearanceTests.Run(); return 0; }
+            catch (Exception error) { Console.Error.WriteLine(error); return 1; }
+        }
         if (args.Contains("--hover-only"))
         {
             _ = new Application { ShutdownMode = ShutdownMode.OnExplicitShutdown };
@@ -29,6 +35,7 @@ internal static class Program
             ("settings glyph ink is centered with a uniform thin outline",SettingsGlyphInk),
             ("P3 power matches approved proportions and has an unbroken arc",PowerMatchesPreview),
             ("page placeholders match controls and loading visibility",PagePlaceholders),
+            ("dragged rows hide separators and stay in capsule bounds",TrayDragAppearanceTests.Run),
             ("list dividers keep constant coverage through fractional scrolling",DividerScrollStability),
             ("caption uses body TextBlock rendering and genuine Regular face",BrandCaptionAndVector),
             ("capital R aligns with the icon center", CaptionReferenceTests.Run),
@@ -392,8 +399,9 @@ internal static class Program
     {
         var source=System.Xml.Linq.XDocument.Load(System.IO.Path.Combine(AppContext.BaseDirectory,"EditorTemplates.xaml"));
         var xml=new System.Xml.Linq.XElement(source.Descendants().Single(e=>(string?)e.Attribute("Grid.ColumnSpan")=="3" && (string?)e.Attribute("Height")=="0.5"));
-        if(xml.Name.NamespaceName.StartsWith("clr-namespace:"))
-            xml.Name=System.Xml.Linq.XNamespace.Get(xml.Name.NamespaceName+";assembly=ReTray")+xml.Name.LocalName;
+        foreach(var element in xml.DescendantsAndSelf())
+            if(element.Name.NamespaceName.StartsWith("clr-namespace:") && !element.Name.NamespaceName.Contains(";assembly="))
+                element.Name=System.Xml.Linq.XNamespace.Get(element.Name.NamespaceName+";assembly=ReTray")+element.Name.LocalName;
         var wrapper=new System.Xml.Linq.XElement(source.Root!.Name.Namespace+"Grid",
             source.Root.Attributes().Where(a=>a.IsNamespaceDeclaration).Select(a=>new System.Xml.Linq.XAttribute(a.Name,
                 a.Value.StartsWith("clr-namespace:")?a.Value+";assembly=ReTray":a.Value)),xml);

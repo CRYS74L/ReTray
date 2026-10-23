@@ -33,7 +33,6 @@ internal sealed class TrayRowReorder
     private double initialScroll;
     private int from, over;
     private bool active, settling, cancelled;
-    private Border? surface;
     private ListBoxItem? capture;
 
     internal TrayRowReorder(ListBox list, Action started, Action<int, int> move, Func<bool, Task> finished)
@@ -129,8 +128,7 @@ internal sealed class TrayRowReorder
         var lifted = slots[from].Row;
         Panel.SetZIndex(lifted, 10);
         lifted.Effect = new DropShadowEffect { BlurRadius = 12, ShadowDepth = 2, Opacity = .18 };
-        surface = lifted.Template.FindName("DragSurface", lifted) as Border;
-        if (surface != null) surface.Visibility = Visibility.Visible;
+        TrayRowAppearance.SetIsLifted(lifted, true);
         list.SetCurrentValue(FrameworkElement.CursorProperty, grabbingCursor.Value);
         list.SetCurrentValue(FrameworkElement.ForceCursorProperty, true);
         started(); scrollTimer.Start();
@@ -194,8 +192,8 @@ internal sealed class TrayRowReorder
             foreach (var slot in slots) slot.Row.ClearValue(UIElement.RenderTransformProperty);
             var lifted = slots[from].Row;
             lifted.ClearValue(Panel.ZIndexProperty); lifted.ClearValue(UIElement.EffectProperty);
-            if (surface != null) surface.Visibility = Visibility.Collapsed;
-            slots.Clear(); surface = null;
+            lifted.ClearValue(TrayRowAppearance.IsLiftedProperty);
+            slots.Clear();
             list.ClearValue(FrameworkElement.CursorProperty);
             list.ClearValue(FrameworkElement.ForceCursorProperty);
             if (capture?.IsMouseCaptured == true) capture.ReleaseMouseCapture();

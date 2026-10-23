@@ -54,7 +54,12 @@ internal static class SwitchSaveAppearanceRegression
                         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
                         var server = ReplyAsync(pipe, success, release.Task, deadline.Token);
                         var previous = row.ActualVisible;
+                        var knob = (Border)toggle.Template.FindName("PART_Knob", toggle);
+                        var activeTrack = (Border)toggle.Template.FindName("PART_ActiveTrack", toggle);
+                        var movement = (TranslateTransform)knob.RenderTransform;
+                        var initialColor = activeTrack.Opacity;
                         toggle.SetCurrentValue(ToggleButton.IsCheckedProperty, value);
+                        Require(Math.Abs(activeTrack.Opacity - initialColor) < .001, "Theme color jumped before the thumb animation.");
                         var saving = vm.SetRowVisibilityAsync(row, value);
                         Require(row.IsBusy && !toggle.IsEnabled, "Saving did not block duplicate activation.");
                         var duplicate = vm.SetRowVisibilityAsync(row, !value);
@@ -63,23 +68,29 @@ internal static class SwitchSaveAppearanceRegression
                         try { peer.Toggle(); throw new InvalidOperationException("Busy switch accepted UIA activation."); }
                         catch (System.Windows.Automation.ElementNotEnabledException) { }
                         var samples = 0; var minimumOpacity = 1d;
+                        var positions = new HashSet<double>();
                         while (!saving.IsCompleted)
                         {
                             Pump(16); samples++;
                             if (samples == 12) release.SetResult();
                             minimumOpacity = Math.Min(minimumOpacity, toggle.Opacity);
-                            var knob = (Border)toggle.Template.FindName("PART_Knob", toggle);
                             Require(knob.Opacity == 1, "Saving dimmed the knob.");
+                            Require(Math.Abs(movement.X / 20 - activeTrack.Opacity) < .001, $"Color fade and thumb movement are out of sync: x={movement.X}, opacity={activeTrack.Opacity}, transformAnimated={movement.HasAnimatedProperties}, opacityAnimated={activeTrack.HasAnimatedProperties}.");
+                            positions.Add(Math.Round(movement.X, 3));
                         }
                         saving.GetAwaiter().GetResult(); server.GetAwaiter().GetResult();
                         toggle.SetCurrentValue(ToggleButton.IsCheckedProperty, row.Visible);
                         Pump(220);
                         Require(samples >= 12, "The pending response was not sampled across frames.");
+                        Require(positions.Count >= 5, "Switch motion skipped its intermediate frames.");
                         Require(minimumOpacity == 1 && toggle.Opacity == 1, $"Saving caused a faded frame: minimum opacity={minimumOpacity}.");
                         Require(!row.IsBusy && toggle.IsEnabled, "Save completion left the switch blocked.");
                         Require(toggle.IsChecked == (success ? value : previous), "Acknowledgment/rollback state is wrong.");
+                        Require(activeTrack.Opacity == (toggle.IsChecked == true ? 1 : 0), "Theme fade did not finish with the switch.");
+                        Require(!movement.HasAnimatedProperties && !activeTrack.HasAnimatedProperties, "Completed switch retained animation clocks.");
+                        Require(knob.CacheMode is BitmapCache cache && cache.RenderAtScale == VisualTreeHelper.GetDpi(toggle).DpiScaleX, "Thumb/shadow cache does not match display DPI.");
                         Require(success ? vm.Error.Length == 0 : vm.Error.Contains("fixture rejection"), "Failure feedback was lost.");
-                        Console.WriteLine($"{mode} {(value ? "on" : "off")} {(success ? "save" : "rollback")} PASS: {samples} samples, opacity={minimumOpacity}, duplicate activation blocked.");
+                        Console.WriteLine($"{mode} {(value ? "on" : "off")} {(success ? "save" : "rollback")} PASS: {samples} samples, {positions.Count} positions, synchronous thumb/color, opacity={minimumOpacity}, duplicate activation blocked.");
                     }
                     foreach (var value in new[] { true, false })
                     {
@@ -91,6 +102,19 @@ internal static class SwitchSaveAppearanceRegression
                     systemSwitch.IsEnabled = false; Pump(40);
                     Require(systemSwitch.Opacity == .45, "Unavailable switches lost their disabled appearance.");
                     systemSwitch.IsEnabled = true;
+                    systemSwitch.IsChecked = false; Pump(250);
+                    var systemKnob = (Border)systemSwitch.Template.FindName("PART_Knob", systemSwitch);
+                    var systemTrack = (Border)systemSwitch.Template.FindName("PART_ActiveTrack", systemSwitch);
+                    var systemMovement = (TranslateTransform)systemKnob.RenderTransform;
+                    systemSwitch.IsChecked = true; Pump(75);
+                    var reversalPosition = systemMovement.X; var reversalColor = systemTrack.Opacity;
+                    Require(reversalColor is > 0 and < 1, "Color fade has no intermediate state.");
+                    systemSwitch.IsChecked = false;
+                    Require(Math.Abs(systemMovement.X - reversalPosition) < .001 && Math.Abs(systemTrack.Opacity - reversalColor) < .001, "Rapid reversal jumped to an endpoint.");
+                    Pump(80);
+                    Require(systemMovement.X < reversalPosition && systemTrack.Opacity < reversalColor, "Rapid reversal did not fade and move back together.");
+                    Pump(180);
+                    Require(systemMovement.X == 0 && systemTrack.Opacity == 0, "Reversed switch did not finish at off.");
                 }
                 Console.WriteLine("Switch save appearance regression PASS: real tray-row template and view-model pipe requests, both directions, failure rollback, busy input guard, light/dark and unavailable states.");
             }

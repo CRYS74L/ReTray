@@ -25,6 +25,15 @@ public class SwitchControl : System.Windows.Controls.CheckBox
     protected override bool IsEnabledCore => base.IsEnabledCore && !IsBusy;
 
     private readonly TranslateTransform _translation = new();
+    private FrameworkElement? _activeTrack;
+    private ClockGroup? _motion;
+    private int _motionGeneration;
+    private const double MotionMilliseconds = 200;
+
+    public SwitchControl()
+    {
+        Unloaded += (_, _) => UpdateVisualState(false);
+    }
     protected override AutomationPeer OnCreateAutomationPeer() => new SwitchAutomationPeer(this);
 
     private sealed class SwitchAutomationPeer(SwitchControl owner) : CheckBoxAutomationPeer(owner), IToggleProvider
@@ -48,33 +57,79 @@ public class SwitchControl : System.Windows.Controls.CheckBox
 
     public override void OnApplyTemplate()
     {
+        ClearMotion();
         base.OnApplyTemplate();
         if (GetTemplateChild("PART_Knob") is FrameworkElement knob)
+        {
             knob.RenderTransform = _translation;
-        UpdateKnob(false);
+            // Only the static circle/shadow is cached, at the display's native
+            // pixel density. Its transform runs outside the cached surface.
+            knob.CacheMode = new BitmapCache { RenderAtScale = VisualTreeHelper.GetDpi(this).DpiScaleX };
+        }
+        _activeTrack = GetTemplateChild("PART_ActiveTrack") as FrameworkElement;
+        UpdateVisualState(false);
     }
 
     protected override void OnChecked(RoutedEventArgs e)
     {
+        UpdateVisualState(true);
         base.OnChecked(e);
-        UpdateKnob(true);
     }
 
     protected override void OnUnchecked(RoutedEventArgs e)
     {
+        UpdateVisualState(true);
         base.OnUnchecked(e);
-        UpdateKnob(true);
     }
 
-    private void UpdateKnob(bool animate)
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
     {
-        var current = _translation.X;
-        var target = IsChecked == true ? 20d : 0d;
-        _translation.BeginAnimation(TranslateTransform.XProperty, null);
-        _translation.X = target;
-        if (animate && IsLoaded && SystemParameters.ClientAreaAnimation)
-            _translation.BeginAnimation(TranslateTransform.XProperty,
-                new DoubleAnimation(current, target, TimeSpan.FromMilliseconds(180))
-                { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } });
+        base.OnDpiChanged(oldDpi, newDpi);
+        if (GetTemplateChild("PART_Knob") is FrameworkElement knob)
+            knob.CacheMode = new BitmapCache { RenderAtScale = newDpi.DpiScaleX };
+    }
+
+    private void UpdateVisualState(bool animate)
+    {
+        if (_activeTrack is null) return;
+        var currentX = _translation.X;
+        var currentOpacity = _activeTrack.Opacity;
+        var targetOpacity = IsChecked == true ? 1d : 0d;
+        var targetX = targetOpacity * 20;
+        var generation = ++_motionGeneration;
+        ClearMotion();
+        _translation.X = currentX;
+        _activeTrack.Opacity = currentOpacity;
+        if (!animate || !IsLoaded || !SystemParameters.ClientAreaAnimation ||
+            (Math.Abs(currentX - targetX) < .001 && Math.Abs(currentOpacity - targetOpacity) < .001))
+        {
+            _translation.X = targetX; _activeTrack.Opacity = targetOpacity;
+            return;
+        }
+
+        var duration = TimeSpan.FromMilliseconds(MotionMilliseconds);
+        var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
+        var translation = new DoubleAnimation(currentX, targetX, duration) { EasingFunction = ease };
+        var opacity = new DoubleAnimation(currentOpacity, targetOpacity, duration) { EasingFunction = ease };
+        var timeline = new ParallelTimeline();
+        timeline.Children.Add(translation); timeline.Children.Add(opacity);
+        var motion = (ClockGroup)timeline.CreateClock();
+        motion.Completed += (_, _) =>
+        {
+            if (generation != _motionGeneration) return;
+            _translation.X = targetX; _activeTrack.Opacity = targetOpacity;
+            ClearMotion();
+        };
+        _motion = motion;
+        _translation.ApplyAnimationClock(TranslateTransform.XProperty, (AnimationClock)motion.Children[0], HandoffBehavior.SnapshotAndReplace);
+        _activeTrack.ApplyAnimationClock(OpacityProperty, (AnimationClock)motion.Children[1], HandoffBehavior.SnapshotAndReplace);
+        motion.Controller!.Begin();
+    }
+
+    private void ClearMotion()
+    {
+        _motion?.Controller?.Remove(); _motion = null;
+        _translation.ApplyAnimationClock(TranslateTransform.XProperty, null);
+        _activeTrack?.ApplyAnimationClock(OpacityProperty, null);
     }
 }

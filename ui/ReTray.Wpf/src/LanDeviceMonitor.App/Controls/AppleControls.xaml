@@ -14,12 +14,13 @@
                 <ControlTemplate TargetType="controls:SwitchControl">
                     <Grid Background="Transparent">
                         <Border x:Name="Track" Height="31" CornerRadius="15.5" Background="{DynamicResource SwitchOffBrush}" VerticalAlignment="Center"/>
+                        <Border x:Name="PART_ActiveTrack" Height="31" CornerRadius="15.5" Background="{DynamicResource SwitchOnBrush}" Opacity="0" VerticalAlignment="Center"
+                                BorderBrush="{Binding BorderBrush, ElementName=Track}" BorderThickness="{Binding BorderThickness, ElementName=Track}"/>
                         <Border x:Name="PART_Knob" Width="27" Height="27" Margin="2,0,0,0" CornerRadius="13.5" HorizontalAlignment="Left" VerticalAlignment="Center" Background="White">
                             <Border.Effect><DropShadowEffect BlurRadius="3" ShadowDepth="1" Opacity="0.18"/></Border.Effect>
                         </Border>
                     </Grid>
                     <ControlTemplate.Triggers>
-                        <Trigger Property="IsChecked" Value="True"><Setter TargetName="Track" Property="Background" Value="{DynamicResource SwitchOnBrush}"/></Trigger>
                         <MultiTrigger>
                             <MultiTrigger.Conditions>
                                 <Condition Property="IsEnabled" Value="False"/>

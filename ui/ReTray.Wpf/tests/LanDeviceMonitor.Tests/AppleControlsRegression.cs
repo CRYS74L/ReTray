@@ -478,13 +478,14 @@ var iconLeft = window.ShellAppIcon.TranslatePoint(new Point(),window.SidebarExpa
                     VerifySegmentText(segments);
                     var startupKnob = (Border)window.StartWithWindowsCheck.Template.FindName("PART_Knob", window.StartWithWindowsCheck);
                     var startupTrack = (Border)window.StartWithWindowsCheck.Template.FindName("Track", window.StartWithWindowsCheck);
-                    Require(((SolidColorBrush)startupTrack.Background).Color == (Color)window.FindResource("SwitchOnColor"), "开启的开关必须跟随当前主题蓝色");
+                    var startupActiveTrack = (Border)window.StartWithWindowsCheck.Template.FindName("PART_ActiveTrack", window.StartWithWindowsCheck);
+                    Require(startupActiveTrack.Opacity == 1 && ((SolidColorBrush)startupActiveTrack.Background).Color == (Color)window.FindResource("SwitchOnColor"), "开启的开关必须完整显示当前主题色");
                     window.StartWithWindowsCheck.IsChecked = false; Pump(220);
-                    Require(((SolidColorBrush)startupTrack.Background).Color.A is > 0 and < 255, "关闭的开关轨道应透出背景材质");
+                    Require(startupActiveTrack.Opacity == 0 && ((SolidColorBrush)startupTrack.Background).Color.A is > 0 and < 255, "关闭的开关轨道应透出背景材质");
                     CaptureElement(window.StartWithWindowsCheck, $"switch-off-{mode}.png");
                     Capture(window, $"settings-{mode}-{size.Item1}-switch-off.png", mode);
                     window.StartWithWindowsCheck.IsChecked = true; Pump(220);
-                    Require(((SolidColorBrush)startupTrack.Background).Color == (Color)window.FindResource("SwitchOnColor"), "重新开启开关后没有恢复主题色");
+                    Require(startupActiveTrack.Opacity == 1 && ((SolidColorBrush)startupActiveTrack.Background).Color == (Color)window.FindResource("SwitchOnColor"), "重新开启开关后没有完整恢复主题色");
                     Require(Math.Abs(((TranslateTransform)startupKnob.RenderTransform).X - 20) < 0.1,
                         $"启用开关位置错误: {((TranslateTransform)startupKnob.RenderTransform).X}");
                     Capture(window, $"settings-{mode}-{size.Item1}-top.png", mode);

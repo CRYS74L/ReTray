@@ -199,6 +199,7 @@
   </UserControl.Resources>
   <AdornerDecorator>
     <Grid x:Name="PageRoot">
+      <Canvas x:Name="DragShadowLayer" IsHitTestVisible="False" ClipToBounds="False" />
       <Grid x:Name="PageContent">
         <Grid.RowDefinitions>
           <RowDefinition Height="48" />

@@ -9,6 +9,7 @@
   <ItemGroup>
     <Compile Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/TrayIntegration/TrayRowReorder.cs" Link="TrayRowReorder.cs" />
     <Compile Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/TrayIntegration/TrayRowAppearance.cs" Link="TrayRowAppearance.cs" />
+    <Compile Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/TrayIntegration/TrayRowShadow.cs" Link="TrayRowShadow.cs" />
     <Resource Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/Assets/Cursors/Grabbing.cur" Link="Assets/Cursors/Grabbing.cur" />
   </ItemGroup>
 </Project>

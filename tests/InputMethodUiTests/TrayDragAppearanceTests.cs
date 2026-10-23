@@ -68,11 +68,34 @@ internal static class TrayDragAppearanceTests
             Require(Math.Abs(rightGap - bottomGap) < .01 && Math.Abs(topGap - bottomGap) < .01,
                 $"Switch spacing is asymmetric: right={rightGap}, bottom={bottomGap}, top={topGap}");
             var content = (ContentPresenter)row.Template.FindName("RowContent", row);
+            for (DependencyObject? ancestor = content; ancestor != null; ancestor = VisualTreeHelper.GetParent(ancestor))
+                Require(ancestor is not UIElement visual || visual.Effect == null,
+                    "Row content inherits a bitmap effect and loses native text rendering");
             Require(content.Margin.Left == content.Margin.Right && content.Margin.Left > 0,
                 "The content inset was not applied symmetrically");
             Require(bounds.Left >= 0 && bounds.Right <= page.ActualWidth && bounds.Right < barBounds.Left,
                 "The capsule overlaps the scrollbar or leaves the interface");
             Require(barBounds.Left - bounds.Right >= 1, "The capsule touches the scrollbar");
+            var host = (Canvas)page.FindName("DragShadowLayer");
+            var shadowType = typeof(MainPage).Assembly.GetType("ReTray_App.TrayRowShadow")!;
+            using var shadow = (IDisposable)Activator.CreateInstance(shadowType,
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [host, row], null)!;
+            Layout();
+            var silhouette = (Border)host.Children[0];
+            Require(silhouette.Child == null && silhouette.Effect is System.Windows.Media.Effects.DropShadowEffect,
+                "Shadow silhouette contains content or has lost its shadow");
+            Require(!host.ClipToBounds && !Find<ScrollViewer>(list).Any(v => ReferenceEquals(VisualTreeHelper.GetParent(host), v)),
+                "Shadow is inside the scrolling viewport");
+            var shadowBitmap = new RenderTargetBitmap((int)Math.Ceiling(width * scale), (int)Math.Ceiling(400 * scale), 96 * scale, 96 * scale, PixelFormats.Pbgra32);
+            shadowBitmap.Render(host);
+            var shadowPixels = new byte[shadowBitmap.PixelWidth * shadowBitmap.PixelHeight * 4];
+            shadowBitmap.CopyPixels(shadowPixels, shadowBitmap.PixelWidth * 4, 0);
+            byte Alpha(double px, double py) => shadowPixels[((int)Math.Round(py * scale) * shadowBitmap.PixelWidth + (int)Math.Round(px * scale)) * 4 + 3];
+            Require(Alpha(bounds.Left - 2, bounds.Top + bounds.Height / 2) > 0 &&
+                Alpha(bounds.Right + 2, bounds.Top + bounds.Height / 2) > 0 &&
+                Alpha(bounds.Left + bounds.Width / 2, bounds.Top - 2) > 0 &&
+                Alpha(bounds.Left + bounds.Width / 2, bounds.Bottom + 2) > 0,
+                "Shadow is cut off at the viewport edges");
             var bitmap = new RenderTargetBitmap((int)Math.Ceiling(surface.ActualWidth * scale), (int)Math.Ceiling(surface.ActualHeight * scale),
                 96 * scale, 96 * scale, PixelFormats.Pbgra32);
             bitmap.Render(surface);
@@ -88,6 +111,28 @@ internal static class TrayDragAppearanceTests
                 var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(preview));
                 using var file = System.IO.File.Create(System.IO.Path.Combine(AppContext.BaseDirectory, $"tray-drag-{theme.ToLowerInvariant()}.png")); encoder.Save(file);
             }
+            byte[] RenderPage()
+            {
+                var rendered = new RenderTargetBitmap((int)Math.Ceiling(width * scale), (int)Math.Ceiling(400 * scale), 96 * scale, 96 * scale, PixelFormats.Pbgra32);
+                rendered.Render(page);
+                var bytes = new byte[rendered.PixelWidth * rendered.PixelHeight * 4]; rendered.CopyPixels(bytes, rendered.PixelWidth * 4, 0);
+                return bytes;
+            }
+            var withShadow = RenderPage();
+            host.Visibility = Visibility.Hidden;
+            var withoutShadow = RenderPage();
+            host.Visibility = Visibility.Visible;
+            int stride = (int)Math.Ceiling(width * scale) * 4;
+            int maxDifference = 0, differingChannels = 0;
+            for (int yPixel = (int)Math.Ceiling((bounds.Top + 4) * scale); yPixel < (bounds.Bottom - 4) * scale; yPixel++)
+            for (int xPixel = (int)Math.Ceiling((bounds.Left + 18) * scale); xPixel < (bounds.Right - 18) * scale; xPixel++)
+            for (int channel = 0; channel < 4; channel++)
+            {
+                var difference = Math.Abs(withShadow[yPixel * stride + xPixel * 4 + channel] - withoutShadow[yPixel * stride + xPixel * 4 + channel]);
+                maxDifference = Math.Max(maxDifference, difference); if (difference != 0) differingChannels++;
+            }
+            Console.WriteLine($"Foreground difference {theme}/{scale}/{width}: max={maxDifference}, channels={differingChannels}");
+            Require(maxDifference <= 1, "Adding the separate shadow altered foreground edge coverage beyond 8-bit compositing precision");
             TrayRowAppearance.SetIsLifted(row, false); Layout();
             Require(line.Visibility == Visibility.Visible && surface.Visibility == Visibility.Collapsed, "Drop did not restore the separator and surface");
             Console.WriteLine($"PASS drag capsule {theme}, {scale * 100}% DPI, width {width}: radius={surface.CornerRadius.TopLeft}, scrollbar gap={barBounds.Left - bounds.Right:F2}, switch gap={rightGap:F2}/{bottomGap:F2}");

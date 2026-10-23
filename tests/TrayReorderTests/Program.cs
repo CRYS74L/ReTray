@@ -37,6 +37,7 @@ internal static class Program
         internal readonly ListBox List;
         internal readonly Window Window;
         internal readonly TrayRowReorder Reorder;
+        internal readonly Canvas ShadowHost = new() { IsHitTestVisible = false };
         internal int Saves, Starts;
         internal bool? LastChanged;
         internal Fixture(int count = 8, bool verifyNativeCursor = false)
@@ -54,7 +55,8 @@ internal static class Program
             text.SetValue(FrameworkElement.MarginProperty, new Thickness(16, 0, 0, 0));
             List.ItemTemplate = new DataTemplate { VisualTree = text };
             var status = new TextBlock { Margin = new Thickness(14), Text = "Drag a row vertically to reorder" };
-            var panel = new DockPanel(); DockPanel.SetDock(status, Dock.Bottom); panel.Children.Add(status); panel.Children.Add(List);
+            var stage = new Grid(); stage.Children.Add(ShadowHost); stage.Children.Add(List);
+            var panel = new DockPanel(); DockPanel.SetDock(status, Dock.Bottom); panel.Children.Add(status); panel.Children.Add(stage);
             Window = new Window { Title = "ReTray reorder tests", Width = 460, Height = 370, Content = panel };
             nint grabbingHandle = 0;
             Reorder = new TrayRowReorder(List, () =>
@@ -80,7 +82,7 @@ internal static class Program
                     Console.WriteLine("PASS native grabbing cursor restored after drop/cancel");
                 }
                 return Task.CompletedTask;
-            });
+            }, ShadowHost);
             Window.Show(); Window.Activate(); Pump(40); Window.UpdateLayout();
         }
         internal ListBoxItem Row(int i) => (ListBoxItem)List.ItemContainerGenerator.ContainerFromIndex(i);
@@ -95,6 +97,8 @@ internal static class Program
             var original = f.Items.ToArray(); var start = f.Center(1);
             Require(f.Reorder.Begin(1, start), "Could not capture a real WPF list");
             Require(TrayRowAppearance.GetIsLifted(f.Row(1)), "Drag did not enable the lifted row appearance");
+            Require(f.Row(1).Effect == null && f.ShadowHost.Children.Count == 1,
+                "The lifted row was flattened into an effect layer or has no separate shadow");
             f.Reorder.Update(new Point(start.X + 170, start.Y + 34 * 3));
             Require(f.Items.SequenceEqual(original), "Preview mutated persisted order before release");
             Require(Math.Abs(((TranslateTransform)f.Row(1).RenderTransform).X) < .01, "Horizontal motion was not locked");
@@ -113,6 +117,7 @@ internal static class Program
             }
             Wait(dropping);
             Require(!TrayRowAppearance.GetIsLifted(f.Row(0)), "Drop retained the lifted row appearance");
+            Require(f.ShadowHost.Children.Count == 0, "Drop leaked its shadow silhouette");
             Require(f.Items[0] == original[1] && f.Saves == 1, "Drop did not commit exactly once");
             Require(!f.List.IsMouseCaptured && f.Row(0).RenderTransform.Value.IsIdentity, "Drop leaked mouse capture or transforms");
             Console.WriteLine("PASS vertical tracking, animated neighbours, reversing, single commit and cleanup");
@@ -125,6 +130,7 @@ internal static class Program
             Require(f.Items.SequenceEqual(original) && f.Saves == 1 && f.LastChanged == false, "Escape changed saved order");
             Require(!f.List.IsMouseCaptured, "Escape kept mouse capture");
             Require(!TrayRowAppearance.GetIsLifted(f.Row(0)), "Escape retained the lifted row appearance");
+            Require(f.ShadowHost.Children.Count == 0, "Escape leaked its shadow silhouette");
 
             Require(f.Reorder.Begin(0, f.Center(0)), "Could not begin outside-drop check");
             f.Reorder.Update(new Point(120, 170)); Wait(f.Reorder.CompleteAsync(false));

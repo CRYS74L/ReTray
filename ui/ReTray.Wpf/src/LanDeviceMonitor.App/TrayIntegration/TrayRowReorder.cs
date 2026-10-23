@@ -4,7 +4,6 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
-using System.Windows.Media.Effects;
 using System.Windows.Threading;
 
 namespace ReTray_App;
@@ -24,6 +23,8 @@ internal sealed class TrayRowReorder
     private readonly Action started;
     private readonly Action<int, int> move;
     private readonly Func<bool, Task> finished;
+    private readonly Canvas? shadowHost;
+    private TrayRowShadow? shadow;
     private readonly DispatcherTimer scrollTimer = new(DispatcherPriority.Input) { Interval = TimeSpan.FromMilliseconds(16) };
     private readonly List<Slot> slots = [];
     private object? candidate;
@@ -35,9 +36,10 @@ internal sealed class TrayRowReorder
     private bool active, settling, cancelled;
     private ListBoxItem? capture;
 
-    internal TrayRowReorder(ListBox list, Action started, Action<int, int> move, Func<bool, Task> finished)
+    internal TrayRowReorder(ListBox list, Action started, Action<int, int> move, Func<bool, Task> finished, Canvas? shadowHost = null)
     {
         this.list = list; this.started = started; this.move = move; this.finished = finished;
+        this.shadowHost = shadowHost;
         list.PreviewMouseLeftButtonDown += Press;
         list.PreviewMouseMove += Move;
         list.PreviewMouseLeftButtonUp += Release;
@@ -127,8 +129,8 @@ internal sealed class TrayRowReorder
         foreach (var slot in slots) slot.Row.RenderTransform = slot.Motion;
         var lifted = slots[from].Row;
         Panel.SetZIndex(lifted, 10);
-        lifted.Effect = new DropShadowEffect { BlurRadius = 12, ShadowDepth = 2, Opacity = .18 };
         TrayRowAppearance.SetIsLifted(lifted, true);
+        if (shadowHost != null) shadow = new TrayRowShadow(shadowHost, lifted);
         list.SetCurrentValue(FrameworkElement.CursorProperty, grabbingCursor.Value);
         list.SetCurrentValue(FrameworkElement.ForceCursorProperty, true);
         started(); scrollTimer.Start();
@@ -138,9 +140,20 @@ internal sealed class TrayRowReorder
     internal void Update(Point point)
     {
         if (!active || settling) return;
-        var delta = point.Y - press.Y + (scroll?.VerticalOffset ?? 0) - initialScroll;
+        var scrolled = (scroll?.VerticalOffset ?? 0) - initialScroll;
+        var delta = point.Y - press.Y + scrolled;
         delta = Math.Clamp(delta, slots[0].Top - slots[from].Top, slots[^1].Top - slots[from].Top);
+        if (shadowHost != null && scroll?.Template.FindName("DeviceViewportMask", scroll) is FrameworkElement viewport)
+        {
+            // Keep the lifted capsule out of the scrolling edge fades. The
+            // independent shadow can then extend on all sides without a cut.
+            var top = viewport.TranslatePoint(new Point(), list).Y + (scroll.VerticalOffset > 0 ? 8 : 0);
+            var bottom = viewport.TranslatePoint(new Point(0, viewport.ActualHeight), list).Y -
+                (scroll.VerticalOffset < scroll.ScrollableHeight ? 12 : 0) - slots[from].Height;
+            if (bottom >= top) delta = Math.Clamp(delta, top - slots[from].Top + scrolled, bottom - slots[from].Top + scrolled);
+        }
         slots[from].Motion.Y = delta;
+        shadow?.Update();
         var center = slots[from].Top + delta + slots[from].Height / 2;
         var target = Enumerable.Range(0, slots.Count).MinBy(i => Math.Abs(slots[i].Top + slots[i].Height / 2 - center));
         if (over == target) return;
@@ -191,7 +204,8 @@ internal sealed class TrayRowReorder
             active = false;
             foreach (var slot in slots) slot.Row.ClearValue(UIElement.RenderTransformProperty);
             var lifted = slots[from].Row;
-            lifted.ClearValue(Panel.ZIndexProperty); lifted.ClearValue(UIElement.EffectProperty);
+            shadow?.Dispose(); shadow = null;
+            lifted.ClearValue(Panel.ZIndexProperty);
             lifted.ClearValue(TrayRowAppearance.IsLiftedProperty);
             slots.Clear();
             list.ClearValue(FrameworkElement.CursorProperty);

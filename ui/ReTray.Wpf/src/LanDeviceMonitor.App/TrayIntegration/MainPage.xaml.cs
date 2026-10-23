@@ -47,7 +47,7 @@ public partial class MainPage : UserControl
                 try { if (changed) await Vm.PersistOrderAsync(); }
                 catch (Exception error) { Vm.ReportError(error); }
                 finally { Vm.IsDragging = false; await Vm.RefreshAsync(); }
-            });
+            }, DragShadowLayer);
         VersionLink.Inlines.Add(LanDeviceMonitor.MainWindow.GetDisplayVersion());
         VersionToolTip.PlacementTarget = VersionText;
         VersionToolTip.CustomPopupPlacementCallback = PlaceVersionToolTip;

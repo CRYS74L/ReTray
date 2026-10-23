@@ -13,6 +13,12 @@ namespace ReTray_App;
 // lifted row follows the pointer and its neighbours translate out of the way.
 internal sealed class TrayRowReorder
 {
+    private static readonly Lazy<Cursor> grabbingCursor = new(() =>
+    {
+        var assembly = typeof(TrayRowReorder).Assembly.GetName().Name;
+        using var stream = Application.GetResourceStream(new Uri($"/{assembly};component/Assets/Cursors/Grabbing.cur", UriKind.Relative))!.Stream;
+        return new Cursor(stream, scaleWithDpi: true);
+    });
     private sealed record Slot(ListBoxItem Row, double Top, double Height, TranslateTransform Motion);
     private readonly ListBox list;
     private readonly Action started;
@@ -125,7 +131,8 @@ internal sealed class TrayRowReorder
         lifted.Effect = new DropShadowEffect { BlurRadius = 12, ShadowDepth = 2, Opacity = .18 };
         surface = lifted.Template.FindName("DragSurface", lifted) as Border;
         if (surface != null) surface.Visibility = Visibility.Visible;
-        list.SetCurrentValue(FrameworkElement.CursorProperty, Cursors.SizeNS);
+        list.SetCurrentValue(FrameworkElement.CursorProperty, grabbingCursor.Value);
+        list.SetCurrentValue(FrameworkElement.ForceCursorProperty, true);
         started(); scrollTimer.Start();
         return true;
     }
@@ -190,6 +197,7 @@ internal sealed class TrayRowReorder
             if (surface != null) surface.Visibility = Visibility.Collapsed;
             slots.Clear(); surface = null;
             list.ClearValue(FrameworkElement.CursorProperty);
+            list.ClearValue(FrameworkElement.ForceCursorProperty);
             if (capture?.IsMouseCaptured == true) capture.ReleaseMouseCapture();
             capture = null;
             list.UpdateLayout();

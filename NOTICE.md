@@ -15,6 +15,7 @@ Third-party components retain their original licenses:
 | nlohmann/json | MIT, `third_party/nlohmann/LICENSE.MIT` |
 | react-desktop visual reference | MIT, `ui/ReTray.Wpf/src/LanDeviceMonitor.App/ThirdParty/react-desktop/LICENSE` |
 | Lucide | ISC, `ui/ReTray.Wpf/src/LanDeviceMonitor.App/ThirdParty/lucide/LICENSE` |
+| Chromium grabbing cursor (`ui/resources/cursors/hand_grabbing.cur`) | BSD-3-Clause, `ui/ReTray.Wpf/src/LanDeviceMonitor.App/ThirdParty/chromium-cursors/LICENSE` |
 | Settings icons | `ui/ReTray.Wpf/src/LanDeviceMonitor.App/Assets/SettingsIcons/LICENSE` and `NOTICE.md` |
 | Noto Sans SC | SIL Open Font License 1.1, `ui/ReTray.Wpf/src/LanDeviceMonitor.App/Assets/Fonts/OFL.txt` |
 | Windows App SDK / CommunityToolkit.Mvvm | MIT, distributed through their NuGet packages |

@@ -4,6 +4,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Threading;
+using System.Runtime.InteropServices;
+using System.Windows.Media.Imaging;
 using ReTray_App;
 
 internal static class Program
@@ -16,7 +18,7 @@ internal static class Program
         if (args.Contains("--fixture"))
         {
             app.ShutdownMode = ShutdownMode.OnMainWindowClose;
-            var fixture = new Fixture(24);
+            var fixture = new Fixture(24, verifyNativeCursor: true);
             fixture.Window.Title = "ReTray drag sorting fixture";
             app.Run(fixture.Window);
             return 0;
@@ -37,7 +39,7 @@ internal static class Program
         internal readonly TrayRowReorder Reorder;
         internal int Saves, Starts;
         internal bool? LastChanged;
-        internal Fixture(int count = 8)
+        internal Fixture(int count = 8, bool verifyNativeCursor = false)
         {
             Items = new(Enumerable.Range(1, count).Select(i => $"Tray application {i:00}"));
             List = new ListBox { ItemsSource = Items, BorderThickness = new Thickness(0), Background = Brushes.White };
@@ -54,10 +56,29 @@ internal static class Program
             var status = new TextBlock { Margin = new Thickness(14), Text = "Drag a row vertically to reorder" };
             var panel = new DockPanel(); DockPanel.SetDock(status, Dock.Bottom); panel.Children.Add(status); panel.Children.Add(List);
             Window = new Window { Title = "ReTray reorder tests", Width = 460, Height = 370, Content = panel };
-            Reorder = new TrayRowReorder(List, () => Starts++, Items.Move, changed =>
+            nint grabbingHandle = 0;
+            Reorder = new TrayRowReorder(List, () =>
+            {
+                Starts++;
+                if (!verifyNativeCursor) return;
+                Mouse.UpdateCursor();
+                grabbingHandle = ((SafeHandle)typeof(Cursor).GetProperty("Handle", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!.GetValue(List.Cursor)!).DangerousGetHandle();
+                var cursorInfo = new CursorInfo { Size = Marshal.SizeOf<CursorInfo>() };
+                Require(GetCursorInfo(ref cursorInfo) && cursorInfo.Handle == grabbingHandle,
+                    "The native cursor did not switch to the embedded grabbing hand during drag");
+                SaveCursorPreview(cursorInfo.Handle);
+            }, Items.Move, changed =>
             {
                 LastChanged = changed; if (changed) Saves++;
                 status.Text = $"Saved: {Saves} | First: {Items[0]}";
+                if (verifyNativeCursor)
+                {
+                    Mouse.UpdateCursor();
+                    var cursorInfo = new CursorInfo { Size = Marshal.SizeOf<CursorInfo>() };
+                    Require(GetCursorInfo(ref cursorInfo) && cursorInfo.Handle != grabbingHandle,
+                        "The native grabbing cursor remained after dropping");
+                    Console.WriteLine("PASS native grabbing cursor restored after drop/cancel");
+                }
                 return Task.CompletedTask;
             });
             Window.Show(); Window.Activate(); Pump(40); Window.UpdateLayout();
@@ -143,6 +164,26 @@ internal static class Program
         return null;
     }
     private static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct CursorInfo { public int Size, Flags; public nint Handle; public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)]
+    private struct IconInfo { public int IsIcon; public uint HotspotX, HotspotY; public nint Mask, Color; }
+    [DllImport("user32.dll")] private static extern bool GetCursorInfo(ref CursorInfo info);
+    [DllImport("user32.dll")] private static extern bool GetIconInfo(nint icon, out IconInfo info);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(nint bitmap);
+    private static void SaveCursorPreview(nint handle)
+    {
+        Require(GetIconInfo(handle, out var info), "Could not inspect the displayed cursor");
+        try
+        {
+            var bitmap = System.Windows.Interop.Imaging.CreateBitmapSourceFromHBitmap(info.Color, 0, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
+            var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            using var file = System.IO.File.Create(System.IO.Path.Combine(AppContext.BaseDirectory, "grabbing-cursor.png"));
+            encoder.Save(file);
+            Console.WriteLine($"PASS native grabbing cursor: {bitmap.PixelWidth}x{bitmap.PixelHeight}, hotspot {info.HotspotX},{info.HotspotY}");
+        }
+        finally { if (info.Color != 0) DeleteObject(info.Color); if (info.Mask != 0) DeleteObject(info.Mask); }
+    }
     private static double Target(ListBoxItem row) => (double)((TranslateTransform)row.RenderTransform).GetAnimationBaseValue(TranslateTransform.YProperty);
     private static void Wait(Task task) { while (!task.IsCompleted) Pump(10); task.GetAwaiter().GetResult(); }
     private static void Pump(int milliseconds)

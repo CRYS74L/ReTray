@@ -82,6 +82,7 @@
     <Resource Include="Assets\AppIcon.ico" />
     <None Remove="Assets\WindowIcon.ico;Assets\TrayBlack.ico;Assets\TrayWhite.ico" />
     <Resource Include="Assets\WindowIcon.ico" />
+    <Resource Include="Assets\Cursors\*.cur" />
     <Resource Include="Assets\BrandLogo.svg" />
     <Content Include="Assets\WindowIcon.ico;Assets\WindowIcon.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <Content Include="Assets\AppIcon.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
@@ -102,6 +103,7 @@
 
 
   <ItemGroup><Content Include="ThirdParty\lucide\LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><Content Include="ThirdParty\chromium-cursors\LICENSE" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup>
     <Resource Include="Assets\SettingsIcons\*.svg" />
     <Content Include="Assets\SettingsIcons\LICENSE;Assets\SettingsIcons\NOTICE.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />

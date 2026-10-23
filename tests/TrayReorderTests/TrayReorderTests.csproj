@@ -8,5 +8,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/TrayIntegration/TrayRowReorder.cs" Link="TrayRowReorder.cs" />
+    <Resource Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/Assets/Cursors/Grabbing.cur" Link="Assets/Cursors/Grabbing.cur" />
   </ItemGroup>
 </Project>

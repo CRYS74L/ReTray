@@ -12,6 +12,7 @@
           <ControlTemplate TargetType="ListBoxItem">
             <Grid x:Name="ItemMotionRoot" MinHeight="{TemplateBinding MinHeight}">
               <Border Background="Transparent" />
+              <Border x:Name="DragSurface" Background="{DynamicResource StudioSurfaceBrush}" CornerRadius="6" Visibility="Collapsed" IsHitTestVisible="False" />
               <ContentPresenter Margin="{TemplateBinding Padding}" UseLayoutRounding="False" />
             </Grid>
           </ControlTemplate>
@@ -200,7 +201,7 @@
           </controls:SegmentItem>
         </controls:SegmentedControl>
         <Grid Grid.Row="1" Margin="14,0,0,0" x:Name="PagesHost" ClipToBounds="True">
-          <ListBox x:Name="IconList" Style="{StaticResource DeviceListBoxStyle}" ItemsSource="{Binding Icons}" ItemTemplate="{StaticResource IconRowTemplate}" AllowDrop="True" SelectionMode="Single" PreviewMouseLeftButtonDown="DragStarting" PreviewMouseMove="DragMoving" DragOver="DragOverRow" Drop="DropRow" AutomationProperties.AutomationId="TrayIconList">
+          <ListBox x:Name="IconList" Style="{StaticResource DeviceListBoxStyle}" ItemsSource="{Binding Icons}" ItemTemplate="{StaticResource IconRowTemplate}" SelectionMode="Single" AutomationProperties.AutomationId="TrayIconList">
             <ListBox.ItemContainerStyle>
               <Style TargetType="ListBoxItem" BasedOn="{StaticResource TrayListItemStyle}">
                 <Setter Property="Padding" Value="0" />

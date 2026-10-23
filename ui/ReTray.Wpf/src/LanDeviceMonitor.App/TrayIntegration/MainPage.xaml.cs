@@ -4,7 +4,6 @@ using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
-using System.Windows.Documents;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
@@ -37,13 +36,18 @@ public partial class MainPage : UserControl
     private bool configurationTransferBusy;
     private InputMethodIconEditorModel? inputMethodEditor;
     private readonly BlurEffect floatingBlur = new() { Radius = 0, RenderingBias = RenderingBias.Performance };
-    private IconRow? dragRow;
-    private Point dragStart;
-    private Point dragHotspot;
+    private readonly TrayRowReorder rowReorder;
 
     public MainPage()
     {
         InitializeComponent(); DataContext = Vm;
+        rowReorder = new TrayRowReorder(IconList, () => Vm.IsDragging = true,
+            (from, to) => Vm.Icons.Move(from, to), async changed =>
+            {
+                try { if (changed) await Vm.PersistOrderAsync(); }
+                catch (Exception error) { Vm.ReportError(error); }
+                finally { Vm.IsDragging = false; await Vm.RefreshAsync(); }
+            });
         VersionLink.Inlines.Add(LanDeviceMonitor.MainWindow.GetDisplayVersion());
         VersionToolTip.PlacementTarget = VersionText;
         VersionToolTip.CustomPopupPlacementCallback = PlaceVersionToolTip;
@@ -418,56 +422,8 @@ public partial class MainPage : UserControl
     {
         if (ReferenceEquals(args.OriginalSource, sender)) await CloseFloatingAsync();
     }
-    public void Suspend() { timer.Stop(); finishPageTransition?.Invoke(); }
+    public void Suspend() { rowReorder.Cancel(); timer.Stop(); finishPageTransition?.Invoke(); }
     public void Resume() { timer.Start(); _ = Vm.RefreshAsync(); }
-    private void DragStarting(object sender, MouseButtonEventArgs args)
-    {
-        dragRow = null;
-        if (args.OriginalSource is not DependencyObject origin || FindAncestor<ButtonBase>(origin) != null) return;
-        if (FindAncestor<ListBoxItem>(origin) is { DataContext: IconRow row } container)
-        {
-            dragRow = row; dragStart = args.GetPosition(IconList); dragHotspot = args.GetPosition(container);
-        }
-    }
-    private async void DragMoving(object sender, MouseEventArgs args)
-    {
-        if (dragRow == null || args.LeftButton != MouseButtonState.Pressed || Vm.IsDragging) return;
-        var point = args.GetPosition(IconList);
-        if (Math.Abs(point.X - dragStart.X) < SystemParameters.MinimumHorizontalDragDistance && Math.Abs(point.Y - dragStart.Y) < SystemParameters.MinimumVerticalDragDistance) return;
-        var row = dragRow; dragRow = null; Vm.IsDragging = true;
-        var container = (ListBoxItem)IconList.ItemContainerGenerator.ContainerFromItem(row);
-        var layer = AdornerLayer.GetAdornerLayer(PageRoot)!;
-        var preview = new RowDragPreview(PageRoot, container, dragHotspot);
-        void FollowPointer(object? sender, GiveFeedbackEventArgs feedback) => preview.FollowPointer();
-        try
-        {
-            layer.Add(preview); preview.FollowPointer();
-            container.Opacity = .3;
-            IconList.GiveFeedback += FollowPointer;
-            try { DragDrop.DoDragDrop(IconList, new DataObject("ReTray.Row", row), DragDropEffects.Move); }
-            finally
-            {
-                IconList.GiveFeedback -= FollowPointer;
-                container.Opacity = 1;
-                layer.Remove(preview);
-            }
-            await Vm.PersistOrderAsync();
-        }
-        finally { Vm.IsDragging = false; await Vm.RefreshAsync(); }
-    }
-    private void DragOverRow(object sender, DragEventArgs args)
-    {
-        args.Effects = args.Data.GetDataPresent("ReTray.Row") ? DragDropEffects.Move : DragDropEffects.None; args.Handled = true;
-    }
-    private void DropRow(object sender, DragEventArgs args)
-    {
-        if (args.Data.GetData("ReTray.Row") is not IconRow source || args.OriginalSource is not DependencyObject origin) return;
-        var target = FindAncestor<ListBoxItem>(origin)?.DataContext as IconRow;
-        if (target == null || ReferenceEquals(source, target)) return;
-        var from = Vm.Icons.IndexOf(source); var to = Vm.Icons.IndexOf(target);
-        if (from >= 0 && to >= 0) Vm.Icons.Move(from, to);
-        args.Handled = true;
-    }
     private static T? FindAncestor<T>(DependencyObject? node) where T : DependencyObject
     {
         while (node != null)

@@ -160,9 +160,12 @@ internal static class Program
             using var file = File.Create(Path.Combine(AppContext.BaseDirectory, $"caption-{scale * 100}.png")); encoder.Save(file);
             Console.WriteLine($"Caption {scale * 100}%: rows {rows[0]}–{rows[^1]}, visual center {moment / coverage:F2}, logo center {height / 2d}");
         }
-        LanDeviceMonitor.Services.ThemeService.Apply("Light");
-        Require((Color)app.Resources["SwitchOnColor"] == (Color)ColorConverter.ConvertFromString("#DF80FF"),
-            "Enabled switch lost the soft brand lavender");
+        foreach (string mode in new[] { "Light", "Dark" })
+        {
+            LanDeviceMonitor.Services.ThemeService.Apply(mode);
+            Require((Color)app.Resources["SwitchOnColor"] == (Color)ColorConverter.ConvertFromString("#A56EF7"),
+                "Enabled switch lost the unified brand purple in " + mode);
+        }
     }
     private static IconChoiceRow Row(State state)=>new(state,nameof(state.Original),()=>state.AssetPreview,
         ()=>state.UseReplacement,value=>state.UseReplacement=value,new RelayCommand(()=>{}));

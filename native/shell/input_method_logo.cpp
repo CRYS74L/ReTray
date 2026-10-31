@@ -23,8 +23,20 @@ struct Target {
     winrt::Windows::Foundation::IInspectable opacity{nullptr}; Data::Binding binding{nullptr};
     int64_t sourceToken{},opacityToken{};bool watching{};
 };
+struct ModelWatch {
+    winrt::Windows::Foundation::IInspectable model{nullptr};
+    winrt::com_ptr<IUnknown> notifier;
+    Data::PropertyChangedEventHandler handler{nullptr};
+    winrt::event_token token{};
+    using Remove=HRESULT(__stdcall*)(void*,winrt::event_token);
+    Remove remove{};
+    void Revoke() {winrt::check_hresult(remove(notifier.get(),token));notifier=nullptr;handler=nullptr;}
+};
 std::vector<InputMethodLogoHost> roots;
 std::vector<Target> targets;
+std::vector<ModelWatch> modelWatches;
+winrt::event_token renderingToken{};
+bool renderingQueued{};
 std::unordered_map<std::string,ImageSource> images;
 std::string activeKey;
 std::wstring activeId;
@@ -32,6 +44,29 @@ std::string checkpointKey;
 ImageSource checkpoint{nullptr};
 bool hasCheckpoint{};
 bool updating{};DWORD logoError{};
+void CancelQueuedUpdate() {
+    if(!renderingQueued)return;
+    CompositionTarget::Rendering(renderingToken);
+    renderingQueued=false;
+}
+void QueueUpdate() {
+    if(images.empty() || renderingQueued)return;
+    try {
+        // Shell updates its native image and selected profile in separate steps.
+        // Reconcile after those notifications, before the frame is presented.
+        // A one-shot subscription leaves the taskbar idle between changes.
+        renderingToken=CompositionTarget::Rendering([](const auto&,const auto&) {
+            CancelQueuedUpdate();
+            TickInputMethodLogos();
+        });
+        renderingQueued=true;
+    }catch(const winrt::hresult_error& e){logoError=static_cast<DWORD>(e.code());}
+}
+DependencyProperty ContentProperty(const FrameworkElement& source) {
+    if(source.try_as<Image>())return Image::SourceProperty();
+    if(source.try_as<TextBlock>())return TextBlock::TextProperty();
+    return FontIcon::GlyphProperty();
+}
 bool SupportedHost() {
     auto base=reinterpret_cast<uint64_t>(GetModuleHandleW(L"Taskbar.View.dll"));if(!base)return false;
     auto read=[](uint64_t at,auto& value){SIZE_T bytes{};return ValidReadRange(at,sizeof(value)) &&
@@ -112,10 +147,39 @@ std::string ShellProfileKey(const winrt::Windows::Foundation::IInspectable& mode
     InputProfileId profile;
     return ParseInputTipId(Utf8(id),profile)?InputProfileKey(profile):std::string{};
 }
+void SyncModelWatches() {
+    for(auto it=modelWatches.begin();it!=modelWatches.end();) {
+        if(!images.empty() && std::any_of(roots.begin(),roots.end(),[&](const auto& host){return host.model==it->model;})) {
+            ++it;continue;
+        }
+        it->Revoke();it=modelWatches.erase(it);
+    }
+    if(images.empty()){CancelQueuedUpdate();return;}
+    for(const auto& host:roots) {
+        if(!host.model || std::any_of(modelWatches.begin(),modelWatches.end(),[&](const auto& watch){return watch.model==host.model;}))continue;
+        // This Shell model exposes DataModelChanged on IIconDataModel rather
+        // than INotifyPropertyChanged. Match the supported producer before using its ABI.
+        if(!SupportedHost())winrt::throw_hresult(HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED));
+        const GUID iid{0xa3720e5a,0x66b7,0x5705,{0x95,0x5e,0x48,0x88,0x15,0xe1,0x56,0x67}};
+        ModelWatch watch;watch.model=host.model;
+        winrt::check_hresult(reinterpret_cast<IUnknown*>(winrt::get_abi(host.model))->QueryInterface(iid,watch.notifier.put_void()));
+        auto base=reinterpret_cast<uint64_t>(GetModuleHandleW(L"Taskbar.View.dll"));
+        uint64_t table{},query{},add{},remove{};
+        if(!Read(reinterpret_cast<uint64_t>(watch.notifier.get()),table) || table!=base+0x918cb0 ||
+           !Read(table,query) || query!=base+0x31060 || !Read(table+15*8,add) || add!=base+0x30f130 ||
+           !Read(table+16*8,remove) || remove!=base+0x301cf0)
+            winrt::throw_hresult(HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED));
+        watch.handler=Data::PropertyChangedEventHandler([](const auto&,const auto&){QueueUpdate();});
+        using Add=HRESULT(__stdcall*)(void*,void*,winrt::event_token*);
+        watch.remove=reinterpret_cast<ModelWatch::Remove>(remove);
+        winrt::check_hresult(reinterpret_cast<Add>(add)(watch.notifier.get(),winrt::get_abi(watch.handler),&watch.token));
+        modelWatches.push_back(std::move(watch));
+    }
+}
 void Restore(Target& t, bool visible=true) {
     if(t.watching) {
         t.source.UnregisterPropertyChangedCallback(UIElement::OpacityProperty(),t.opacityToken);
-        if(t.source.try_as<Image>())t.source.UnregisterPropertyChangedCallback(Image::SourceProperty(),t.sourceToken);
+        t.source.UnregisterPropertyChangedCallback(ContentProperty(t.source),t.sourceToken);
         t.watching=false;
     }
     if(t.overlay) {
@@ -147,12 +211,10 @@ void Apply(Target& t, const ImageSource& image) {
                     target.opacity=source.ReadLocalValue(UIElement::OpacityProperty());target.binding=nullptr;
                     if(auto binding=source.GetBindingExpression(UIElement::OpacityProperty()))target.binding=binding.ParentBinding();
                 }
-                TickInputMethodLogos();
-            }catch(...){}
+                QueueUpdate();
+            }catch(const winrt::hresult_error& e){logoError=static_cast<DWORD>(e.code());}
         });
-        if(t.source.try_as<Image>())t.sourceToken=t.source.RegisterPropertyChangedCallback(Image::SourceProperty(),[](const auto&,const auto&){
-            if(updating)return;try{TickInputMethodLogos();}catch(...){}
-        });
+        t.sourceToken=t.source.RegisterPropertyChangedCallback(ContentProperty(t.source),[](const auto&,const auto&){QueueUpdate();});
         t.watching=true;
     }
     if(t.overlay.Source()!=image)t.overlay.Source(image);
@@ -191,9 +253,10 @@ void DiscoverInputMethodLogos(const std::vector<InputMethodLogoHost>& elements) 
     roots=elements;TickInputMethodLogos();
 }
 void TickInputMethodLogos() {
-    if(updating || (images.empty() && targets.empty()))return;
+    if(updating || (images.empty() && targets.empty() && modelWatches.empty() && !renderingQueued))return;
     updating=true;struct End{~End(){updating=false;}}end;
     try {
+        SyncModelWatches();
         activeKey=roots.empty()?std::string{}:ShellProfileKey(roots.front().model,&activeId);
         if(images.empty()) {
             for(auto& target:targets)Restore(target);
@@ -258,6 +321,9 @@ void ReadInputMethodLogoStatus(SystemControl& row) {
 }
 void RestoreInputMethodLogos(bool restore) {
     updating=true;
+    CancelQueuedUpdate();
+    for(auto& watch:modelWatches)try{watch.Revoke();}catch(...){}
+    modelWatches.clear();
     for(auto& t:targets)try{Restore(t,restore);}catch(...){}
     targets.clear();roots.clear();images.clear();activeKey.clear();activeId.clear();
     checkpoint=nullptr;checkpointKey.clear();hasCheckpoint=false;logoError=0;updating=false;

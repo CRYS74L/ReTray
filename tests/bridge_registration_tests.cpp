@@ -303,9 +303,69 @@ void ReentrantCommandsCannotExecuteOrOverwriteAnotherSequence() {
     CHECK(state->commandsTotal == 1); // Nested message did not execute.
     CHECK(nativeFixture.records[1].placement == Placement::Overflow);
 }
+void HiddenInteractionsSupplyShellRectWithoutChangingVisibility() {
+    auto key = ResetRegistrationFixture(false);
+    auto& entry = *entries.at(key);
+    entry.record.placement = Placement::Hidden;
+    BridgeCommand click; click.x = -735; click.y = -233;
+    std::array<uint32_t, 10> query{0x34753423, 2, 32, 0,
+        static_cast<uint32_t>(entry.record.identity.ownerHwnd), entry.record.identity.uid};
+    COPYDATASTRUCT data{3, sizeof(query), query.data()}; LRESULT result = 99;
+    CHECK(!InteractionRect(&data, result)); CHECK(result == 99);
+    RememberInteraction(entry, click);
+    CHECK(InteractionRect(&data, result));
+    CHECK(LOWORD(result) == GetSystemMetrics(SM_CXSMICON));
+    CHECK(HIWORD(result) == GetSystemMetrics(SM_CYSMICON));
+    query[1] = 1;
+    // Position requests also work during a nested Shell/native action.
+    ownOperation = true;
+    result = Subclass(nullptr, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&data), 0, 0);
+    ownOperation = false;
+    CHECK(static_cast<short>(LOWORD(result)) == entry.interactionRect.left);
+    CHECK(static_cast<short>(HIWORD(result)) == entry.interactionRect.top);
+    CHECK(entry.interactionRect.left <= -735 && entry.interactionRect.right > -735);
+    CHECK(entry.record.placement == Placement::Hidden);
+    CHECK(entry.visibility == -1 && !entry.moved);
+    ++query[5]; CHECK(!InteractionRect(&data, result)); --query[5];
+    ++query[4]; CHECK(!InteractionRect(&data, result)); --query[4];
+    entry.interactionUntil = GetTickCount64() - 1;
+    CHECK(!InteractionRect(&data, result));
+    RememberInteraction(entry, click); entry.record.placement = Placement::Overflow;
+    CHECK(!InteractionRect(&data, result));
+    entry.record.placement = Placement::Hidden;
+    interactionsLocked = true; CHECK(!InteractionRect(&data, result));
+    RememberInteraction(entry, click); interactionsLocked = false;
+    CHECK(!InteractionRect(&data, result));
+}
+void HiddenGuidAnchorsRejectUnknownOrMalformedQueries() {
+    auto key = ResetRegistrationFixture(false);
+    auto& entry = *entries.at(key);
+    entry.record.placement = Placement::Hidden;
+    entry.record.identity.hasGuid = true;
+    entry.record.identity.guid = {0x31415926, 0x1011, 0x2022, {1, 2, 3, 4, 5, 6, 7, 8}};
+    BridgeCommand click; click.x = 400; click.y = 412; RememberInteraction(entry, click);
+    std::array<uint32_t, 10> query{0x34753423, 2, 32};
+    memcpy(query.data() + 6, &entry.record.identity.guid, sizeof(GUID));
+    COPYDATASTRUCT data{3, sizeof(query), query.data()}; LRESULT result{};
+    CHECK(InteractionRect(&data, result));
+    ++query[6]; CHECK(!InteractionRect(&data, result)); --query[6];
+    query[1] = 3; CHECK(!InteractionRect(&data, result)); query[1] = 2;
+    query[0] = 0; CHECK(!InteractionRect(&data, result)); query[0] = 0x34753423;
+    query[2] = 31; CHECK(!InteractionRect(&data, result)); query[2] = 32;
+    data.cbData = 39; CHECK(!InteractionRect(&data, result)); data.cbData = sizeof(query);
+    data.dwData = 1; CHECK(!InteractionRect(&data, result)); data.dwData = 3;
+    data.lpData = nullptr; CHECK(!InteractionRect(&data, result));
+    CHECK(!InteractionRect(nullptr, result));
+    // Re-registering an icon cannot inherit a previous interaction's anchor.
+    auto renewed = entry.record; BeginRegistration(entry, renewed);
+    CHECK(entry.interactionUntil == 0);
+    data.lpData = query.data(); CHECK(!InteractionRect(&data, result));
+}
 int wmain() {
     int failed{};
-    for (const auto& test : {std::pair{"record replacement found by command renews registration", ReplacementFoundDuringCommandRenewsRegistration},
+    for (const auto& test : {std::pair{"hidden callbacks resolve list anchors without changing visibility", HiddenInteractionsSupplyShellRectWithoutChangingVisibility},
+                            std::pair{"hidden GUID anchors reject malformed, foreign and renewed registrations", HiddenGuidAnchorsRejectUnknownOrMalformedQueries},
+                            std::pair{"record replacement found by command renews registration", ReplacementFoundDuringCommandRenewsRegistration},
                             std::pair{"startup policy round shares one identity read and publication", StartupRoundUsesOneIdentitySnapshotAndPublication},
                             std::pair{"batch isolates failures and validates each live target", BatchKeepsItemFailuresIndependentAndRevalidatesEveryTarget},
                             std::pair{"incomplete and oversized batches cannot mutate icons", IncompleteOrOversizedBatchCannotMutateAnyIcon},

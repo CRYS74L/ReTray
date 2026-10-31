@@ -204,7 +204,7 @@ int wmain(int argc, wchar_t** argv) {
         auto statusName = L"Local\\ReTray.TestSource." + std::to_wstring(sourcePid);
         auto statusMap = OpenFileMappingW(FILE_MAP_READ, FALSE, statusName.c_str());
         CHECK(statusMap != nullptr);
-        auto bytes = static_cast<uint8_t*>(MapViewOfFile(statusMap, FILE_MAP_READ, 0, 0, 40));
+        auto bytes = static_cast<uint8_t*>(MapViewOfFile(statusMap, FILE_MAP_READ, 0, 0, 72));
         CHECK(bytes != nullptr);
         LONG menuCount{};
         memcpy(&menuCount, bytes + 20, 4);
@@ -214,6 +214,43 @@ int wmain(int argc, wchar_t** argv) {
             memcpy(&value, bytes + 20, 4);
             return value;
         };
+        auto countAt = [&](size_t offset) {
+            LONG value{}; memcpy(&value, bytes + offset, sizeof(value)); return value;
+        };
+        // A forwarded callback alone is insufficient for Tauri/tray-icon:
+        // the application must also resolve its hidden icon's rectangle.
+        for (const auto& target : {original, guid}) {
+            for (auto version : {0u, static_cast<UINT>(NOTIFYICON_VERSION_4)}) {
+                CHECK(SendMessageW(reinterpret_cast<HWND>(target.identity.ownerHwnd), WM_APP + 32,
+                                   version, target.identity.hasGuid ? 42 : 11));
+                hide.identity = target.identity; hide.visibility = 1;
+                CHECK(client.Command(hide)); Sleep(100);
+                CHECK(find(client.Snapshot(), target.identity.hasGuid).version == version);
+                for (auto action : {0u, 2u, 1u}) {
+                    BridgeCommand open;
+                    open.operation = BridgeOperation::Invoke; open.identity = target.identity;
+                    open.clickEvent = action; open.visibility = 0; open.x = -735; open.y = 412;
+                    auto offset = action == 0 ? 68u : action == 2 ? 64u : 20u;
+                    auto failures = countAt(44), accepted = countAt(offset);
+                    CHECK(client.Command(open));
+                    auto deadline = GetTickCount64() + 2000;
+                    while (countAt(offset) == accepted && GetTickCount64() < deadline) Sleep(10);
+                    CHECK(countAt(offset) == accepted + 1);
+                    Sleep(50);
+                    CHECK(countAt(44) == failures);
+                    RECT rect{}; memcpy(&rect, bytes + 48, sizeof(rect));
+                    CHECK(rect.left <= -735 && rect.right > -735 && rect.top <= 412 && rect.bottom > 412);
+                    CHECK(find(client.Snapshot(), target.identity.hasGuid).placement == static_cast<uint32_t>(Placement::Hidden));
+                    if (action == 1) {
+                        PostMessageW(reinterpret_cast<HWND>(target.identity.ownerHwnd), WM_CANCELMODE, 0, 0);
+                        Sleep(100);
+                    }
+                }
+                std::printf("PASS hidden %s v%u click/double/menu resolve signed rectangles without showing icons\n",
+                            target.identity.hasGuid ? "GUID" : "HWND/ID", version);
+                hide.visibility = 0; CHECK(client.Command(hide));
+            }
+        }
         BridgeCommand behavior;
         behavior.operation = BridgeOperation::Behavior;
         behavior.identity = original.identity;

@@ -6,6 +6,7 @@
 #include "input_method_logo.h"
 #include "behavior_hooks.h"
 #include <algorithm>
+#include <cmath>
 #include <commctrl.h>
 #include <memory>
 #include <objbase.h>
@@ -98,6 +99,8 @@ struct Entry {
     Placement originalPlacement{Placement::Overflow};
     bool originalHidden{};
     uint64_t revision{}, lastAccessAt{};
+    RECT interactionRect{};
+    uint64_t interactionUntil{};
     ~Entry() {
         if (original)
             original->Release();
@@ -106,6 +109,45 @@ struct Entry {
     }
 };
 std::unordered_map<std::string, std::unique_ptr<Entry>> entries;
+void RememberInteraction(Entry& entry, const BridgeCommand& command) {
+    entry.interactionUntil = 0;
+    if (interactionsLocked || entry.record.placement != Placement::Hidden ||
+        !std::isfinite(command.x) || !std::isfinite(command.y))
+        return;
+    const LONG width = GetSystemMetrics(SM_CXSMICON), height = GetSystemMetrics(SM_CYSMICON);
+    const LONG x = static_cast<LONG>(std::clamp(command.x - width / 2.0f, -32768.0f, 32767.0f));
+    const LONG y = static_cast<LONG>(std::clamp(command.y - height / 2.0f, -32768.0f, 32767.0f));
+    entry.interactionRect = {x, y, x + width, y + height};
+    // Native callbacks are posted to the application. Keep their list anchor
+    // available while that process handles the click and queries the Shell.
+    entry.interactionUntil = GetTickCount64() + 5000;
+}
+bool InteractionRect(const COPYDATASTRUCT* data, LRESULT& result) {
+    // Shell_NotifyIconGetRect's COPYDATA(3) protocol asks for size (2), then
+    // origin (1), as packed signed 16-bit coordinates. Hidden registrations
+    // have no taskbar layout; an explicit ReTray action supplies its anchor.
+    if (!data || data->dwData != 3 || data->cbData != 40 || !data->lpData || interactionsLocked)
+        return false;
+    std::array<uint32_t, 10> query{};
+    memcpy(query.data(), data->lpData, sizeof(query));
+    if (query[0] != 0x34753423 || query[2] != 32 || (query[1] != 1 && query[1] != 2))
+        return false;
+    GUID guid{}; memcpy(&guid, query.data() + 6, sizeof(guid));
+    const bool hasGuid = !IsEqualGUID(guid, GUID{});
+    const auto now = GetTickCount64();
+    for (const auto& [key, entry] : entries) {
+        const auto& id = entry->record.identity;
+        if (entry->record.placement != Placement::Hidden || entry->interactionUntil <= now ||
+            (hasGuid ? !id.hasGuid || !IsEqualGUID(id.guid, guid)
+                     : id.hasGuid || static_cast<uint32_t>(id.ownerHwnd) != query[4] || id.uid != query[5]))
+            continue;
+        const auto& rect = entry->interactionRect;
+        result = query[1] == 1 ? MAKELONG(rect.left, rect.top)
+                              : MAKELONG(rect.right - rect.left, rect.bottom - rect.top);
+        return true;
+    }
+    return false;
+}
 uint32_t BehaviorFor(void* record) {
     if (interactionsLocked)
         return 2;
@@ -228,6 +270,7 @@ void BeginRegistration(Entry& entry, const NativeIconRecord& record) {
     entry.customPainted = false;
     entry.moved = false;
     entry.lastAccessAt = 0;
+    entry.interactionUntil = 0;
     entry.record = record;
     entry.originalHidden = record.placement == Placement::Hidden;
     entry.originalPlacement = entry.originalHidden ? Placement::Overflow : record.placement;
@@ -789,6 +832,9 @@ void ExecuteCommand(const BridgeCommand* batchItem = nullptr, const SnapshotResu
                     DrawPolicy(entry);
                 } else
                     entry.record = *match;
+                if (cmd.operation == BridgeOperation::Menu || cmd.operation == BridgeOperation::Click ||
+                    cmd.operation == BridgeOperation::Invoke)
+                    RememberInteraction(entry, cmd);
                 ownOperation = true;
                 if (cmd.operation == BridgeOperation::Policy) {
                     if (cmd.clickEvent & PolicyReplaceImage) {
@@ -851,6 +897,7 @@ void ExecuteCommand(const BridgeCommand* batchItem = nullptr, const SnapshotResu
                 } else if (cmd.operation == BridgeOperation::Behavior) {
                     entry.swapButtons = cmd.index == 1;
                 } else if (cmd.operation == BridgeOperation::Restore) {
+                    entry.interactionUntil = 0;
                     const bool restoreVisibility =
                         entry.visibility != -1 || entry.tipChanged || entry.moved;
                     entry.swapButtons = false;
@@ -1021,6 +1068,11 @@ LRESULT CALLBACK Subclass(HWND hwnd, UINT message, WPARAM wp, LPARAM lp, UINT_PT
     if (message == WM_NCDESTROY) {
         Detach();
         return DefSubclassProc(hwnd, message, wp, lp);
+    }
+    if (message == WM_COPYDATA && state) {
+        LRESULT rect{};
+        if (InteractionRect(reinterpret_cast<const COPYDATASTRUCT*>(lp), rect))
+            return rect;
     }
     if (message != WM_COPYDATA || ownOperation || !state)
         return DefSubclassProc(hwnd, message, wp, lp);

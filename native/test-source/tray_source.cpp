@@ -1,6 +1,7 @@
 #include "../core/types.h"
 #include <algorithm>
 #include <array>
+#include <cstddef>
 #include <unordered_set>
 using namespace tray;
 constexpr UINT Callback = WM_APP + 9, ChangeColor = WM_APP + 10, MakeOff = WM_APP + 11,
@@ -10,7 +11,13 @@ struct SourceStatus {
     uint64_t hwnd;
     volatile LONG callbacks, menus;
     uint64_t lastW, lastL;
+    volatile LONG rectCallbacks, rectFailures;
+    RECT lastRect;
+    volatile LONG rectDoubleClicks;
+    volatile LONG rectClicks;
 };
+static_assert(offsetof(SourceStatus, rectCallbacks) == 40 && offsetof(SourceStatus, lastRect) == 48 &&
+              offsetof(SourceStatus, rectDoubleClicks) == 64 && sizeof(SourceStatus) == 72);
 SourceStatus* status{};
 HANDLE map{};
 HICON current{};
@@ -79,6 +86,11 @@ void Update(uint32_t color) {
         DestroyIcon(old);
 }
 LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
+    if (message == WM_APP + 32) {
+        auto data = Data(l == 42, 0);
+        data.uVersion = static_cast<UINT>(w);
+        return Shell_NotifyIconW(NIM_SETVERSION, &data);
+    }
     if (message == WM_APP + 31) {
         auto next = static_cast<uint32_t>(w), previous = legacyUid;
         if (next == previous) return 1;
@@ -203,7 +215,22 @@ LRESULT CALLBACK Procedure(HWND hwnd, UINT message, WPARAM w, LPARAM l) {
         status->lastW = w;
         status->lastL = l;
         UINT event = LOWORD(l);
-        if (event == WM_RBUTTONUP || event == WM_CONTEXTMENU) {
+        // Match clients such as tray-icon: discard clicks when the Shell cannot
+        // provide an anchor rectangle for the registered icon.
+        auto uid = HIWORD(l) ? HIWORD(l) : static_cast<UINT>(w);
+        NOTIFYICONIDENTIFIER id{};
+        id.cbSize = sizeof(id); id.hWnd = hwnd; id.uID = uid;
+        if (uid == 42) id.guidItem = GuidIcon;
+        RECT rect{};
+        if (Shell_NotifyIconGetRect(&id, &rect) != S_OK) {
+            InterlockedIncrement(&status->rectFailures);
+            return 0;
+        }
+        status->lastRect = rect;
+        InterlockedIncrement(&status->rectCallbacks);
+        if (event == WM_LBUTTONDBLCLK) InterlockedIncrement(&status->rectDoubleClicks);
+        if (event == WM_LBUTTONUP) InterlockedIncrement(&status->rectClicks);
+        if (event == WM_CONTEXTMENU || (event == WM_RBUTTONUP && !HIWORD(l))) {
             InterlockedIncrement(&status->menus);
             HMENU menu = CreatePopupMenu();
             AppendMenuW(menu, MF_STRING, 1, L"Test original menu");

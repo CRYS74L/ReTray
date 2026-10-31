@@ -20,7 +20,7 @@ namespace ReTray_App;
 
 public partial class MainPage : UserControl
 {
-    public TrayViewModel Vm { get; } = new();
+    public TrayViewModel Vm { get; }
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private readonly SemaphoreSlim systemSaveGate = new(1, 1);
     private static readonly string[] SystemNames = ["网络", "音量", "电池", "输入法", "时间", "通知", "隐私指示器", "开始", "快速设置", "语言栏"];
@@ -32,6 +32,7 @@ public partial class MainPage : UserControl
     private string tab = "icons";
     private Action? finishPageTransition;
     private bool loaded, systemLoading, systemLoaded, systemRefreshPending, editorOpen;
+    private bool systemReadFailed;
     private bool closingFloating;
     private bool configurationTransferBusy;
     private InputMethodIconEditorModel? inputMethodEditor;
@@ -41,8 +42,10 @@ public partial class MainPage : UserControl
     private readonly SolidColorBrush versionLinkForeground = new();
     private int versionLinkAnimationGeneration;
 
-    public MainPage()
+    public MainPage() : this(new TrayViewModel()) { }
+    internal MainPage(TrayViewModel viewModel)
     {
+        Vm = viewModel;
         InitializeComponent(); DataContext = Vm;
         rowReorder = new TrayRowReorder(IconList, () => Vm.IsDragging = true,
             (from, to) => Vm.Icons.Move(from, to), async changed =>
@@ -82,7 +85,7 @@ public partial class MainPage : UserControl
         timer.Tick += async (_, _) =>
         {
             await Vm.RefreshAsync();
-            if (tab == "system" && Vm.IsReady && !systemLoading) await LoadSystemAsync(true);
+            if ((tab == "system" || systemReadFailed) && Vm.IsReady && !systemLoading) await LoadSystemAsync(true);
         };
         Loaded += PageLoaded; Unloaded += (_, _) => { timer.Stop(); finishPageTransition?.Invoke(); };
         SizeChanged += (_, _) => FloatingCard.MaxHeight = Math.Max(0, ActualHeight - 32);
@@ -580,8 +583,16 @@ public partial class MainPage : UserControl
             for (var id = 0; id < systemToggles.Length; id++)
                 if (!systemAvailable[id] && !systemSaving[id] && systemToggles[id] is { } toggle) toggle.IsChecked = false;
             systemLoaded = true;
+            systemReadFailed = false;
+            Vm.CompleteSystemRead();
         }
-        catch (Exception exception) { Vm.ReportError(exception); }
+        catch (Exception exception)
+        {
+            systemReadFailed = true;
+            systemLoaded = false;
+            Array.Clear(systemAvailable);
+            Vm.ReportSystemReadFailure(exception);
+        }
         finally
         {
             systemSaveGate.Release(); systemLoading = false;

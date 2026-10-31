@@ -28,6 +28,7 @@ public partial class TrayViewModel : ObservableObject
     private readonly Dictionary<string, (long Revision, JsonObject Data)> visibilityAcknowledgments = new();
 
     private bool polling, connectionError, initialized, initializing;
+    private string? systemReadError;
     // Native thread creation precedes Shell bootstrap and its first queued
     // request. Share one finite budget through the first successful catalog.
     private readonly TimeSpan startupTimeout = TimeSpan.FromSeconds(30);
@@ -255,7 +256,20 @@ public partial class TrayViewModel : ObservableObject
     {
         var result = await Pipe.RequestAsync(method, data, timeout: timeout); if (result["success"]?.GetValue<bool>() != true) throw new IOException((result["saved"]?.GetValue<bool>() == true ? "已保存，但未生效：" : "") + (result["detail"]?.GetValue<string>() ?? "操作失败")); return result;
     }
-    public void ReportError(Exception ex,bool connection=false){Status=Localization.Text(ex.Message);Error=Localization.Text(ex.Message);connectionError=connection;}
+    public void ReportError(Exception ex,bool connection=false){systemReadError=null;Status=Localization.Text(ex.Message);Error=Localization.Text(ex.Message);connectionError=connection;}
+    public void ReportSystemReadFailure(Exception error)
+    {
+        ReportError(error);
+        systemReadError = Error;
+    }
+    public void CompleteSystemRead()
+    {
+        var previous = systemReadError;
+        systemReadError = null;
+        if (previous == null) return;
+        if (Error == previous) Error = "";
+        if (Status == previous) Status = "";
+    }
     private async Task Execute(Func<Task> action) { try { Error="";connectionError=false;await action(); } catch (Exception ex) { ReportError(ex); } }
     [RelayCommand] private async Task ReconnectAsync(){Pipe.AllowStart();if(!await FlushChangesAsync())return;startupClock=Stopwatch.StartNew();startupComplete=false;startupDeadlineReached=false;IsReady=false;IsLoading=true;Error="";await InitializeAsync();}
     public static async Task<string?> ChooseAssetAsync()

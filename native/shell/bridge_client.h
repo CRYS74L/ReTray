@@ -15,6 +15,7 @@ class BridgeClient {
     using HeldIcon = std::unique_ptr<std::remove_pointer_t<HICON>, decltype(&DestroyIcon)>;
     std::vector<HeldIcon> heldIcons_;
     bool MailboxAvailable();
+    bool ReceiverAlive() const;
     bool ReceiverFinishedWithIcons() const;
     void RetireAcceptedIcons();
     bool Send(BridgeCommand, DWORD timeout);

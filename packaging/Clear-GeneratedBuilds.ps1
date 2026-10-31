@@ -22,7 +22,7 @@ foreach($parent in @($publish,$dist)) {
         $candidates+= [pscustomobject]@{Directory=$directory;Version=$version;Parent=$parent;Complete=$complete}
     }
 }
-$keep=@($candidates | Where-Object Complete | ForEach-Object Version | Sort-Object -Descending -Unique | Select-Object -First $KeepVersions)
+$keep=@($candidates | Where-Object Complete | ForEach-Object { $_.Version } | Sort-Object -Descending -Unique | Select-Object -First $KeepVersions)
 $latest=@($candidates | Where-Object Complete | Group-Object { $_.Parent+'|'+$_.Version } | ForEach-Object {
     $_.Group | Sort-Object {$_.Directory.LastWriteTimeUtc} -Descending | Select-Object -First 1
 } | ForEach-Object {$_.Directory.FullName})

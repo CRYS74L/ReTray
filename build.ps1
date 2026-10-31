@@ -14,7 +14,7 @@ $commonArgs=@('-std=c++20','-O2','-static','-DUNICODE','-D_UNICODE','-DWIN32_LEA
 $cppWinrt=Join-Path $workspaceBase '【Common】\WindowsSDK\10.0.28000.2705\microsoft.windows.sdk.cpp\c\Include\10.0.28000.0\cppwinrt'
 $commonArgs+=@('-fms-extensions','-Wno-nonportable-include-path','-I',$cppWinrt)
 $commonArgs+=@('-include',(Join-Path $outputRoot 'product_version.h'))
-if ($Target -in @('Agent','Runtime','Probe')) {
+if ($Target -in @('Agent','Runtime','Probe','Bridge')) {
     & (Join-Path $productRoot 'packaging/build-assets.ps1')
     $brandHeader=@(
         ('#define RETRAY_FILE_VERSION '+($numericVersion.Replace('.',','))+',0'),
@@ -24,7 +24,8 @@ if ($Target -in @('Agent','Runtime','Probe')) {
     Set-Content -LiteralPath (Join-Path $outputRoot 'native-brand.h') -Value $brandHeader -Encoding utf8
     $resource=Join-Path $outputRoot 'native-brand.res'
     $windres=Join-Path (Split-Path $clang -Parent) 'x86_64-w64-mingw32-windres.exe'
-    & $windres '-I' $outputRoot '-i' (Join-Path $productRoot 'packaging/native-brand.rc') '-o' $resource '-O' 'coff'
+    $resourceDefines=if($Target -eq 'Bridge'){@('-DRETRAY_NATIVE_DLL','-DRETRAY_SHELL_BRIDGE')}else{@()}
+    & $windres @resourceDefines '-I' $outputRoot '-i' (Join-Path $productRoot 'packaging/native-brand.rc') '-o' $resource '-O' 'coff'
     if($LASTEXITCODE -ne 0){throw 'ReTray native icon/version resource failed'}
     $commonArgs+=$resource
 }

@@ -11,5 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/LanDeviceMonitor.App.csproj" />
+    <None Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/MainWindow.xaml" Link="WindowTemplates.xaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../../ui/ReTray.Wpf/src/LanDeviceMonitor.App/App.xaml" Link="ApplicationTemplates.xaml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

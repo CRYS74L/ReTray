@@ -1,4 +1,4 @@
-param([switch]$SkipNative,[string]$BuildSuffix='-portable')
+param([switch]$SkipNative,[switch]$SkipCleanup,[string]$BuildSuffix='-portable')
 $ErrorActionPreference='Stop'
 $productRoot=$PSScriptRoot
 $version=(Get-Content -LiteralPath (Join-Path $productRoot 'VERSION') -Raw).Trim()
@@ -8,6 +8,12 @@ $common=Join-Path (Split-Path (Split-Path $productRoot -Parent) -Parent) '【Com
 $dotnet=Join-Path $common 'DotNet\sdk-10\dotnet.exe'
 if(!(Test-Path -LiteralPath $dotnet)){$dotnet=(Get-Command dotnet -ErrorAction Stop).Source}
 if(!$SkipNative){foreach($target in @('Runtime','Bridge')){& (Join-Path $productRoot 'build.ps1') -Target $target;if($LASTEXITCODE -ne 0){throw "Native $target build failed"}}}
+foreach($name in @('ReTray.Runtime.dll','ReTray.ShellBridge.dll')) {
+    $binary=Join-Path $productRoot ('build/'+$name)
+    if(!(Test-Path -LiteralPath $binary)){throw "Native build missing: $name"}
+    $nativeVersion=[Diagnostics.FileVersionInfo]::GetVersionInfo($binary).ProductVersion
+    if($nativeVersion -ne $version){throw "Native version mismatch: $name is '$nativeVersion', expected '$version'. Rebuild native targets before packaging."}
+}
 $publishRoot=[IO.Path]::GetFullPath((Join-Path $productRoot 'publish'))
 $layout=[IO.Path]::GetFullPath((Join-Path $publishRoot ($version+'-origin'+$BuildSuffix+'\layout')))
 if(!$layout.StartsWith($publishRoot+[IO.Path]::DirectorySeparatorChar,[StringComparison]::OrdinalIgnoreCase)){throw 'Invalid publish target'}
@@ -32,4 +38,4 @@ $zip=Join-Path $distribution ('ReTray-'+$version+'-portable-win-x64.zip')
 Compress-Archive -LiteralPath $exe -DestinationPath $zip -Force
 @($exe,$zip) | ForEach-Object {(Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash+'  '+[IO.Path]::GetFileName($_)} | Set-Content -LiteralPath (Join-Path $distribution 'SHA256.txt') -Encoding utf8
 Write-Host ('Portable build complete: '+$exe)
-& (Join-Path $productRoot 'packaging/Clear-GeneratedBuilds.ps1') -ProjectRoot $productRoot
+if(!$SkipCleanup){& (Join-Path $productRoot 'packaging/Clear-GeneratedBuilds.ps1') -ProjectRoot $productRoot}

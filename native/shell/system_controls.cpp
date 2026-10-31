@@ -243,10 +243,14 @@ void Watch(const FrameworkElement& root) {
 }
 } // namespace
 bool ReadSystemControls(uint64_t base, const SymbolAdapter& adapter, BridgeState& state) {
+    state.lastError = ERROR_SUCCESS;
     try {
         auto root = Root(base, adapter);
-        if (!root)
+        if (!root) {
+            state.systemCount = 0;
+            state.lastError = ERROR_NOT_READY;
             return false;
+        }
         Watch(root);
         Discover(root);
         state.systemCount = 0;
@@ -290,8 +294,15 @@ bool ReadSystemControls(uint64_t base, const SymbolAdapter& adapter, BridgeState
                 wcsncpy_s(row.fontFamily, glyph.family.c_str(), _TRUNCATE);
                 row.prePaintHides = prePaintHides[id]; row.visibilityHides = visibilityHides[id];
             }
+        if (!state.systemCount) state.lastError = ERROR_NOT_READY;
         return state.systemCount > 0;
+    } catch (const winrt::hresult_error& error) {
+        state.systemCount = 0;
+        state.lastError = static_cast<DWORD>(error.code().value);
+        return false;
     } catch (...) {
+        state.systemCount = 0;
+        state.lastError = ERROR_INVALID_FUNCTION;
         return false;
     }
 }

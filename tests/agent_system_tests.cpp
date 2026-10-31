@@ -119,6 +119,7 @@ void ResetFixture() {
     rows.clear(); catalog = {}; rules.clear(); applied.clear(); failedStamp.clear(); retryAfter.clear();
     outcomes.clear(); seenSequence = -1; environmentStamp.clear();
     environmentEpoch = lastEnvironmentCheck = environmentRetryAt = 0; environmentOutcome = Result(true);
+    environmentRetryImport = false; environmentReadOutcome = Result(true);
     requestedHotkeys = registeredHotkeys = hotkeyErrors = Json::array(); hotkeyRegistrations = 0;
     activityHistory = Json::object(); activityDirty = false; ownAdded = false;
     importOwnPending = false; importOwnRetryAt = 0;
@@ -226,6 +227,28 @@ void SystemReadAppliesPolicyWhenMissingTargetAppears() {
     CHECK(response["data"][2]["id"] == 6 && response["data"][2]["visible"] == false);
     Call("system.read", Json::object()); lastEnvironmentCheck = 0; ApplyEnvironment();
     CHECK(SystemChanges().empty()); CHECK(configRevision == 0);
+}
+void TransientSystemPolicyFailureRecoversAfterShellRecreation() {
+    ResetFixture(); settings["systemControls"] = {{{"id", 0}, {"hidden", true}}};
+    CHECK(ApplyEnvironment()); CHECK(bridge.hidden.at(0));
+    ++bridge.shared->epoch; bridge.hidden[0] = false;
+    bridge.failingId = 0; bridge.setError = ERROR_NOT_READY;
+    CHECK(!ApplyEnvironment()); auto attempted = SystemChanges().size();
+    CHECK(environmentRetryAt > GetTickCount64());
+    CHECK(!ApplyEnvironment()); CHECK(SystemChanges().size() == attempted);
+    environmentRetryAt = GetTickCount64() - 1;
+    CHECK(ApplyEnvironment()); CHECK(bridge.hidden.at(0));
+    CHECK(environmentOutcome.value("success", false)); CHECK(environmentRetryAt == 0);
+    CHECK(configRevision == 0);
+}
+void SuccessfulSystemReadClearsOnlyItsOwnMaintenanceFailure() {
+    ResetFixture(); settings["systemControls"] = {{{"id", 0}, {"hidden", true}}};
+    CHECK(ApplyEnvironment()); lastEnvironmentCheck = 0; bridge.readError = ERROR_BUSY;
+    CHECK(!ApplyEnvironment());
+    auto response = Call("system.read", Json::object()); CHECK(response.value("success", false));
+    CHECK(ApplyEnvironment());
+    CHECK(Call("status.read", Json::object())["data"]["environment"]["success"] == true);
+    CHECK(configRevision == 0);
 }
 void ExistingFailedTargetIsNotRetriedByObjectRefresh() {
     ResetFixture(); settings["systemControls"] = {{{"id", 0}, {"hidden", true}}};
@@ -392,6 +415,8 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"system read failure", ReadFailureCannotPersistNewPolicy},
                             std::pair{"background failures do not retry unchanged policy", UnchangedSystemFailuresAreNotRetriedInBackground},
                             std::pair{"system read applies newly present target", SystemReadAppliesPolicyWhenMissingTargetAppears},
+                            std::pair{"shell recreation retries transient system policy failure", TransientSystemPolicyFailureRecoversAfterShellRecreation},
+                            std::pair{"successful system read clears maintenance failure", SuccessfulSystemReadClearsOnlyItsOwnMaintenanceFailure},
                             std::pair{"object refresh does not retry existing failure", ExistingFailedTargetIsNotRetriedByObjectRefresh},
                             std::pair{"maintenance failure keeps current system rows readable", MaintenanceFailureDoesNotBlockCurrentSystemRows},
                             std::pair{"system rows expose absent saved preference", SystemRowsExposeAbsentSavedPreferenceWithoutApplyingAnything},

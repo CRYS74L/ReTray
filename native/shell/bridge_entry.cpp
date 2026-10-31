@@ -715,7 +715,7 @@ void ExecuteCommand(const BridgeCommand* batchItem = nullptr, const SnapshotResu
                 ok = SetSystemControl(cmd.location, cmd.visibility);
             if (ok && cmd.operation == BridgeOperation::SystemPolicy)
                 ok = SetSystemPolicy(cmd.location, cmd.visibility);
-            state->lastError = ok ? 0 : ERROR_NOT_SUPPORTED;
+            state->lastError = ok ? 0 : state->lastError ? state->lastError : ERROR_NOT_SUPPORTED;
             acknowledge();
             return;
         }

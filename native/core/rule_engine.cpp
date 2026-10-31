@@ -6,6 +6,7 @@
 #include <bcrypt.h>
 #include <cstring>
 #include <tuple>
+#include <string_view>
 #include <unordered_set>
 namespace tray {
 static std::wstring Normalize(std::wstring text) {
@@ -53,11 +54,62 @@ static std::wstring PackageExecutableIdentity(const std::wstring& path) {
     family.resize(length - 1);
     return family + L"|" + (id->resourceId ? id->resourceId : L"") + L"|" + relative;
 }
+struct VersionedAppPath {
+    std::wstring identity;
+    size_t begin{}, end{};
+};
+static bool AppVersion(std::wstring_view value) {
+    const auto suffix = value.find_first_of(L"-+");
+    const auto numbers = value.substr(0, suffix);
+    size_t groups{}, digits{};
+    for (auto c : numbers) {
+        if (c >= L'0' && c <= L'9') { if (++digits > 10) return false; }
+        else if (c == L'.' && digits) { ++groups; digits = 0; }
+        else return false;
+    }
+    if (!digits || ++groups < 3 || groups > 4) return false;
+    if (suffix == std::wstring_view::npos) return true;
+    bool build = value[suffix] == L'+';
+    size_t token{};
+    for (auto c : value.substr(suffix + 1)) {
+        if ((c >= L'0' && c <= L'9') || (c >= L'a' && c <= L'z') || c == L'-') ++token;
+        else if (c == L'.' && token) token = 0;
+        else if (c == L'+' && token && !build) { build = true; token = 0; }
+        else return false;
+    }
+    return token != 0;
+}
+static VersionedAppPath DesktopExecutableIdentity(const std::wstring& path) {
+    // Squirrel-style app-<version> directories replace the installed payload on
+    // upgrade. Retain the absolute installation root and the whole relative
+    // executable path; arbitrary numeric folders are separate applications.
+    if (path.size() < 4 || path[0] < L'a' || path[0] > L'z' || path[1] != L':' ||
+        path[2] != L'\\' || path.find(L'\0') != path.npos || path.find(L'|') != path.npos) return {};
+    VersionedAppPath result;
+    for (size_t at = 3; at < path.size();) {
+        auto next = path.find(L'\\', at);
+        auto part = std::wstring_view(path).substr(at, next == std::wstring::npos ? next : next - at);
+        if (part.empty() || part == L"." || part == L".." || part.find(L':') != part.npos) return {};
+        if (next != path.npos && part.starts_with(L"app-") && AppVersion(part.substr(4))) {
+            if (!result.identity.empty() || at == 3) return {};
+            result = {path.substr(0, at) + L"app-*" + path.substr(next), at, next};
+        }
+        if (next == path.npos) break;
+        at = next + 1;
+        if (at == path.size()) return {};
+    }
+    return result;
+}
+static bool SameDesktopExecutable(const std::wstring& a, const std::wstring& b) {
+    auto first = DesktopExecutableIdentity(a);
+    return !first.identity.empty() && first.identity == DesktopExecutableIdentity(b).identity;
+}
 static bool SameExecutable(const std::wstring& a, const std::wstring& b) {
     auto first = Normalize(a), second = Normalize(b);
     if (first == second) return true;
     auto identity = PackageExecutableIdentity(first);
-    return !identity.empty() && identity == PackageExecutableIdentity(second);
+    return (!identity.empty() && identity == PackageExecutableIdentity(second)) ||
+           SameDesktopExecutable(first, second);
 }
 static bool IsPathGuid(const GUID& guid, const std::wstring& path) {
     // H.NotifyIcon 2.1.4: new Guid(SHA256(UTF8(ProcessPath + "_"))[0..16]).
@@ -98,11 +150,28 @@ static bool PackagePathGuid(const RuleSelector& s, const NativeIconRecord& r) {
                 newName.substr(newLast) + r.executable.substr(newEnd);
     return Normalize(restored) == saved && IsPathGuid(s.guid, restored);
 }
-static bool SameGuid(const RuleSelector& s, const NativeIconRecord& r) {
-    return IsEqualGUID(s.guid, r.identity.guid) || PackagePathGuid(s, r);
+static bool DesktopPathGuid(const RuleSelector& s, const NativeIconRecord& r) {
+    if (!s.hasGuid || !r.identity.hasGuid || !IsPathGuid(r.identity.guid, r.executable)) return false;
+    auto saved = DesktopExecutableIdentity(Normalize(s.executable));
+    auto current = DesktopExecutableIdentity(Normalize(r.executable));
+    if (saved.identity.empty() || saved.identity != current.identity) return false;
+    if (IsPathGuid(s.guid, s.executable)) return true;
+    // Legacy selectors stored a lowercase path. Reconstruct its spelling using
+    // the current installation; only its validated version directory differs.
+    auto restored = r.executable.substr(0, current.begin) +
+                    s.executable.substr(saved.begin, saved.end - saved.begin) +
+                    r.executable.substr(current.end);
+    return Normalize(restored) == Normalize(s.executable) && IsPathGuid(s.guid, restored);
 }
-bool EquivalentPackagePathPolicies(const IconRule& a, const IconRule& b, const NativeIconRecord& r) {
-    if (!PackagePathGuid(a.selector, r) || !PackagePathGuid(b.selector, r)) return false;
+static bool SameGuid(const RuleSelector& s, const NativeIconRecord& r) {
+    return IsEqualGUID(s.guid, r.identity.guid) || PackagePathGuid(s, r) || DesktopPathGuid(s, r);
+}
+bool EquivalentUpgradePolicies(const IconRule& a, const IconRule& b, const NativeIconRecord& r) {
+    const bool derived = (PackagePathGuid(a.selector, r) || DesktopPathGuid(a.selector, r)) &&
+                         (PackagePathGuid(b.selector, r) || DesktopPathGuid(b.selector, r));
+    const bool desktop = SameDesktopExecutable(Normalize(a.selector.executable), Normalize(b.selector.executable)) &&
+                         Matches(a.selector, r) && Matches(b.selector, r);
+    if (!derived && !desktop) return false;
     auto policy = [](const IconRule& v) {
         return std::tie(v.selector.windowClass, v.selector.windowClassIsIdentity, v.selector.tipMode,
             v.selector.tipPattern, v.selector.ownerPid, v.selector.ownerCreatedAt,
@@ -259,7 +328,7 @@ RuleResolution ResolveRule(const std::unordered_map<std::string, IconRule>& rule
             best = rank;
             result = {&rule, false};
         } else if (rank == best) {
-            if (!EquivalentPackagePathPolicies(*result.rule, rule, record)) result.ambiguous = true;
+            if (!EquivalentUpgradePolicies(*result.rule, rule, record)) result.ambiguous = true;
             else if (key < PersistentKey(result.rule->selector)) result.rule = &rule;
         }
     }
@@ -360,15 +429,15 @@ RuleResolution ResolveRule(const std::unordered_map<std::string, IconRule>& rule
         int rank = Specificity(rule.selector);
         if (rank > exactRank) { exactRank = rank; exact = {&rule, false, false, false}; }
         else if (rank == exactRank) {
-            if (!EquivalentPackagePathPolicies(*exact.rule, rule, record))
+            if (!EquivalentUpgradePolicies(*exact.rule, rule, record))
                 exactAmbiguousRank = std::max(exactAmbiguousRank, rank);
             else if (key < PersistentKey(exact.rule->selector)) exact.rule = &rule;
         }
     }
     if (exactAmbiguousRank >= 0 && exactAmbiguousRank >= exactRank) return {nullptr, true};
     if (exact.rule) {
-        exact.reassociated = exact.rule->selector.hasGuid &&
-            !IsEqualGUID(exact.rule->selector.guid, record.identity.guid);
+        exact.reassociated = Normalize(exact.rule->selector.executable) != Normalize(record.executable) ||
+            (exact.rule->selector.hasGuid && !IsEqualGUID(exact.rule->selector.guid, record.identity.guid));
         return exact;
     }
     if (!PublicRole(record)) return {};

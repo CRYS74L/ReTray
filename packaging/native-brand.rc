@@ -19,7 +19,10 @@ BEGIN
   BEGIN
    VALUE "CompanyName", "CRYS74L\0"
    VALUE "FileDescription", "ReTray\0"
-#ifdef RETRAY_NATIVE_DLL
+#ifdef RETRAY_SHELL_BRIDGE
+   VALUE "InternalName", "ReTray.ShellBridge\0"
+   VALUE "OriginalFilename", "ReTray.ShellBridge.dll\0"
+#elif defined(RETRAY_NATIVE_DLL)
    VALUE "InternalName", "ReTray.Runtime\0"
    VALUE "OriginalFilename", "ReTray.Runtime.dll\0"
 #endif

@@ -36,7 +36,7 @@ void BridgeClient::Reset() {
             // Retain this mapping and the sender-owned handle copies; a later
             // reset/attach poll reclaims them after the explicit handoff.
             resetPending_ = true;
-            if (!detachPosted_ && window_)
+            if (!detachPosted_ && ReceiverAlive())
                 detachPosted_ = PostMessageW(window_, RegisterWindowMessageW(CommandMessage), 1, 0) != FALSE;
             return;
         }
@@ -59,8 +59,14 @@ void BridgeClient::Reset() {
     if (explorerProcess_) { CloseHandle(explorerProcess_); explorerProcess_ = nullptr; }
     resetPending_ = detachPosted_ = false;
 }
+bool BridgeClient::ReceiverAlive() const {
+    if (!explorerProcess_ || WaitForSingleObject(explorerProcess_, 0) != WAIT_TIMEOUT || !IsWindow(window_))
+        return false;
+    DWORD owner{};
+    return GetWindowThreadProcessId(window_, &owner) && owner == GetProcessId(explorerProcess_);
+}
 bool BridgeClient::Alive() const {
-    return !resetPending_ && shared && shared->status == 1 && IsWindow(window_) &&
+    return !resetPending_ && shared && shared->status == 1 && ReceiverAlive() &&
            FindWindowW(L"Shell_TrayWnd", nullptr) == window_;
 }
 bool BridgeClient::Attach(const SymbolAdapter& adapter, const std::filesystem::path& path) {
@@ -140,6 +146,7 @@ void BridgeClient::RetireAcceptedIcons() {
     if (ReceiverFinishedWithIcons()) heldIcons_.clear();
 }
 bool BridgeClient::MailboxAvailable() {
+    if (!Alive()) { lastError_ = ERROR_NOT_READY; return false; }
     RetireAcceptedIcons();
     if (pendingSequence_) {
         if (!shared || shared->replySequence != pendingSequence_) { lastError_ = ERROR_BUSY; return false; }
@@ -227,7 +234,7 @@ std::vector<BridgeIcon> BridgeClient::Snapshot(bool* complete) const {
     return {};
 }
 void BridgeClient::Detach() {
-    if (pendingSequence_ && shared && shared->replySequence != pendingSequence_) {
+    if (pendingSequence_ && shared && shared->replySequence != pendingSequence_ && ReceiverAlive()) {
         InterlockedExchange(&shared->cancelledSequence, pendingSequence_);
         if (!detachPosted_ && window_)
             detachPosted_ = PostMessageW(window_, RegisterWindowMessageW(CommandMessage), 1, 0) != FALSE;

@@ -266,6 +266,7 @@ void ResetFixture() {
     roleBindings.clear(); roleObservations.clear(); ruleContext.clear();
     identityRetryAt = 0; identityOutcome = Json::object();
     environmentStamp.clear(); environmentEpoch = lastEnvironmentCheck = environmentRetryAt = 0;
+    environmentRetryImport = false; environmentReadOutcome = Result(true); environmentOutcome = Result(true);
     activityHistory = Json::object(); activityDirty = false; ownAdded = false;
     importOwnPending = false; importOwnRetryAt = 0;
     ownPolicyWrites = ownPolicyNextError = 0;
@@ -285,6 +286,30 @@ void ResetFixture() {
     settings["rules"] = {RuleJson(target), RuleJson(peer)};
     CHECK(SaveSettings(settingsPath, settings));
     LoadRules(); Refresh(); bridge.commands.clear();
+}
+void DesktopUpgradeRestoresPolicyAndListPosition() {
+    ResetFixture(); auto& row = bridge.shared->icons[0];
+    wcscpy_s(row.executable, L"C:\\Apps\\Aurora\\app-1.2.3\\Notify.exe");
+    wcscpy_s(row.windowClass, L"Electron_NotifyIconHostWindow"); row.callback = WM_APP + 1;
+    auto rule = ParseRule(settings["rules"][0]); rule.visibility = 1;
+    rule.selector = SelectorFor(Record(row));
+    const auto savedKey = PersistentKey(rule.selector); rule.selector.legacy.listKey = savedKey;
+    settings["rules"][0] = RuleJson(rule); settings["iconOrder"] = {savedKey, "@assistant"};
+    LoadRules();
+    for (auto path : {L"C:\\Apps\\Aurora\\app-2.0.0\\Notify.exe", L"C:\\Apps\\Aurora\\app-3.1.0\\Notify.exe"}) {
+        wcscpy_s(row.executable, path); ++row.identity.ownerCreatedAt; ++row.registration;
+        row.custom = row.managed = false; row.placement = 1; bridge.commands.clear();
+        bridge.shared->snapshotSequence += 2; Refresh();
+        CHECK(row.custom && row.managed && row.placement == 2);
+        auto reply = CatalogJson(); bool present{};
+        for (const auto& item : reply["icons"]) if (item["pid"] == row.identity.ownerPid) {
+            CHECK(item["stableKey"] == savedKey); CHECK(item["visibility"] == 1);
+            CHECK(item["asset"] == Utf8(rule.asset) && item["identityReassociated"] == true); present = true;
+        }
+        CHECK(present && settings["rules"].size() == 2 && settings["iconOrder"][0] == savedKey);
+        CHECK(settings["rules"][0]["selector"]["executable"] == Utf8(rule.selector.executable));
+        for (const auto& command : IconCommands()) CHECK(command.identity.ownerPid == row.identity.ownerPid);
+    }
 }
 void StoreUpgradeReappliesExistingPolicyWithoutRewritingSettings() {
     ResetFixture();
@@ -1281,6 +1306,7 @@ int wmain(int argc, wchar_t** argv) {
                             std::pair{"configuration import rejects oversized persisted pretty file before backup", ImportPrettyFileTooLargeCannotCreateBackupOrCommit},
                             std::pair{"configuration import defers own policy and retries only needed changes", ImportOwnPolicyIsDeferredAndRetriesOnlyWhenNeeded},
                             std::pair{"configuration import and explicit request wait limits are bounded", ImportAndExplicitRequestTimeoutsRemainBounded},
+                            std::pair{"desktop upgrades restore saved policy and list position", DesktopUpgradeRestoresPolicyAndListPosition},
                             std::pair{"Store upgrades reapply existing policy without rewriting settings", StoreUpgradeReappliesExistingPolicyWithoutRewritingSettings},
                             std::pair{"Store path GUID upgrades retain policy and edits consolidate duplicates", StorePathGuidUpgradeAndEditsPreservePolicy},
                             std::pair{"immediate visibility and no replay", ImmediateVisibility},

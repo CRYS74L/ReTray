@@ -2,23 +2,34 @@
 #include <cstdio>
 #include <stdexcept>
 HWND mailboxWindow{};
+DWORD mailboxOwner{};
 HWND WINAPI MailboxTestFindWindowW(LPCWSTR name, LPCWSTR title) {
     if (name && !_wcsicmp(name, L"Shell_TrayWnd")) return mailboxWindow;
     return FindWindowW(name, title);
 }
+DWORD WINAPI MailboxTestGetWindowThreadProcessId(HWND window, LPDWORD pid) {
+    if (window == mailboxWindow && mailboxOwner) { if (pid) *pid = mailboxOwner; return GetCurrentThreadId(); }
+    return GetWindowThreadProcessId(window, pid);
+}
 #define FindWindowW MailboxTestFindWindowW
+#define GetWindowThreadProcessId MailboxTestGetWindowThreadProcessId
 #include "../native/shell/bridge_client.cpp"
+#undef GetWindowThreadProcessId
 #undef FindWindowW
 #define CHECK(x) do { if (!(x)) throw std::runtime_error(#x); } while (0)
 namespace tray {
 struct BridgeClientFixtureAccess {
     static void Initialize(BridgeClient& client, BridgeState* shared) {
         client.shared = shared; client.window_ = mailboxWindow;
-        client.explorerProcess_ = OpenProcess(SYNCHRONIZE, FALSE, GetCurrentProcessId());
+        client.explorerProcess_ = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, GetCurrentProcessId());
+    }
+    static void Receiver(BridgeClient& client, HANDLE process) {
+        CloseHandle(client.explorerProcess_); client.explorerProcess_ = process;
     }
 };
 }
-int main() {
+int main(int argc, char**) {
+    if (argc > 1) { Sleep(150); return 0; }
     WNDCLASSW cls{}; cls.hInstance = GetModuleHandleW(nullptr); cls.lpfnWndProc = DefWindowProcW;
     cls.lpszClassName = L"ReTray.IsolatedMailboxTest";
     if (!RegisterClassW(&cls)) return 1;
@@ -73,6 +84,25 @@ int main() {
         client.Reset(); CHECK(!client.shared);
         CHECK(!GetIconInfo(offered, &info));
         std::puts("PASS reset defers unaccepted handles without blocking, then reclaims after receiver confirmation");
+        // A dead receiver can leave a published ready bit and a recycled taskbar
+        // HWND. Use only a child of this test; never restart the real Shell.
+        wchar_t executable[32768]{}; CHECK(GetModuleFileNameW(nullptr, executable, std::size(executable)));
+        std::wstring command = L"\"" + std::wstring(executable) + L"\" --receiver";
+        STARTUPINFOW startup{}; startup.cb = sizeof(startup); PROCESS_INFORMATION child{};
+        CHECK(CreateProcessW(executable, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+                             nullptr, nullptr, &startup, &child));
+        CloseHandle(child.hThread);
+        tray::BridgeClientFixtureAccess::Initialize(client, state.get());
+        tray::BridgeClientFixtureAccess::Receiver(client, child.hProcess); mailboxOwner = child.dwProcessId;
+        CHECK(client.Alive());
+        CHECK(!client.Command(next, 10));
+        CHECK(WaitForSingleObject(child.hProcess, 3000) == WAIT_OBJECT_0);
+        CHECK(!client.Alive());
+        auto request = state->requestSequence;
+        CHECK(!client.Command(next, 10) && client.LastError() == ERROR_NOT_READY);
+        CHECK(state->requestSequence == request);
+        client.Reset(); CHECK(!client.shared); mailboxOwner = 0;
+        std::puts("PASS dead Shell receiver cannot reuse a recycled window or block reset on a stale mailbox");
     } catch (const std::exception& error) { ++failed; std::fprintf(stderr, "FAIL %s\n", error.what()); }
     DestroyWindow(mailboxWindow); UnregisterClassW(cls.lpszClassName, cls.hInstance);
     return failed ? 1 : 0;

@@ -7,6 +7,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <functional>
+#include <bcrypt.h>
 #include <stdexcept>
 #include <winrt/windows.foundation.h>
 #include <winrt/windows.graphics.imaging.h>
@@ -534,6 +535,84 @@ int main(int argc, char** argv) {
         // Ordinary versioned folders never acquire package matching.
         saved.executable = L"C:\\Apps\\Example.App_1.0.0.0_x64__8wekyb3d8bbwe\\App.exe";
         REQUIRE(!Matches(saved, r));
+    });
+    test("Rule.VersionedDesktopUpgradeRetainsPolicyAndListIdentity", [] {
+        for (auto root : {L"C:\\Apps\\Aurora", L"D:\\Tools\\Orbit"}) {
+            NativeIconRecord r;
+            r.executable = std::wstring(root) + L"\\app-1.2.3\\Notify.exe";
+            r.identity = {1, 10, 100, 7, 3, false, {}};
+            r.windowClass = L"Electron_NotifyIconHostWindow"; r.callbackMessage = WM_APP + 1;
+            r.cachedOriginal.fingerprint = 12345;
+            IconRule saved; saved.selector = SelectorFor(r, {r}); saved.visibility = 1;
+            saved.asset = L"C:\\Assets\\custom.ico"; saved.tip = L"My notification";
+            saved.selector.legacy.dynamicTip = true;
+            const auto key = PersistentKey(saved.selector);
+            saved.selector.legacy.listKey = key;
+            std::unordered_map<std::string, IconRule> rules{{key, saved}};
+            r.executable = std::wstring(root) + L"\\app-2.4.6\\Notify.exe";
+            r.identity = {2, 20, 200, 8, 3, false, {}};
+            REQUIRE(Matches(saved.selector, r));
+            auto found = ResolveRule(rules, r, {r});
+            REQUIRE(found.rule && found.reassociated && !found.ambiguous && !found.provisional);
+            REQUIRE(found.rule->visibility == 1 && found.rule->asset == saved.asset && found.rule->tip == saved.tip);
+            REQUIRE(PersistentKey(found.rule->selector) == key && found.rule->selector.legacy.listKey == key);
+            r.identity.uid = 99;
+            found = ResolveRule(rules, r, {r});
+            REQUIRE(found.rule && found.reassociated && !found.provisional);
+            auto peer = r; peer.identity.uid = 100; peer.identity.ownerHwnd++;
+            REQUIRE(ResolveRule(rules, r, {r, peer}).ambiguous);
+        }
+    });
+    test("Rule.VersionedDesktopIdentityRetainsRootExecutableAndRoleBoundaries", [] {
+        NativeIconRecord r; r.executable = L"C:\\Apps\\Aurora\\app-1.2.3\\Notify.exe";
+        r.identity.uid = 3; auto saved = SelectorFor(r);
+        for (auto path : {L"D:\\Apps\\Aurora\\app-2.0.0\\Notify.exe",
+                          L"C:\\Apps\\Other\\app-2.0.0\\Notify.exe",
+                          L"C:\\Apps\\Aurora\\app-2.0.0\\Helper.exe",
+                          L"C:\\Apps\\Aurora\\app-2.0.0\\helper\\Notify.exe",
+                          L"C:\\Apps\\Aurora\\app-invalid\\Notify.exe",
+                          L"C:\\Apps\\Aurora\\app-2.0.0\\..\\Notify.exe",
+                          L"C:\\Apps\\Aurora\\app-2.0.0\\\\Notify.exe",
+                          L"C:\\Apps\\Aurora\\app-2.0.0\\app-3.0.0\\Notify.exe",
+                          L"Apps\\Aurora\\app-2.0.0\\Notify.exe"}) {
+            r.executable = path; REQUIRE(!Matches(saved, r));
+        }
+        r.executable = L"C:/APPS/AURORA/app-2.0.0-beta.1/NOTIFY.EXE";
+        REQUIRE(Matches(saved, r));
+        r.identity.uid = 4; REQUIRE(!Matches(saved, r));
+        r.identity.uid = 3; r.identity.hasGuid = true; REQUIRE(!Matches(saved, r));
+        r.identity.hasGuid = false; r.executable = L"C:\\Apps\\Aurora\\1.2.3\\Notify.exe";
+        saved = SelectorFor(r); r.executable = L"C:\\Apps\\Aurora\\2.0.0\\Notify.exe";
+        REQUIRE(!Matches(saved, r));
+    });
+    test("Rule.VersionedDesktopPathGuidRetainsRoleAcrossUpgrade", [] {
+        auto guidFor = [](const std::wstring& path) {
+            const std::string value(path.begin(), path.end());
+            auto input = value + "_"; BYTE hash[32]{};
+            REQUIRE(BCryptHash(BCRYPT_SHA256_ALG_HANDLE, nullptr, 0,
+                              reinterpret_cast<PUCHAR>(input.data()), input.size(), hash, sizeof(hash)) >= 0);
+            GUID guid{}; memcpy(&guid, hash, sizeof(guid)); return guid;
+        };
+        NativeIconRecord r; r.executable = L"C:\\Apps\\Aurora\\app-1.2.3\\Notify.exe";
+        r.identity.hasGuid = true; r.identity.guid = guidFor(r.executable);
+        IconRule rule; rule.selector = SelectorFor(r); rule.visibility = 1;
+        std::unordered_map<std::string, IconRule> rules{{PersistentKey(rule.selector), rule}};
+        r.executable = L"C:\\Apps\\Aurora\\app-2.0.0\\Notify.exe"; r.identity.guid = guidFor(r.executable);
+        auto found = ResolveRule(rules, r, {r});
+        REQUIRE(found.rule && found.reassociated && !found.ambiguous);
+        r.identity.guid.Data1++; REQUIRE(!ResolveRule(rules, r, {r}).rule);
+        r.executable = L"C:\\Apps\\Other\\app-2.0.0\\Notify.exe"; r.identity.guid = guidFor(r.executable);
+        REQUIRE(!ResolveRule(rules, r, {r}).rule);
+    });
+    test("Rule.VersionedDesktopDuplicatesKeepEquivalentPoliciesAndExposeConflicts", [] {
+        NativeIconRecord r; r.executable = L"C:\\Apps\\Aurora\\app-1.2.3\\Notify.exe"; r.identity.uid = 3;
+        IconRule first; first.selector = SelectorFor(r); first.visibility = 1;
+        r.executable = L"C:\\Apps\\Aurora\\app-2.0.0\\Notify.exe";
+        auto second = first; second.selector.executable = r.executable;
+        std::unordered_map<std::string, IconRule> rules{{PersistentKey(first.selector), first}, {PersistentKey(second.selector), second}};
+        REQUIRE(ResolveRule(rules, r, {r}).rule && !ResolveRule(rules, r, {r}).ambiguous);
+        second.visibility = 0; rules[PersistentKey(second.selector)] = second;
+        REQUIRE(ResolveRule(rules, r, {r}).ambiguous);
     });
     test("Rule.MatchesRestartWithoutTooltipOrHandles", [] {
         NativeIconRecord r;

@@ -102,10 +102,12 @@ uint64_t lastCatalogRefresh{};
 uint64_t configRevision{};
 uint64_t environmentEpoch{}, lastEnvironmentCheck{};
 uint64_t environmentRetryAt{};
+bool environmentRetryImport{};
 std::string environmentStamp;
 std::unordered_map<int, bool> environmentPolicies;
 std::array<bool, 10> environmentAvailable{};
 Json environmentOutcome = {{"success", true}};
+Json environmentReadOutcome = {{"success", true}};
 Json startupOutcome = {{"success", true}};
 Json startupPerformance;
 struct Request {
@@ -229,14 +231,14 @@ std::string DisplayBase(const NativeIconRecord& record) {
     return found.rule->selector.hasGuid ? PersistentKey(found.rule->selector)
                                         : LegacyListBase(found.rule->selector, record);
 }
-std::unordered_set<std::string> RedundantPackageRules(const std::string& key) {
+std::unordered_set<std::string> RedundantUpgradeRules(const std::string& key) {
     std::unordered_set<std::string> redundant;
     auto selected = rules.find(key);
     if (selected == rules.end()) return redundant;
     for (const auto& record : ruleContext) {
         if (!Matches(selected->second.selector, record)) continue;
         for (const auto& [otherKey, other] : rules)
-            if (otherKey != key && EquivalentPackagePathPolicies(selected->second, other, record))
+            if (otherKey != key && EquivalentUpgradePolicies(selected->second, other, record))
                 redundant.insert(otherKey);
     }
     return redundant;
@@ -712,11 +714,20 @@ bool RefreshSystemControls() {
     lastEnvironmentCheck = GetTickCount64();
     BridgeCommand command;
     command.operation = BridgeOperation::SystemRead;
-    if (!bridge.Command(command))
+    if (!bridge.Command(command)) {
+        environmentReadOutcome = Result(false, "当前系统图标对象无法刷新",
+                                        bridge.LastError() ? bridge.LastError() : ERROR_TIMEOUT);
         return false;
+    }
+    environmentReadOutcome = Result(true);
     for (const auto& policy : settings.value("systemControls", Json::array()))
         environmentAvailable[policy.at("id").get<int>()] = NativeSystemControlPresent(policy.at("id").get<int>());
     return true;
+}
+bool TransientSystemError(DWORD error) {
+    return error == ERROR_BUSY || error == ERROR_NOT_READY || error == ERROR_TIMEOUT ||
+           error == ERROR_RETRY || error == ERROR_INVALID_WINDOW_HANDLE ||
+           error == static_cast<DWORD>(RPC_E_DISCONNECTED);
 }
 bool ApplyEnvironment(bool force = false, bool retryImportFailures = false) {
     if (!bridge.Alive() || !ShouldRecover(lifecycle))
@@ -724,7 +735,7 @@ bool ApplyEnvironment(bool force = false, bool retryImportFailures = false) {
     auto stamp = settings.value("systemControls", Json::array()).dump();
     bool shellChanged = environmentEpoch != bridge.shared->epoch;
     const auto now = GetTickCount64();
-    bool retryImport = retryImportFailures || environmentRetryAt != 0;
+    bool retryImport = retryImportFailures || environmentRetryImport;
     if (!force && !shellChanged && environmentRetryAt && now < environmentRetryAt)
         return false;
     if (!shellChanged && environmentRetryAt && now >= environmentRetryAt)
@@ -732,15 +743,15 @@ bool ApplyEnvironment(bool force = false, bool retryImportFailures = false) {
     if (!force && !shellChanged && environmentStamp == stamp) {
         bool hasHiddenPolicy = std::any_of(environmentPolicies.begin(), environmentPolicies.end(),
                                            [](const auto& policy) { return policy.second; });
-        if (hasHiddenPolicy && GetTickCount64() - lastEnvironmentCheck >= 3000 &&
-            !RefreshSystemControls())
-            environmentOutcome = Result(false, "当前系统图标对象无法刷新",
-                                         bridge.LastError() ? bridge.LastError() : ERROR_TIMEOUT);
-        return environmentOutcome.value("success", true);
+        if (hasHiddenPolicy && GetTickCount64() - lastEnvironmentCheck >= 3000)
+            RefreshSystemControls();
+        return environmentOutcome.value("success", true) && environmentReadOutcome.value("success", true);
     }
     auto previous = shellChanged ? std::unordered_map<int, bool>{} : environmentPolicies;
-    if (shellChanged)
+    if (shellChanged) {
         environmentAvailable.fill(false);
+        environmentReadOutcome = Result(true);
+    }
     environmentEpoch = bridge.shared->epoch;
     environmentStamp = std::move(stamp);
     lastEnvironmentCheck = GetTickCount64();
@@ -748,6 +759,7 @@ bool ApplyEnvironment(bool force = false, bool retryImportFailures = false) {
     for (const auto& policy : settings.value("systemControls", Json::array()))
         environmentPolicies[policy.at("id").get<int>()] = policy.value("hidden", false);
     bool ok = true;
+    bool transientFailure{};
     DWORD error{};
     auto apply = [&](int id, bool hidden) {
         BridgeCommand command;
@@ -757,6 +769,7 @@ bool ApplyEnvironment(bool force = false, bool retryImportFailures = false) {
         if (!bridge.Command(command)) {
             ok = false;
             error = bridge.LastError() ? bridge.LastError() : ERROR_TIMEOUT;
+            transientFailure |= TransientSystemError(error);
             return false;
         }
         environmentAvailable[id] = NativeSystemControlPresent(id);
@@ -765,14 +778,15 @@ bool ApplyEnvironment(bool force = false, bool retryImportFailures = false) {
     std::vector<int> pendingRestores;
     for (const auto& [id, hidden] : previous)
         if (!environmentPolicies.contains(id))
-            if (!apply(id, false) && retryImport) pendingRestores.push_back(id);
+            if (!apply(id, false) && (retryImport || TransientSystemError(error))) pendingRestores.push_back(id);
     for (const auto& [id, hidden] : environmentPolicies)
         if (force || !previous.contains(id) || previous.at(id) != hidden)
             apply(id, hidden);
     for (auto id : pendingRestores) environmentPolicies[id] = false;
     environmentOutcome =
         Result(ok, ok ? "系统图标设置已生效" : "已保存的系统图标策略当前无法应用", error);
-    environmentRetryAt = !ok && retryImport ? GetTickCount64() + 3000 : 0;
+    environmentRetryImport = !ok && retryImport;
+    environmentRetryAt = !ok && (retryImport || transientFailure) ? GetTickCount64() + 3000 : 0;
     return ok;
 }
 std::string StableIconKey(const BridgeIcon& row) {
@@ -1331,7 +1345,7 @@ Json SetIconVisibility(const Json& data) {
     rule.inactiveSeconds = rule.unusedDays = 0;
     rule.enabled = true;
     auto stable = PersistentKey(rule.selector);
-    auto redundant = RedundantPackageRules(stable);
+    auto redundant = RedundantUpgradeRules(stable);
     auto updatedRules = rules;
     for (const auto& duplicate : redundant) updatedRules.erase(duplicate);
     updatedRules[stable] = rule;
@@ -1584,7 +1598,7 @@ Json Handle(const Json& req) {
             {"connected", bridge.Alive()},
             {"version", RETRAY_VERSION},
 
-            {"environment", environmentOutcome},
+            {"environment", environmentOutcome.value("success", true) ? environmentReadOutcome : environmentOutcome},
             {"identity", identityOutcome},
             {"startup", startupOutcome},
             {"startupPerformance", startupPerformance},
@@ -1669,7 +1683,7 @@ Json Handle(const Json& req) {
         for (const auto& entry : list) {
             auto rule = ParseRule(entry);
             auto key = PersistentKey(rule.selector);
-            auto redundant = RedundantPackageRules(key);
+            auto redundant = RedundantUpgradeRules(key);
             auto& existing = settings["rules"];
             for (auto it = existing.begin(); it != existing.end();) {
                 auto storedKey = PersistentKey(ParseRule(*it).selector);
@@ -1728,9 +1742,9 @@ Json Handle(const Json& req) {
             prior["selector"] = d.at("previousSelector");
             priorKey = PersistentKey(ParseRule(prior).selector);
         }
-        auto redundant = RedundantPackageRules(key);
+        auto redundant = RedundantUpgradeRules(key);
         if (!priorKey.empty()) {
-            auto previousDuplicates = RedundantPackageRules(priorKey);
+            auto previousDuplicates = RedundantUpgradeRules(priorKey);
             redundant.insert(previousDuplicates.begin(), previousDuplicates.end());
         }
         std::vector<std::string> previouslyLinked;

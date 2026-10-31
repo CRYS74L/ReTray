@@ -13,18 +13,44 @@ internal static class Program
     [STAThread]
     private static int Main()
     {
+        var app = new System.Windows.Application { ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown };
+        var source = System.Xml.Linq.XDocument.Load(Path.Combine(AppContext.BaseDirectory, "ApplicationTemplates.xaml"));
+        var resources = new System.Xml.Linq.XElement(source.Root!.Elements().Single().Elements().Single());
+        foreach (var declaration in source.Root.Attributes().Where(a => a.IsNamespaceDeclaration))
+            resources.SetAttributeValue(declaration.Name, declaration.Value);
+        app.Resources = ReadResources(resources);
         var dispatcher = Dispatcher.CurrentDispatcher;
         SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
         var tests = RunAsync();
         _ = tests.ContinueWith(_ => dispatcher.BeginInvokeShutdown(DispatcherPriority.Background));
-        Dispatcher.Run();
+        app.Run();
+        GC.KeepAlive(app);
         try { tests.GetAwaiter().GetResult(); return 0; }
         catch (Exception exception) { Console.Error.WriteLine(exception); return 1; }
+    }
+    private static System.Windows.ResourceDictionary ReadResources(System.Xml.Linq.XElement dictionary)
+    {
+        foreach (var element in dictionary.DescendantsAndSelf()) {
+            if (element.Name.NamespaceName.StartsWith("clr-namespace:") && !element.Name.NamespaceName.Contains(";assembly="))
+                element.Name = System.Xml.Linq.XName.Get(element.Name.LocalName, element.Name.NamespaceName + ";assembly=ReTray");
+            foreach (var declaration in element.Attributes().Where(a => a.IsNamespaceDeclaration &&
+                a.Value.StartsWith("clr-namespace:") && !a.Value.Contains(";assembly="))) declaration.Value += ";assembly=ReTray";
+            foreach (var attribute in element.Attributes().Where(a => !a.IsNamespaceDeclaration &&
+                a.Name.NamespaceName.StartsWith("clr-namespace:") && !a.Name.NamespaceName.Contains(";assembly=")).ToArray()) {
+                element.SetAttributeValue(System.Xml.Linq.XName.Get(attribute.Name.LocalName, attribute.Name.NamespaceName + ";assembly=ReTray"), attribute.Value);
+                attribute.Remove();
+            }
+            if (element.Attribute("Source") is { } reference && reference.Value.StartsWith("Controls/"))
+                reference.Value = "/ReTray;component/" + reference.Value;
+        }
+        return (System.Windows.ResourceDictionary)System.Windows.Markup.XamlReader.Parse(dictionary.ToString());
     }
 
     private static async Task RunAsync()
     {
         foreach (var (name, test) in new (string, Func<Task>)[] {
+            ("system read recovery clears the stale error and preserves later failures", SystemReadRecovery),
+            ("system page reenables controls and clears its notice after a failed read", SystemPageRecovery),
             ("startup stays loading during a response delayed beyond five seconds", DelayedStartupResponse),
             ("explicit deadline permits connecting after five seconds", DelayedListener),
             ("interactive requests retain their five-second timeout", InteractiveTimeout),
@@ -41,6 +67,58 @@ internal static class Program
     private static void Require(bool value, string message)
     {
         if (!value) throw new InvalidOperationException(message);
+    }
+    private static async Task SystemReadRecovery()
+    {
+        await using var runtime = new FakeRuntime();
+        var vm = ViewModel(Client(runtime), TimeSpan.FromSeconds(30));
+        vm.ReportSystemReadFailure(new IOException("System controls temporarily unavailable"));
+        Require(vm.Error.Length > 0, "Read failure disappeared before recovery");
+        vm.CompleteSystemRead();
+        Require(vm.Error.Length == 0 && vm.Status.Length == 0, "Recovered read left a stale error on screen");
+        vm.ReportSystemReadFailure(new IOException("Read failure"));
+        vm.ReportError(new IOException("A setting could not be saved"));
+        vm.CompleteSystemRead();
+        Require(vm.Error == "A setting could not be saved", "Read recovery erased a later save failure");
+        vm.ReportSystemReadFailure(new IOException("Read failure"));
+        vm.ReportError(new IOException("Read failure"));
+        vm.CompleteSystemRead();
+        Require(vm.Error == "Read failure", "A different operation with the same message lost its error");
+    }
+    private static async Task SystemPageRecovery()
+    {
+        LanDeviceMonitor.Services.ThemeService.Apply("Light");
+        // Load the same parent-window styles used by MainPage in production.
+        var x = System.Xml.Linq.XNamespace.Get("http://schemas.microsoft.com/winfx/2006/xaml");
+        var source = System.Xml.Linq.XDocument.Load(Path.Combine(AppContext.BaseDirectory, "WindowTemplates.xaml"));
+        var dictionary = new System.Xml.Linq.XElement(source.Root!.Name.Namespace + "ResourceDictionary",
+            source.Root.Attributes().Where(a => a.IsNamespaceDeclaration).Select(a => new System.Xml.Linq.XAttribute(a.Name,
+                a.Value.StartsWith("clr-namespace:") && !a.Value.Contains(";assembly=") ? a.Value + ";assembly=ReTray" : a.Value)),
+            source.Descendants().Where(e => e.Name.LocalName == "Style" &&
+                new[] { "DeviceListScrollViewerStyle", "DeviceListBoxStyle", "FooterCircleButtonStyle" }.Contains((string?)e.Attribute(x + "Key"))));
+        dictionary.Elements().Single(e => (string?)e.Attribute(x + "Key") == "DeviceListBoxStyle")
+            .Elements().Where(e => (string?)e.Attribute("Property") is "ItemContainerStyle" or "ItemTemplate").ToList().ForEach(e => e.Remove());
+        System.Windows.Application.Current!.Resources.MergedDictionaries.Add(ReadResources(dictionary));
+        await using var runtime = new FakeRuntime(failFirstSystemRead: true);
+        var vm = ViewModel(Client(runtime), TimeSpan.FromSeconds(30)); vm.IsLoading = false;
+        var page = (ReTray_App.MainPage)Activator.CreateInstance(typeof(ReTray_App.MainPage),
+            BindingFlags.Instance | BindingFlags.NonPublic, null, [vm], null)!;
+        var load = typeof(ReTray_App.MainPage).GetMethod("LoadSystemAsync", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        ((System.Windows.Controls.Primitives.Selector)page.FindName("Navigation")).SelectedIndex = 1;
+        vm.IsReady = true;
+        await runtime.FirstRequest.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var loading = typeof(ReTray_App.MainPage).GetField("systemLoading", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var deadline = Stopwatch.StartNew();
+        while ((bool)loading.GetValue(page)! && deadline.Elapsed < TimeSpan.FromSeconds(5)) await Task.Delay(10);
+        Require(!(bool)loading.GetValue(page)!, "Initial system read did not finish");
+        var toggles = (System.Windows.Controls.Primitives.ToggleButton?[])typeof(ReTray_App.MainPage)
+            .GetField("systemToggles", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(page)!;
+        Require(vm.Error.Length > 0 && !toggles[0]!.IsEnabled, "Failed read left stale system controls active");
+        await (Task)load.Invoke(page, [true])!;
+        page.Measure(new System.Windows.Size(400, 800)); page.Arrange(new System.Windows.Rect(0, 0, 400, 800));
+        Require(toggles[0]!.IsEnabled && toggles[0]!.IsChecked == true, "Recovered system control did not become usable");
+        Require(vm.Error.Length == 0 && ((System.Windows.FrameworkElement)page.FindName("ErrorNotice")).Visibility == System.Windows.Visibility.Collapsed,
+            "Recovered system page retained the failure notice");
     }
     // Internal seams select a private test pipe and a short test-only startup
     // budget. Tests never load the native DLL or address the user's live pipe.
@@ -117,7 +195,7 @@ internal static class Program
             "Finite startup failure was hidden or exposed raw cancellation");
         await Task.Delay(850);
         await vm.ReconnectCommand.ExecuteAsync(null);
-        Require(vm.IsReady && vm.Error.Length == 0, "Explicit retry did not reset startup budget");
+        Require(vm.IsReady && vm.Error.Length == 0, "Explicit retry did not reset startup budget: " + vm.Error);
         Require(runtime.Requests.Count(r => r["method"]!.GetValue<string>() == "settings.apply") == 1,
             "A timed-out startup replayed a write");
     }
@@ -141,12 +219,12 @@ internal static class Program
         public List<JsonObject> Requests { get { lock (requests) return requests.ToList(); } }
         private readonly CancellationTokenSource stop = new();
         private readonly Task server;
-        public FakeRuntime(TimeSpan? responseDelay = null, TimeSpan? listenDelay = null, bool ready = true)
+        public FakeRuntime(TimeSpan? responseDelay = null, TimeSpan? listenDelay = null, bool ready = true, bool failFirstSystemRead = false)
         {
             server = Task.Run(async () => {
                 var token = stop.Token;
                 if (listenDelay.HasValue) await Task.Delay(listenDelay.Value, token);
-                bool first = true;
+                bool first = true, firstSystemRead = true;
                 while (!token.IsCancellationRequested) {
                     using var pipe = new NamedPipeServerStream(Name, PipeDirection.InOut, 1,
                         PipeTransmissionMode.Byte, PipeOptions.Asynchronous);
@@ -169,10 +247,15 @@ internal static class Program
                                 """)!,
                             "status.read" => new JsonObject { ["pid"] = Environment.ProcessId, ["ready"] = ready, ["connected"] = ready },
                             "catalog.read" => new JsonObject { ["icons"] = new JsonArray() },
+                            "system.read" => new JsonArray(new JsonObject { ["id"] = 0, ["instances"] = 1, ["visible"] = true, ["savedHidden"] = false }),
                             _ => new JsonObject()
                         };
                         var response = new JsonObject { ["success"] = true, ["data"] = data, ["revision"] = 0,
                             ["requestId"] = request["requestId"]!.DeepClone() };
+                        if (method == "system.read" && firstSystemRead) {
+                            firstSystemRead = false;
+                            if (failFirstSystemRead) { response["success"] = false; response["detail"] = "系统控件读取不可用"; response["errorCode"] = 21; }
+                        }
                         await writer.WriteLineAsync(response.ToJsonString().AsMemory(), token);
                     }
                     catch (IOException) { /* A timed-out client closes its private pipe. */ }

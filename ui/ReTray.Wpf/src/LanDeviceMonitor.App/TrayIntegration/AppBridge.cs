@@ -79,9 +79,17 @@ public static class App
                 // interface whose native message loop has already finished.
                 if (NativeRuntime.IsActive)
                 {
-                    IsExiting = false;
                     Window.IsEnabled = wasEnabled;
-                    return;
+                    var decision = System.Windows.MessageBox.Show(Window,
+                        ReTray_App.Services.Localization.Text("部分更改尚未保存。是否仍然退出？") + "\n\n" + Window.TrayPage.Vm.Error,
+                        "ReTray", System.Windows.MessageBoxButton.YesNo, System.Windows.MessageBoxImage.Warning,
+                        System.Windows.MessageBoxResult.No);
+                    if (decision != System.Windows.MessageBoxResult.Yes)
+                    {
+                        IsExiting = false;
+                        return;
+                    }
+                    Window.IsEnabled = false;
                 }
             }
             await FinishExitAsync();

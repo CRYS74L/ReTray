@@ -137,6 +137,17 @@ public sealed class IconChoiceRow : UserControl
             setMode(mode.SelectedIndex == 1);
             ShowMode(true);
         };
+        // Confirming the selected mode also reapplies it, allowing an application
+        // update's new idle image to replace an obsolete saved baseline.
+        mode.AddHandler(Mouse.PreviewMouseDownEvent, new MouseButtonEventHandler((_, args) =>
+        {
+            if (args.ChangedButton == MouseButton.Left && mode.IsMouseCaptured)
+                setMode(mode.SelectedIndex == 1);
+        }), true);
+        mode.PreviewKeyDown += (_, args) =>
+        {
+            if (args.Key is Key.Enter or Key.Space) { setMode(mode.SelectedIndex == 1); args.Handled = true; }
+        };
         content.Children.Add(mode);
         System.ComponentModel.PropertyChangedEventHandler previewChanged = (_, args) =>
         {

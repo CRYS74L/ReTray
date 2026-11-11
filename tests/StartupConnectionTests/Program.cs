@@ -49,6 +49,7 @@ internal static class Program
     private static async Task RunAsync()
     {
         foreach (var (name, test) in new (string, Func<Task>)[] {
+            ("confirming replacement renews stale baseline and survives coalesced edits", ConfirmReplacementBaseline),
             ("system read recovery clears the stale error and preserves later failures", SystemReadRecovery),
             ("system page reenables controls and clears its notice after a failed read", SystemPageRecovery),
             ("startup stays loading during a response delayed beyond five seconds", DelayedStartupResponse),
@@ -67,6 +68,33 @@ internal static class Program
     private static void Require(bool value, string message)
     {
         if (!value) throw new InvalidOperationException(message);
+    }
+    private static async Task ConfirmReplacementBaseline()
+    {
+        await using var runtime = new FakeRuntime();
+        var vm = ViewModel(Client(runtime), TimeSpan.FromSeconds(30));
+        await vm.InitializeAsync();
+        var rule = JsonNode.Parse("""
+            {"key":"baseline-test","selector":{"executable":"C:\\Fixture\\Example.exe","hasGuid":false,"uid":3},
+             "asset":"C:\\Fixture\\replacement.ico","replacementAsset":"C:\\Fixture\\replacement.ico",
+             "assetIndex":0,"replacementAssetIndex":0,"tip":"","visibility":0,"order":-1,
+             "inactiveSeconds":0,"unusedDays":0,"menuVisible":true,"alwaysShow":false,
+             "baselineFingerprint":123,"baselineWidth":256,"baselineHeight":256,
+             "sourceFingerprint":456,"sourceWidth":512,"sourceHeight":512,
+             "placement":1,"displayPixels":"","originalPixels":""}
+            """)!.AsObject();
+        vm.Selected = new ReTray_App.Models.IconRow(rule);
+        var build = typeof(TrayViewModel).GetMethod("BuildEditorRule", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var unchanged = (JsonObject)build.Invoke(vm, [vm.Selected])!;
+        Require(unchanged["baselineFingerprint"]!.GetValue<int>() == 123, "Opening the editor replaced the idle baseline");
+        vm.SelectIconMode(true);
+        // A following tooltip edit shares the debounce batch with the mode click.
+        vm.Tip = "Updated tooltip";
+        Require(await vm.FlushChangesAsync(), "Confirmed mode did not save");
+        var applied = runtime.Requests.Last(r => r["method"]!.GetValue<string>() == "rule.apply")["data"]!["rule"]!;
+        Require(applied["baselineFingerprint"]!.GetValue<int>() == 456 && applied["baselineWidth"]!.GetValue<int>() == 512,
+            "Explicit confirmation retained an obsolete baseline");
+        Require(applied["tip"]!.GetValue<string>() == "Updated tooltip", "Coalesced edit was lost");
     }
     private static async Task SystemReadRecovery()
     {

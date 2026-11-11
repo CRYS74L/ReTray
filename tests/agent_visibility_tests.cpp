@@ -499,6 +499,13 @@ void SaveFailureCannotChangeNativeIcon() {
     auto result = Call("icon.visibility", {{"key", TargetKey()}, {"visibility", 1}});
     CHECK(!result.value("success", true)); CHECK(settings == before);
     CHECK(Target().placement == 1); CHECK(Target().custom); CHECK(IconCommands().empty());
+    CHECK(result["errorCode"] == ERROR_ACCESS_DENIED);
+    for (auto error : {ERROR_DISK_FULL, ERROR_HANDLE_DISK_FULL, ERROR_SHARING_VIOLATION}) {
+        settingsSaveError = error;
+        auto failure = PersistenceFailure();
+        CHECK(failure["errorCode"] == error);
+        CHECK(failure["detail"] != "配置保存失败");
+    }
 }
 void FullRuleValidationStillRuns() {
     ResetFixture(); settings["startup"] = "invalid"; auto before = settings;

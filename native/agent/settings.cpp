@@ -300,9 +300,14 @@ static Json ReadFile(const std::filesystem::path& path) {
         throw std::runtime_error("Invalid settings");
     return j;
 }
-bool SaveSettings(const std::filesystem::path& path, const Json& settings) {
-    if (!ValidateSettings(settings))
+bool SaveSettings(const std::filesystem::path& path, const Json& settings, DWORD* error) {
+    auto fail = [&](DWORD code) {
+        if (error) *error = code;
         return false;
+    };
+    if (error) *error = ERROR_SUCCESS;
+    if (!ValidateSettings(settings))
+        return fail(ERROR_INVALID_DATA);
     try {
         std::filesystem::create_directories(path.parent_path());
         auto tmp = path;
@@ -311,15 +316,17 @@ bool SaveSettings(const std::filesystem::path& path, const Json& settings) {
         HANDLE file = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
                                   FILE_ATTRIBUTE_NORMAL, nullptr);
         if (file == INVALID_HANDLE_VALUE)
-            return false;
+            return fail(GetLastError());
         DWORD written{};
         bool ok =
             WriteFile(file, text.data(), static_cast<DWORD>(text.size()), &written, nullptr) &&
             written == text.size() && FlushFileBuffers(file);
+        auto writeError = ok ? ERROR_SUCCESS : GetLastError();
+        if (!ok && !writeError) writeError = ERROR_WRITE_FAULT;
         CloseHandle(file);
         if (!ok) {
             DeleteFileW(tmp.c_str());
-            return false;
+            return fail(writeError);
         }
         auto backup = path;
         backup += L".bak";
@@ -330,12 +337,15 @@ bool SaveSettings(const std::filesystem::path& path, const Json& settings) {
         }
         if (!MoveFileExW(tmp.c_str(), path.c_str(),
                          MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+            auto moveError = GetLastError();
             DeleteFileW(tmp.c_str());
-            return false;
+            return fail(moveError);
         }
         return true;
+    } catch (const std::filesystem::filesystem_error& exception) {
+        return fail(static_cast<DWORD>(exception.code().value()));
     } catch (...) {
-        return false;
+        return fail(ERROR_INVALID_DATA);
     }
 }
 Json NormalizeSettings(Json value) {

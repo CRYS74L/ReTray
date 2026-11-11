@@ -16,6 +16,7 @@ public partial class TrayViewModel
     private readonly Dictionary<string, Func<Task>> pendingEdits = new();
     private readonly SemaphoreSlim saveGate = new(1, 1);
     private bool readingEditor;
+    private (IconRow Row, JsonObject Values)? confirmedBaseline;
 
     public TrayViewModel() => autosaveTimer.Tick += async (_, _) => await FlushChangesAsync();
 
@@ -118,6 +119,18 @@ public partial class TrayViewModel
         QueueEdit("menu", async () => { await Call("settings.apply", data); await RefreshAsync(); });
     }
 
+    public void SelectIconMode(bool replacement)
+    {
+        UseReplacement = replacement;
+        if (!initialized || readingEditor || App.IsExiting) return;
+        if (replacement && Selected is { Owned: false } row)
+            confirmedBaseline = (row, new JsonObject {
+                ["baselineFingerprint"] = row.Rule["sourceFingerprint"]!.DeepClone(),
+                ["baselineWidth"] = row.Rule["sourceWidth"]!.DeepClone(),
+                ["baselineHeight"] = row.Rule["sourceHeight"]!.DeepClone() });
+        QueueEditor();
+    }
+
     private void QueueEditor()
     {
         if (Selected is not IconRow row || !double.IsFinite(AssetIndex) || !double.IsFinite(InactiveSeconds) || HotkeyAction is < 0 or > 3) return;
@@ -155,6 +168,8 @@ public partial class TrayViewModel
             rule["baselineWidth"] = row.Rule["sourceWidth"]!.DeepClone();
             rule["baselineHeight"] = row.Rule["sourceHeight"]!.DeepClone();
         }
+        if (UseReplacement && confirmedBaseline is { } baseline && ReferenceEquals(baseline.Row, row))
+            foreach (var field in baseline.Values) rule[field.Key] = field.Value!.DeepClone();
         rule["selector"]!["windowClass"] = MatchClass;
         rule["selector"]!["tipPattern"] = MatchTip;
         rule["selector"]!["tipMode"] = MatchTipMode;

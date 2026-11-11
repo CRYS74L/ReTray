@@ -260,16 +260,28 @@ void UpdateMenuLanguageSnapshot() {
     const auto language = settings.value("language", std::string("zh"));
     menuLanguageIndex.store(language == "en" ? 1u : language == "zh-Hant" ? 2u : language == "ja" ? 3u : 0u);
 }
+DWORD settingsSaveError{};
+Json PersistenceFailure(const std::string& detail = "配置保存失败") {
+    std::string message = detail;
+    if (settingsSaveError == ERROR_DISK_FULL || settingsSaveError == ERROR_HANDLE_DISK_FULL)
+        message += "，磁盘空间不足，请释放空间后重试";
+    else if (settingsSaveError == ERROR_ACCESS_DENIED)
+        message += "，配置目录没有写入权限";
+    else if (settingsSaveError == ERROR_SHARING_VIOLATION)
+        message += "，配置文件正被其他程序占用";
+    return Result(false, message, settingsSaveError);
+}
 bool Persist() {
+    settingsSaveError = ERROR_SUCCESS;
     try {
         auto candidate = NormalizeSettings(settings);
         candidate["revision"] = configRevision + 1;
-        if (!SaveSettings(settingsPath, candidate)) return false;
+        if (!SaveSettings(settingsPath, candidate, &settingsSaveError)) return false;
         settings = std::move(candidate);
         ++configRevision;
         UpdateMenuLanguageSnapshot();
         return true;
-    } catch (...) { return false; }
+    } catch (...) { settingsSaveError = ERROR_INVALID_DATA; return false; }
 }
 Json MergeIconOrder(const Json& requested) {
     std::unordered_set<std::string> submitted;
@@ -1303,7 +1315,7 @@ Json SetIconVisibility(const Json& data) {
         settings["ownIcon"]["visible"] = visibility != 1;
         if (!Persist()) {
             settings = previous;
-            return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
+            return PersistenceFailure();
         }
         if (!SetOwnIcon(false)) {
             auto error = GetLastError();
@@ -1381,7 +1393,7 @@ Json SetIconVisibility(const Json& data) {
         *existing = RuleJson(rule);
     if (!Persist()) {
         settings = previous;
-        return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
+        return PersistenceFailure();
     }
     size_t completed{};
     for (const auto& item : affected) {
@@ -1570,7 +1582,7 @@ Json Handle(const Json& req) {
         settings["autoSort"] = false;
         if (!Persist()) {
             settings = saved;
-            return Result(false, "顺序保存失败", ERROR_WRITE_FAULT);
+            return PersistenceFailure("顺序保存失败");
         }
         result["saved"] = true;
     } else if (method == "internal.openUi") {
@@ -1696,7 +1708,7 @@ Json Handle(const Json& req) {
         }
         if (!Persist()) {
             settings = saved;
-            return Result(false, "批量规则无法保存", ERROR_WRITE_FAULT);
+            return PersistenceFailure("批量规则无法保存");
         }
         settings.erase("safeMode");
         if (settings.contains("hotkeys"))
@@ -1766,7 +1778,7 @@ Json Handle(const Json& req) {
             list.push_back(RuleJson(rule));
         if (!Persist()) {
             settings = saved;
-            return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
+            return PersistenceFailure();
         }
         settings.erase("safeMode");
         if (settings.contains("hotkeys"))
@@ -1794,7 +1806,7 @@ Json Handle(const Json& req) {
         settings["ownIcon"] = d;
         if (!Persist()) {
             settings = saved;
-            return Result(false, "配置保存失败", ERROR_WRITE_FAULT);
+            return PersistenceFailure();
         }
         bool ok = SetOwnIcon();
         result =
@@ -1822,8 +1834,7 @@ Json Handle(const Json& req) {
             bool restored = !changedStartup ||
                 SetStartup(saved.value("startup", false), settings.value("startup", false));
             settings = saved;
-            return Result(false, restored ? "配置保存失败" : "配置保存失败，自启动状态恢复失败",
-                          ERROR_WRITE_FAULT);
+            return PersistenceFailure(restored ? "配置保存失败" : "配置保存失败，自启动状态恢复失败");
         }
         ScheduleHotkeys();
         result = Result(true, "设置已保存");

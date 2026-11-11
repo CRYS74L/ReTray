@@ -266,6 +266,16 @@ int wmain(int argc, wchar_t** argv) {
         auto oldActive = RuleJson(rule); oldActive.erase("replacementAsset"); oldActive.erase("replacementAssetIndex");
         auto compatible = ParseRule(oldActive);
         CHECK(compatible.replacementAsset == compatible.asset);
+        DWORD saveError = ERROR_SUCCESS;
+        auto temporary = path; temporary += L"." + std::to_wstring(GetCurrentProcessId()) + L".tmp";
+        HANDLE locked = CreateFileW(temporary.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        CHECK(locked != INVALID_HANDLE_VALUE);
+        auto beforeFailure = LoadSettings(path, recovered);
+        bool savedWhileLocked = SaveSettings(path, beforeFailure, &saveError);
+        CloseHandle(locked); DeleteFileW(temporary.c_str());
+        CHECK(!savedWhileLocked && saveError == ERROR_SHARING_VIOLATION);
+        CHECK(LoadSettings(path, recovered) == beforeFailure);
+        CHECK(SaveSettings(path, beforeFailure, &saveError) && saveError == ERROR_SUCCESS);
         auto wideBaseline = encoded;
         wideBaseline["baselineWidth"] = 4096; wideBaseline["baselineHeight"] = 1024;
         CHECK(ParseRule(wideBaseline).baselineWidth == 4096);

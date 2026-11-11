@@ -18,6 +18,10 @@ public static partial class Localization
     private static readonly Dictionary<string,string> map = new()
     {
         ["ReTray"]="ReTray",
+        ["部分更改尚未保存。是否仍然退出？"]="Some changes have not been saved. Exit anyway?",
+        ["配置保存失败，磁盘空间不足，请释放空间后重试"]="Unable to save settings. Free up disk space and try again.",
+        ["配置保存失败，配置目录没有写入权限"]="Unable to save settings. The configuration folder is not writable.",
+        ["配置保存失败，配置文件正被其他程序占用"]="Unable to save settings. Another program is using the configuration file.",
         ["在 GitHub 查看 ReTray"]="View ReTray on GitHub",
         ["图标资源"]="Icon files",
         ["导入结果尚未确认"]="Import result has not been confirmed",

@@ -25,7 +25,7 @@ public sealed class IconEditorPanel : UserControl
         root.Children.Add(header);
         var content = new StackPanel { Margin = new Thickness(4) };
         var choice = new IconChoiceRow(vm, "Selected.Original", () => vm.AssetPreview,
-            () => vm.UseReplacement, value => vm.UseReplacement = value, vm.ChooseIconCommand, bottomSpacing: 0);
+            () => vm.UseReplacement, vm.SelectIconMode, vm.ChooseIconCommand, bottomSpacing: 0);
         content.Children.Add(choice);
         BalanceHeaderSpacing(header, choice, content.Margin.Top);
         content.Children.Add(CreateDivider(new Thickness(0,16,0,16)));

@@ -241,6 +241,7 @@ public partial class TrayViewModel : ObservableObject
     }
     private void ReadEditor(IconRow row)
     {
+        confirmedBaseline = null;
         readingEditor = true;
         try {
         Hotkey=row.Rule["hotkey"]?.GetValue<int>()??0;HotkeyText=DescribeHotkey(Hotkey);HotkeyAction=row.Rule["hotkeyAction"]?.GetValue<int>()??1;
@@ -292,7 +293,7 @@ public partial class TrayViewModel : ObservableObject
 #endif
         return await ManagedIconStorage.StoreAsync(path);
     }
-    [RelayCommand] private Task ChooseIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) { UseReplacement = true; AssetIndex = 0; Asset = path; } });
+    [RelayCommand] private Task ChooseIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) { UseReplacement = true; AssetIndex = 0; Asset = path; SelectIconMode(true); } });
     [RelayCommand] private void UseOriginalAsset() { UseReplacement=false; }
     [RelayCommand] private Task ChooseOwnIconAsync() => Execute(async () => { var path = await ChooseAssetAsync(); if (path != null) OwnAsset = path; });
 

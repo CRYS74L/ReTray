@@ -19,16 +19,18 @@ public static class App
     public static bool CanCloseInterface { get; private set; }
     public static string UiActivationId { get; private set; } = "";
     public static LanDeviceMonitor.MainWindow Window { get; private set; } = null!;
+    internal static bool HasWindow => Window is not null;
     public static UiDispatcher DispatcherQueue { get; } = new();
-    public static nint WindowHandle => Window is null ? 0 : new WindowInteropHelper(Window).Handle;
+    public static nint WindowHandle => application?.InterfaceHandle ?? 0;
 
-    internal static void Initialize(LanDeviceMonitor.App sourceApplication, LanDeviceMonitor.MainWindow sourceWindow)
+    internal static void Initialize(LanDeviceMonitor.App sourceApplication)
     {
         application = sourceApplication;
-        Window = sourceWindow;
         UiActivationId = ReadActivationId();
         NativeRuntime.Completed += RuntimeCompleted;
     }
+
+    internal static void AttachWindow(LanDeviceMonitor.MainWindow sourceWindow) => Window = sourceWindow;
 
     public static void ObserveAgent(int processId)
     {
@@ -54,7 +56,7 @@ public static class App
             IsExiting = true;
             CanCloseInterface = true;
             interfaceShutdownStarted = true;
-            Window.IsEnabled = false;
+            if (HasWindow) Window.IsEnabled = false;
             await FinishExitAsync();
         });
     }
@@ -69,11 +71,11 @@ public static class App
         }
         if (IsExiting) return;
         IsExiting = true;
-        bool wasEnabled = Window.IsEnabled;
-        Window.IsEnabled = false;
+        bool wasEnabled = HasWindow && Window.IsEnabled;
+        if (HasWindow) Window.IsEnabled = false;
         try
         {
-            if (NativeRuntime.IsActive && !await Window.TrayPage.FlushChangesAsync())
+            if (NativeRuntime.IsActive && HasWindow && !await Window.TrayPage.FlushChangesAsync())
             {
                 // Completion can race an outstanding save; never restore an
                 // interface whose native message loop has already finished.
@@ -104,13 +106,18 @@ public static class App
             CanCloseInterface = false;
             interfaceShutdownStarted = false;
             IsExiting = false;
-            Window.IsEnabled = wasEnabled;
-            Window.TrayPage.Vm.ReportError(exception);
+            if (HasWindow)
+            {
+                Window.IsEnabled = wasEnabled;
+                Window.TrayPage.Vm.ReportError(exception);
+            }
+            else System.Windows.MessageBox.Show(exception.Message, "ReTray");
         }
     }
 
     private static async Task FinishExitAsync()
     {
+        if (application is not null) await application.CloseBackgroundMenuAsync();
         try { await NativeRuntime.StopAsync(); }
         catch (Exception) when (!NativeRuntime.IsActive) { }
         interfaceShutdownStarted = true;
@@ -127,13 +134,13 @@ public static class App
             return;
         }
         restartStarted = true;
-        bool wasEnabled = Window.IsEnabled;
-        Window.IsEnabled = false;
+        bool wasEnabled = HasWindow && Window.IsEnabled;
+        if (HasWindow) Window.IsEnabled = false;
         try
         {
             // Flush before launching the waiting successor. A failed save must
             // leave the current process usable without a stray pending restart.
-            if (NativeRuntime.IsActive && !await Window.TrayPage.FlushChangesAsync()) return;
+            if (NativeRuntime.IsActive && HasWindow && !await Window.TrayPage.FlushChangesAsync()) return;
             string executable = Environment.ProcessPath ?? throw new IOException("无法确定 ReTray 启动路径。");
             var info = new ProcessStartInfo(executable) { UseShellExecute = false, WorkingDirectory = AppContext.BaseDirectory };
             info.ArgumentList.Add("--restart-after");
@@ -146,12 +153,16 @@ public static class App
         }
         catch (Exception exception)
         {
-            if (!IsExiting) Window.TrayPage.Vm.ReportError(exception);
+            if (!IsExiting)
+            {
+                if (HasWindow) Window.TrayPage.Vm.ReportError(exception);
+                else System.Windows.MessageBox.Show(exception.Message, "ReTray");
+            }
         }
         finally
         {
             restartStarted = false;
-            if (!IsExiting) Window.IsEnabled = wasEnabled;
+            if (!IsExiting && HasWindow) Window.IsEnabled = wasEnabled;
         }
     }
 

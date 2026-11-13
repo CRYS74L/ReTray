@@ -12,6 +12,20 @@ namespace ReTray_App.Controls;
 public sealed class TrayCommandMenu
 {
     private ContextMenu? menu;
+    internal async Task CloseAsync()
+    {
+        var current = menu;
+        if (current is null) return;
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        RoutedEventHandler handler = (_, _) => closed.TrySetResult();
+        current.Closed += handler;
+        try
+        {
+            current.IsOpen = false;
+            await closed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally { current.Closed -= handler; }
+    }
     public void Show(Point? clickPosition = null, FrameworkElement? source = null)
     {
         if (App.IsExiting) return;

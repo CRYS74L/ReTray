@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Input;
+using System.Diagnostics.CodeAnalysis;
 using LanDeviceMonitor.Services;
 
 namespace LanDeviceMonitor;
@@ -18,6 +19,13 @@ public partial class App : System.Windows.Application
     private bool _isShowingMainWindow;
     private bool _placementRestored;
     private bool _showWhenReady;
+    private HwndSource? _interfaceHost;
+    private bool _interfaceResourcesReady;
+    private ReTray_App.Controls.TrayCommandMenu? _backgroundMenu;
+    private static readonly int OpenInterfaceMessage = unchecked((int)RegisterWindowMessage("ReTray.OpenInterface.v1"));
+    private static readonly int ExitInterfaceMessage = unchecked((int)RegisterWindowMessage("ReTray.ExitInterface.v1"));
+    private static readonly int ShowDropdownMenuMessage = unchecked((int)RegisterWindowMessage("ReTray.ShowDropdownMenu.v1"));
+    internal nint InterfaceHandle => _interfaceHost?.Handle ?? 0;
 
     internal static bool ShouldShowMainWindow(
         bool hasExited,
@@ -74,6 +82,37 @@ public partial class App : System.Windows.Application
         DispatcherUnhandledException += App_DispatcherUnhandledException;
         try { ApplicationPaths.PrepareData(); }
         catch (Exception error) { System.Windows.MessageBox.Show(error.Message, "ReTray"); Shutdown(1); return; }
+        ReTray_App.App.Initialize(this);
+        _interfaceHost = new HwndSource(new HwndSourceParameters("ReTray.InterfaceHost")
+        {
+            WindowStyle = unchecked((int)0x80000000),
+            ExtendedWindowStyle = 0x08000080,
+            Width = 0, Height = 0
+        });
+        _interfaceHost.AddHook(InterfaceWindowProcedure);
+        try
+        {
+            NativeRuntime.AttachInterface(InterfaceHandle);
+            await NativeRuntime.StartAsync();
+            if (_hasExited) return;
+            if (!startHidden || _showWhenReady)
+            {
+                ShowMainWindow();
+            }
+        }
+        catch (Exception exception)
+        {
+            if (_hasExited) return;
+            try { await NativeRuntime.StopAsync(); } catch { }
+            System.Windows.MessageBox.Show(exception.Message, "ReTray");
+            ExitApplication();
+        }
+
+    }
+
+    private void EnsureInterfaceResources()
+    {
+        if (_interfaceResourcesReady) return;
         ThemeService.Apply(ReadTrayThemeMode());
         try {
             using var saved = JsonDocument.Parse(File.ReadAllText(Path.Combine(
@@ -84,6 +123,14 @@ public partial class App : System.Windows.Application
         } catch (Exception error) when (error is IOException or UnauthorizedAccessException or JsonException) { }
 
 
+        _interfaceResourcesReady = true;
+    }
+
+    [MemberNotNull(nameof(_mainWindow))]
+    private void EnsureMainWindow()
+    {
+        if (_mainWindow is not null) return;
+        EnsureInterfaceResources();
         // The original window retains its native frame and material lifecycle.
         // Notification registration, LAN monitoring, and the source NotifyIcon
         // are not part of the tray assistant's application startup.
@@ -91,7 +138,7 @@ public partial class App : System.Windows.Application
         _mainWindow = new MainWindow(
             _notificationService);
         MainWindow = _mainWindow;
-        ReTray_App.App.Initialize(this, _mainWindow);
+        ReTray_App.App.AttachWindow(_mainWindow);
         _windowPlacementService = new WindowPlacementService(_mainWindow);
         _mainWindow.SourceInitialized += (_, _) =>
         {
@@ -130,29 +177,35 @@ public partial class App : System.Windows.Application
                     }
                 }));
         };
-        try
-        {
-            // Ensure the activation/message target also exists for --background.
-            // The existing window keeps the same HWND when hidden to the tray.
-            var handle = new WindowInteropHelper(_mainWindow).EnsureHandle();
-            NativeRuntime.AttachInterface(handle);
-            await NativeRuntime.StartAsync();
-            _ = Task.Run(ApplicationPaths.PruneOldBundleCaches);
-            if (_hasExited) return;
-            if (!startHidden || _showWhenReady)
-            {
-                RestorePlacementOnce();
-                _mainWindow.Show();
-            }
-        }
-        catch (Exception exception)
-        {
-            if (_hasExited) return;
-            try { await NativeRuntime.StopAsync(); } catch { }
-            System.Windows.MessageBox.Show(exception.Message, "ReTray");
-            ExitApplication();
-        }
+        _ = new WindowInteropHelper(_mainWindow).EnsureHandle();
+        _ = Task.Run(ApplicationPaths.PruneOldBundleCaches);
+    }
 
+    private nint InterfaceWindowProcedure(nint hwnd, int message, nint word, nint value, ref bool handled)
+    {
+        if (_hasExited) return 0;
+        if (message == OpenInterfaceMessage)
+        {
+            handled = true;
+            Dispatcher.BeginInvoke(ShowMainWindow);
+        }
+        else if (message == ExitInterfaceMessage)
+        {
+            handled = true;
+            Dispatcher.BeginInvoke(new Action(() => _ = ReTray_App.App.QuitAsync()));
+        }
+        else if (message == ShowDropdownMenuMessage)
+        {
+            handled = true;
+            var point = new Point(word.ToInt32(), value.ToInt32());
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_hasExited) return;
+                EnsureInterfaceResources();
+                (_backgroundMenu ??= new ReTray_App.Controls.TrayCommandMenu()).Show(point);
+            }));
+        }
+        return 0;
     }
 
     private static string ReadTrayThemeMode()
@@ -229,7 +282,7 @@ public partial class App : System.Windows.Application
 
     internal void ShowMainWindow()
     {
-        if (_isShowingMainWindow || _mainWindow is null || _hasExited)
+        if (_isShowingMainWindow || _hasExited)
         {
             return;
         }
@@ -243,6 +296,7 @@ public partial class App : System.Windows.Application
         _isShowingMainWindow = true;
         try
         {
+            EnsureMainWindow();
             if (ShouldShowMainWindow(_hasExited, true, _mainWindow.IsVisible))
             {
                 RestorePlacementOnce();
@@ -288,12 +342,15 @@ public partial class App : System.Windows.Application
         _singleInstanceService = null;
         _windowPlacementService?.Dispose();
         _windowPlacementService = null;
+        _interfaceHost?.Dispose();
+        _interfaceHost = null;
         MicaWindowService.Dispose();
 
         Shutdown(0);
     }
 
     internal void CompleteInterfaceExit() => ExitApplication();
+    internal Task CloseBackgroundMenuAsync() => _backgroundMenu?.CloseAsync() ?? Task.CompletedTask;
 
     protected override void OnExit(ExitEventArgs e)
     {
@@ -310,6 +367,8 @@ public partial class App : System.Windows.Application
             _notificationService = null;
             _singleInstanceService?.Dispose();
             _windowPlacementService?.Dispose();
+            _interfaceHost?.Dispose();
+            _interfaceHost = null;
             MicaWindowService.Dispose();
         }
 
@@ -352,6 +411,9 @@ public partial class App : System.Windows.Application
             }
         }
     }
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern uint RegisterWindowMessage(string name);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
